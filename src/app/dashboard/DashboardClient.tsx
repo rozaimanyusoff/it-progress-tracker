@@ -1,0 +1,265 @@
+'use client'
+import { useState } from 'react'
+import Link from 'next/link'
+
+interface Project {
+  id: number
+  title: string
+  description: string | null
+  status: string
+  deadline: string
+  unit: { name: string }
+  owner: { name: string }
+  updates: { progress_pct: number; status: string; created_at: string }[]
+  _count: { issues: number }
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    Done: 'bg-green-900/50 text-green-400 border-green-700',
+    InProgress: 'bg-orange-900/50 text-orange-400 border-orange-700',
+    OnHold: 'bg-red-900/50 text-red-400 border-red-700',
+    Pending: 'bg-slate-700 text-slate-400 border-slate-600',
+  }
+  const labels: Record<string, string> = { InProgress: 'In Progress', OnHold: 'On Hold', Done: 'Done', Pending: 'Pending' }
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${map[status] || map.Pending}`}>
+      {labels[status] || status}
+    </span>
+  )
+}
+
+function ProgressBar({ value }: { value: number }) {
+  const color = value >= 80 ? 'bg-green-500' : value >= 40 ? 'bg-orange-500' : 'bg-blue-500'
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-navy-900 rounded-full h-2" style={{ backgroundColor: '#0a1628' }}>
+        <div className={`h-2 rounded-full ${color}`} style={{ width: `${value}%` }} />
+      </div>
+      <span className="text-xs text-slate-400 w-8 text-right">{value}%</span>
+    </div>
+  )
+}
+
+export default function DashboardClient({ projects, session }: { projects: Project[]; session: any }) {
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [showIssueModal, setShowIssueModal] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [updateForm, setUpdateForm] = useState({ progress_pct: '', status: 'InProgress', notes: '' })
+  const [issueForm, setIssueForm] = useState({ title: '', description: '', severity: 'medium' })
+  const [saving, setSaving] = useState(false)
+  const [localProjects, setLocalProjects] = useState(projects)
+
+  async function submitUpdate() {
+    if (!selectedProject) return
+    setSaving(true)
+    await fetch('/api/updates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: selectedProject.id, ...updateForm }),
+    })
+    setSaving(false)
+    setShowUpdateModal(false)
+    window.location.reload()
+  }
+
+  async function submitIssue() {
+    if (!selectedProject) return
+    setSaving(true)
+    await fetch('/api/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: selectedProject.id, ...issueForm }),
+    })
+    setSaving(false)
+    setShowIssueModal(false)
+    window.location.reload()
+  }
+
+  const stats = {
+    total: localProjects.length,
+    inProgress: localProjects.filter(p => p.status === 'InProgress').length,
+    done: localProjects.filter(p => p.status === 'Done').length,
+    issues: localProjects.reduce((s, p) => s + p._count.issues, 0),
+  }
+
+  return (
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <p className="text-slate-400 mt-1">
+          {session.user.role === 'manager' ? 'All projects overview' : `Your projects — ${session.user.unit_name || 'No unit'}`}
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        {[
+          { label: 'Total Projects', value: stats.total, color: 'text-blue-400' },
+          { label: 'In Progress', value: stats.inProgress, color: 'text-orange-400' },
+          { label: 'Done', value: stats.done, color: 'text-green-400' },
+          { label: 'Open Issues', value: stats.issues, color: 'text-red-400' },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl p-5 border" style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}>
+            <p className="text-slate-400 text-sm">{s.label}</p>
+            <p className={`text-3xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Projects */}
+      <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}>
+        <div className="px-6 py-4 border-b flex justify-between items-center" style={{ borderColor: '#1e3a5f' }}>
+          <h2 className="font-semibold text-white">Projects</h2>
+        </div>
+        <div className="divide-y" style={{ borderColor: '#1e3a5f' }}>
+          {localProjects.length === 0 && (
+            <div className="px-6 py-12 text-center text-slate-400">No projects found.</div>
+          )}
+          {localProjects.map(project => {
+            const progress = project.updates[0]?.progress_pct ?? 0
+            return (
+              <div key={project.id} className="px-6 py-4 hover:bg-navy-700 transition-colors" style={{ '--hover-bg': '#162d4a' } as any}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <Link href={`/projects/${project.id}`} className="font-medium text-white hover:text-blue-400 transition-colors">
+                        {project.title}
+                      </Link>
+                      <StatusBadge status={project.status} />
+                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded">{project.unit.name}</span>
+                    </div>
+                    <p className="text-slate-400 text-sm truncate">{project.description}</p>
+                    <div className="mt-2 max-w-xs">
+                      <ProgressBar value={progress} />
+                    </div>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                      <span>PIC: {project.owner.name}</span>
+                      <span>Deadline: {new Date(project.deadline).toLocaleDateString()}</span>
+                      {project._count.issues > 0 && (
+                        <span className="text-red-400">{project._count.issues} open issue(s)</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={() => { setSelectedProject(project); setShowUpdateModal(true) }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
+                    >
+                      Update
+                    </button>
+                    <button
+                      onClick={() => { setSelectedProject(project); setShowIssueModal(true) }}
+                      className="px-3 py-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 text-xs rounded-lg border border-red-800 transition-colors"
+                    >
+                      + Issue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Update Modal */}
+      {showUpdateModal && selectedProject && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-2xl p-6 border" style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}>
+            <h3 className="text-lg font-semibold text-white mb-4">Update Progress — {selectedProject.title}</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Progress %</label>
+                <input
+                  type="number" min={0} max={100}
+                  value={updateForm.progress_pct}
+                  onChange={e => setUpdateForm({ ...updateForm, progress_pct: e.target.value })}
+                  className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Status</label>
+                <select
+                  value={updateForm.status}
+                  onChange={e => setUpdateForm({ ...updateForm, status: e.target.value })}
+                  className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
+                >
+                  <option value="InProgress">In Progress</option>
+                  <option value="Done">Done</option>
+                  <option value="OnHold">On Hold</option>
+                  <option value="Pending">Pending</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Notes</label>
+                <textarea
+                  value={updateForm.notes}
+                  onChange={e => setUpdateForm({ ...updateForm, notes: e.target.value })}
+                  className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 h-24 resize-none"
+                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={submitUpdate} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Update'}
+              </button>
+              <button onClick={() => setShowUpdateModal(false)} className="flex-1 border border-slate-600 text-slate-400 hover:text-white py-2 rounded-lg">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Issue Modal */}
+      {showIssueModal && selectedProject && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-2xl p-6 border" style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}>
+            <h3 className="text-lg font-semibold text-white mb-4">Report Issue — {selectedProject.title}</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Title</label>
+                <input
+                  type="text"
+                  value={issueForm.title}
+                  onChange={e => setIssueForm({ ...issueForm, title: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Description</label>
+                <textarea
+                  value={issueForm.description}
+                  onChange={e => setIssueForm({ ...issueForm, description: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
+                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Severity</label>
+                <select
+                  value={issueForm.severity}
+                  onChange={e => setIssueForm({ ...issueForm, severity: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={submitIssue} disabled={saving} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium disabled:opacity-50">
+                {saving ? 'Saving...' : 'Report Issue'}
+              </button>
+              <button onClick={() => setShowIssueModal(false)} className="flex-1 border border-slate-600 text-slate-400 hover:text-white py-2 rounded-lg">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
