@@ -57,15 +57,9 @@ export default function UserManagementPage() {
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: form.name,
-        email: form.email,
-        role: form.role,
-        unit_id: form.unit_id || null,
-      }),
+      body: JSON.stringify({ name: form.name, email: form.email, role: form.role, unit_id: form.unit_id || null }),
     })
     setSubmitting(false)
-
     if (res.ok) {
       const fresh = await fetch('/api/admin/users').then(r => r.json())
       setUsers(fresh)
@@ -99,6 +93,9 @@ export default function UserManagementPage() {
     }
   }
 
+  const inputClass = 'w-full px-4 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm'
+  const labelClass = 'block text-slate-700 dark:text-slate-300 text-sm font-medium mb-1.5'
+
   if (loading) {
     return (
       <Layout>
@@ -113,7 +110,7 @@ export default function UserManagementPage() {
     <Layout>
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-lg text-sm font-medium shadow-lg ${
-          toast.type === 'success' ? 'bg-green-700 text-white' : 'bg-red-700 text-white'
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
         }`}>
           {toast.msg}
         </div>
@@ -122,8 +119,8 @@ export default function UserManagementPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-white text-2xl font-bold">Team Members</h1>
-            <p className="text-slate-400 text-sm mt-0.5">{users.length} member{users.length !== 1 ? 's' : ''}</p>
+            <h1 className="text-slate-900 dark:text-white text-2xl font-bold">Team Members</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">{users.length} member{users.length !== 1 ? 's' : ''}</p>
           </div>
           <button
             onClick={() => setShowForm(v => !v)}
@@ -134,68 +131,36 @@ export default function UserManagementPage() {
         </div>
 
         {showForm && (
-          <div className="rounded-xl border border-slate-700 p-6 mb-6" style={{ backgroundColor: '#0f1f35' }}>
-            <h2 className="text-white font-semibold mb-4">Add New Member</h2>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-navy-800 p-6 mb-6">
+            <h2 className="text-slate-900 dark:text-white font-semibold mb-4">Add New Member</h2>
             <form onSubmit={handleAddUser} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-slate-300 text-sm font-medium mb-1.5">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Ahmad Razif"
-                  className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
-                />
+                <label className={labelClass}>Full Name</label>
+                <input type="text" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Ahmad Razif" className={inputClass} />
               </div>
               <div>
-                <label className="block text-slate-300 text-sm font-medium mb-1.5">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="e.g. ahmad@company.com"
-                  className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm"
-                />
+                <label className={labelClass}>Email</label>
+                <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="e.g. ahmad@company.com" className={inputClass} />
               </div>
               <div>
-                <label className="block text-slate-300 text-sm font-medium mb-1.5">Role</label>
-                <select
-                  value={form.role}
-                  onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-white focus:outline-none focus:border-blue-500 text-sm"
-                >
+                <label className={labelClass}>Role</label>
+                <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={inputClass}>
                   <option value="member">Member</option>
                   <option value="manager">Manager</option>
                 </select>
               </div>
               <div>
-                <label className="block text-slate-300 text-sm font-medium mb-1.5">Unit</label>
-                <select
-                  value={form.unit_id}
-                  onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-600 text-white focus:outline-none focus:border-blue-500 text-sm"
-                >
+                <label className={labelClass}>Unit</label>
+                <select value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))} className={inputClass}>
                   <option value="">— No unit —</option>
-                  {units.map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
+                  {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div className="sm:col-span-2 flex gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
-                >
+                <button type="submit" disabled={submitting} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
                   {submitting ? 'Sending...' : 'Send Invitation'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-5 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
-                >
+                <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-white text-sm rounded-lg transition-colors">
                   Cancel
                 </button>
               </div>
@@ -203,10 +168,10 @@ export default function UserManagementPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-slate-700 overflow-hidden" style={{ backgroundColor: '#0f1f35' }}>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-navy-800">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wide">
+              <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
                 <th className="text-left px-6 py-3 font-medium">Name</th>
                 <th className="text-left px-6 py-3 font-medium">Unit</th>
                 <th className="text-left px-6 py-3 font-medium">Role</th>
@@ -216,51 +181,47 @@ export default function UserManagementPage() {
             </thead>
             <tbody>
               {users.map((user, i) => (
-                <tr key={user.id} className={`border-b border-slate-700/50 hover:bg-slate-800/30 transition-colors ${i === users.length - 1 ? 'border-b-0' : ''}`}>
+                <tr key={user.id} className={`border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${i === users.length - 1 ? 'border-b-0' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-blue-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                         {user.name[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-white font-medium">{user.name}</p>
-                        <p className="text-slate-400 text-xs">{user.email}</p>
+                        <p className="text-slate-900 dark:text-white font-medium">{user.name}</p>
+                        <p className="text-slate-500 dark:text-slate-400 text-xs">{user.email}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-slate-300">{user.unit?.name ?? <span className="text-slate-500">—</span>}</td>
+                  <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{user.unit?.name ?? <span className="text-slate-400">—</span>}</td>
                   <td className="px-6 py-4">
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      user.role === 'manager' ? 'bg-purple-900/50 text-purple-300' : 'bg-slate-700 text-slate-300'
+                      user.role === 'manager'
+                        ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}>
                       {user.role}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     {user.is_active ? (
-                      <span className="inline-flex items-center gap-1.5 text-green-400 text-xs font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span> Active
+                      <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400 text-xs font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 inline-block"></span> Active
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span> Pending
+                      <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 inline-block"></span> Pending
                       </span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       {!user.is_active && (
-                        <button
-                          onClick={() => handleResend(user)}
-                          className="px-3 py-1 text-xs text-blue-400 hover:text-blue-300 border border-blue-800 hover:border-blue-600 rounded-md transition-colors"
-                        >
+                        <button onClick={() => handleResend(user)} className="px-3 py-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border border-blue-300 dark:border-blue-800 hover:border-blue-500 dark:hover:border-blue-600 rounded-md transition-colors">
                           Resend
                         </button>
                       )}
-                      <button
-                        onClick={() => handleDelete(user)}
-                        className="px-3 py-1 text-xs text-red-400 hover:text-red-300 border border-red-900 hover:border-red-700 rounded-md transition-colors"
-                      >
+                      <button onClick={() => handleDelete(user)} className="px-3 py-1 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-900 hover:border-red-400 dark:hover:border-red-700 rounded-md transition-colors">
                         Remove
                       </button>
                     </div>

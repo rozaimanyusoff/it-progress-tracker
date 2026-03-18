@@ -10,6 +10,38 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-18 — Dark / Light Mode + Theme-aware UI
+
+**Branch:** `main`
+
+### Ditambah
+- **Dark/Light mode toggle** — Toggle button dalam sidebar (☀ / ☾) untuk tukar tema
+- **`next-themes`** — Library untuk manage theme state dengan SSR-safe hydration
+- **`ThemeProvider`** dalam `providers.tsx` — default theme: `dark`
+
+### Diubah
+- `tailwind.config.ts` — Tambah `darkMode: 'class'`
+- `globals.css` — Light mode body: `bg-slate-100`, dark text; dark mode kekal navy
+- `layout.tsx` — Tambah `suppressHydrationWarning` pada `<html>`
+- `Layout.tsx` — Ganti inline style dengan `bg-slate-100 dark:bg-navy-900`
+- `Sidebar.tsx` — Semua warna guna Tailwind `dark:` variants; tambah theme toggle button
+- `DashboardClient.tsx` — Semua cards, project list, modals dan forms guna `dark:` variants
+- `manager/page.tsx` — Stats cards, unit tables, header rows theme-aware
+- `issues/page.tsx` — Table, filter selects, severity badges theme-aware
+- `logs/page.tsx` — Table dan action badges theme-aware
+- `projects/new/page.tsx` — Form card dan semua inputs theme-aware
+- `projects/[id]/page.tsx` — Header card, progress timeline, issues panel theme-aware
+- `export/page.tsx` — Preview cards dan unit headers theme-aware
+- `admin/users/page.tsx` — Table dan add member form theme-aware
+- `login/page.tsx` — Login card dan inputs theme-aware
+- `activate/[token]/page.tsx` — Semua states dan form card theme-aware
+
+### Diperbaiki
+- Prisma CLI v6/v7 version mismatch — downgrade kedua `prisma` dan `@prisma/client` ke v6, jalankan `prisma generate`
+- `middleware.ts` — Ganti re-export syntax dengan `withAuth({})` untuk Next.js 16 compatibility
+
+---
+
 ## 2026-03-18 — Initial Release + User Management
 
 **Commit:** `e0bc60f`

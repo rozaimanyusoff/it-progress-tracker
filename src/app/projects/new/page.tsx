@@ -55,57 +55,39 @@ export default function NewProjectPage() {
     }
   }
 
+  const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5'
+
   return (
     <AppLayout>
       <div className="max-w-2xl">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">New Project</h1>
-          <p className="text-slate-400 mt-1">Create a new project and assign to a team member</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">New Project</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Create a new project and assign to a team member</p>
         </div>
 
-        <div className="rounded-xl border p-6" style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}>
+        <div className="rounded-xl border p-6 bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {error && <div className="bg-red-900/30 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
+            {error && <div className="bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-500/50 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Project Title *</label>
-              <input
-                type="text" required
-                value={form.title}
-                onChange={e => setForm({ ...form, title: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-              />
+              <label className={labelClass}>Project Title *</label>
+              <input type="text" required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Description</label>
-              <textarea
-                value={form.description}
-                onChange={e => setForm({ ...form, description: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 h-24 resize-none"
-                style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-              />
+              <label className={labelClass}>Description</label>
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={`${inputClass} h-24 resize-none`} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Unit *</label>
-                <select required
-                  value={form.unit_id}
-                  onChange={e => setForm({ ...form, unit_id: e.target.value, owner_id: '' })}
-                  className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-                >
+                <label className={labelClass}>Unit *</label>
+                <select required value={form.unit_id} onChange={e => setForm({ ...form, unit_id: e.target.value, owner_id: '' })} className={inputClass}>
                   <option value="">Select unit...</option>
                   {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">PIC (Owner) *</label>
-                <select required
-                  value={form.owner_id}
-                  onChange={e => setForm({ ...form, owner_id: e.target.value })}
-                  className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-                >
+                <label className={labelClass}>PIC (Owner) *</label>
+                <select required value={form.owner_id} onChange={e => setForm({ ...form, owner_id: e.target.value })} className={inputClass}>
                   <option value="">Select member...</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
@@ -113,32 +95,17 @@ export default function NewProjectPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Start Date *</label>
-                <input type="date" required
-                  value={form.start_date}
-                  onChange={e => setForm({ ...form, start_date: e.target.value })}
-                  className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-                />
+                <label className={labelClass}>Start Date *</label>
+                <input type="date" required value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Deadline *</label>
-                <input type="date" required
-                  value={form.deadline}
-                  onChange={e => setForm({ ...form, deadline: e.target.value })}
-                  className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-                />
+                <label className={labelClass}>Deadline *</label>
+                <input type="date" required value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} className={inputClass} />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Initial Status</label>
-              <select
-                value={form.status}
-                onChange={e => setForm({ ...form, status: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{ backgroundColor: '#0a1628', borderColor: '#1e3a5f' }}
-              >
+              <label className={labelClass}>Initial Status</label>
+              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputClass}>
                 <option value="Pending">Pending</option>
                 <option value="InProgress">In Progress</option>
                 <option value="Done">Done</option>
@@ -149,7 +116,7 @@ export default function NewProjectPage() {
               <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors">
                 {saving ? 'Creating...' : 'Create Project'}
               </button>
-              <button type="button" onClick={() => router.back()} className="flex-1 border border-slate-600 text-slate-400 hover:text-white py-2.5 rounded-lg transition-colors">
+              <button type="button" onClick={() => router.back()} className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-2.5 rounded-lg transition-colors">
                 Cancel
               </button>
             </div>

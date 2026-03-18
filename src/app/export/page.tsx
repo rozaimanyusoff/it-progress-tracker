@@ -41,7 +41,6 @@ export default function ExportPage() {
     })
     const data = await res.json()
     if (data.file) {
-      // Download file
       const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0))
       const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
       const url = URL.createObjectURL(blob)
@@ -55,7 +54,6 @@ export default function ExportPage() {
     setExporting(false)
   }
 
-  // Group projects by unit for preview
   const byUnit: Record<string, any[]> = {}
   for (const p of projects) {
     const u = p.unit?.name || 'Unknown'
@@ -65,26 +63,25 @@ export default function ExportPage() {
 
   const statusLabel: Record<string, string> = { InProgress: 'In Progress', OnHold: 'On Hold', Done: 'Done', Pending: 'Pending' }
   const statusColors: Record<string, string> = {
-    Done: 'text-green-400',
-    InProgress: 'text-orange-400',
-    OnHold: 'text-red-400',
-    Pending: 'text-slate-400',
+    Done: 'text-green-600 dark:text-green-400',
+    InProgress: 'text-orange-600 dark:text-orange-400',
+    OnHold: 'text-red-600 dark:text-red-400',
+    Pending: 'text-slate-500 dark:text-slate-400',
   }
 
   return (
     <AppLayout>
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Export Report</h1>
-          <p className="text-slate-400 mt-1">Generate PPTX report and notify team via email</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Export Report</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Generate PPTX report and notify team via email</p>
         </div>
         <div className="flex items-center gap-3">
           <input
             type="text"
             value={month}
             onChange={e => setMonth(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}
+            className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="e.g. March 2026"
           />
           <button
@@ -102,12 +99,11 @@ export default function ExportPage() {
       </div>
 
       {done && (
-        <div className="mb-6 bg-green-900/30 border border-green-500/50 text-green-400 px-4 py-3 rounded-lg text-sm">
+        <div className="mb-6 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-500/50 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg text-sm">
           Report exported and email sent to all team members!
         </div>
       )}
 
-      {/* Preview */}
       <div className="space-y-6">
         {loading && <p className="text-slate-400">Loading preview...</p>}
         {Object.entries(byUnit).map(([unit, unitProjects]) => {
@@ -115,28 +111,28 @@ export default function ExportPage() {
             ? Math.round(unitProjects.reduce((s, p) => s + (p.updates?.[0]?.progress_pct ?? 0), 0) / unitProjects.length)
             : 0
           return (
-            <div key={unit} className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#0f1f35', borderColor: '#1e3a5f' }}>
-              <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: '#1e3a5f', backgroundColor: '#162d4a' }}>
-                <h2 className="font-semibold text-white">{unit}</h2>
+            <div key={unit} className="rounded-xl border overflow-hidden bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between bg-slate-50 dark:bg-navy-700">
+                <h2 className="font-semibold text-slate-900 dark:text-white">{unit}</h2>
                 <div className="flex items-center gap-3 text-sm">
-                  <span className="text-slate-400">{unitProjects.length} projects</span>
-                  <span className="text-blue-400 font-medium">avg {avg}%</span>
+                  <span className="text-slate-500 dark:text-slate-400">{unitProjects.length} projects</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-medium">avg {avg}%</span>
                 </div>
               </div>
-              <div className="divide-y" style={{ borderColor: '#1e3a5f' }}>
+              <div className="divide-y divide-slate-100 dark:divide-navy-700">
                 {unitProjects.map(p => {
                   const progress = p.updates?.[0]?.progress_pct ?? 0
                   return (
                     <div key={p.id} className="px-6 py-3 flex items-center gap-4">
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-medium truncate">{p.title}</p>
+                        <p className="text-slate-900 dark:text-white text-sm font-medium truncate">{p.title}</p>
                         <p className="text-slate-500 text-xs">{p.owner?.name}</p>
                       </div>
                       <div className="flex items-center gap-2 w-32">
-                        <div className="flex-1 rounded-full h-1.5" style={{ backgroundColor: '#0a1628' }}>
+                        <div className="flex-1 bg-slate-200 dark:bg-navy-900 rounded-full h-1.5">
                           <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${progress}%` }} />
                         </div>
-                        <span className="text-xs text-slate-400 w-8 text-right">{progress}%</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 w-8 text-right">{progress}%</span>
                       </div>
                       <span className={`text-xs font-medium w-20 text-right ${statusColors[p.status] || statusColors.Pending}`}>
                         {statusLabel[p.status] || p.status}
