@@ -6,12 +6,13 @@ import AppLayout from '@/components/Layout'
 import Link from 'next/link'
 import FeaturesSection from '@/components/FeaturesSection'
 
-export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
+export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
   const project = await prisma.project.findUnique({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     include: {
       unit: true,
       owner: { select: { id: true, name: true, email: true } },

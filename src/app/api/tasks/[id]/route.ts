@@ -23,12 +23,13 @@ async function recalculateFeatureDates(featureId: number) {
   })
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
 
-  const taskId = Number(params.id)
+  const taskId = Number(id)
   const body = await req.json()
 
   const existing = await prisma.task.findUnique({ where: { id: taskId } })
@@ -101,13 +102,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(task)
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const taskId = Number(params.id)
+  const taskId = Number(id)
   const existing = await prisma.task.findUnique({ where: { id: taskId } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

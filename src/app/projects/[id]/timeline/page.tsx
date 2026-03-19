@@ -6,11 +6,12 @@ import AppLayout from '@/components/Layout'
 import Link from 'next/link'
 import GanttChart from '@/components/GanttChart'
 
-export default async function TimelinePage({ params }: { params: { id: string } }) {
+export default async function TimelinePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
-  const projectId = Number(params.id)
+  const projectId = Number(id)
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
