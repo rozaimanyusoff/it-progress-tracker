@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['manager', 'member'] },
+  { href: '/kanban', label: 'My Kanban', icon: '▦', roles: ['member'] },
   { href: '/manager', label: 'Manager View', icon: '◈', roles: ['manager'] },
   { href: '/projects/new', label: 'New Project', icon: '+', roles: ['manager'] },
   { href: '/issues', label: 'Issues', icon: '⚠', roles: ['manager', 'member'] },

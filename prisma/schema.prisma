@@ -25,11 +25,14 @@ model User {
   activation_token         String?         @unique
   activation_token_expiry  DateTime?
   created_at               DateTime        @default(now())
-  unit                     Unit?           @relation(fields: [unit_id], references: [id])
-  projects                 Project[]       @relation("ProjectOwner")
+  unit                     Unit?              @relation(fields: [unit_id], references: [id])
+  projects                 Project[]          @relation("ProjectOwner")
   updates                  ProjectUpdate[]
   issues                   Issue[]
   audit_logs               AuditLog[]
+  feature_assignments      FeatureDeveloper[]
+  created_features         Feature[]          @relation("FeatureCreator")
+  assigned_tasks           Task[]             @relation("TaskAssignee")
 }
 
 model Project {
@@ -46,6 +49,7 @@ model Project {
   owner       User            @relation("ProjectOwner", fields: [owner_id], references: [id])
   updates     ProjectUpdate[]
   issues      Issue[]
+  features    Feature[]
 }
 
 model ProjectUpdate {
@@ -107,4 +111,64 @@ enum Severity {
   low
   medium
   high
+}
+
+enum FeatureStatus {
+  Pending
+  InProgress
+  Done
+  OnHold
+}
+
+enum TaskStatus {
+  Todo
+  InProgress
+  InReview
+  Done
+}
+
+model Feature {
+  id             Int               @id @default(autoincrement())
+  project_id     Int
+  title          String
+  description    String?
+  mandays        Int               @default(0)
+  status         FeatureStatus     @default(Pending)
+  planned_start  DateTime
+  planned_end    DateTime
+  actual_start   DateTime?
+  actual_end     DateTime?
+  order          Int               @default(0)
+  created_at     DateTime          @default(now())
+  created_by_id  Int
+  project        Project           @relation(fields: [project_id], references: [id])
+  created_by     User              @relation("FeatureCreator", fields: [created_by_id], references: [id])
+  developers     FeatureDeveloper[]
+  tasks          Task[]
+}
+
+model FeatureDeveloper {
+  feature_id  Int
+  user_id     Int
+  assigned_at DateTime  @default(now())
+  feature     Feature   @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [user_id], references: [id])
+
+  @@id([feature_id, user_id])
+}
+
+model Task {
+  id            Int        @id @default(autoincrement())
+  feature_id    Int
+  title         String
+  description   String?
+  status        TaskStatus @default(Todo)
+  assigned_to   Int?
+  order         Int        @default(0)
+  is_predefined Boolean    @default(false)
+  actual_start  DateTime?
+  actual_end    DateTime?
+  created_at    DateTime   @default(now())
+  feature       Feature    @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  assignee      User?      @relation("TaskAssignee", fields: [assigned_to], references: [id])
 }

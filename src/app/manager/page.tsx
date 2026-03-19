@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import AppLayout from '@/components/Layout'
 import Link from 'next/link'
+import DeveloperAnalytics from '@/components/DeveloperAnalytics'
+
 
 export default async function ManagerPage() {
   const session = await getServerSession(authOptions)
@@ -26,6 +28,58 @@ export default async function ManagerPage() {
   const totalProjects = units.reduce((s, u) => s + u.projects.length, 0)
   const totalIssues = units.reduce((s, u) => s + u.projects.reduce((s2, p) => s2 + p._count.issues, 0), 0)
   const doneProjects = units.reduce((s, u) => s + u.projects.filter(p => p.status === 'Done').length, 0)
+
+  const devUsers = await prisma.user.findMany({
+    where: { role: 'member', is_active: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      assigned_tasks: {
+        select: {
+          id: true,
+          status: true,
+          actual_start: true,
+          actual_end: true,
+          feature: { select: { planned_end: true, mandays: true } },
+        },
+      },
+      feature_assignments: {
+        select: { feature: { select: { mandays: true } } },
+      },
+    },
+    orderBy: { name: 'asc' },
+  })
+
+  const today = new Date()
+  const devStats = devUsers.map((u) => {
+    const tasks = u.assigned_tasks
+    const tasksDone = tasks.filter((t) => t.status === 'Done').length
+    const tasksInProgress = tasks.filter((t) => t.status === 'InProgress' || t.status === 'InReview').length
+    const tasksDelayed = tasks.filter((t) => {
+      const plannedEnd = new Date(t.feature.planned_end)
+      if (t.actual_end) return t.actual_end > plannedEnd
+      return today > plannedEnd
+    }).length
+    const estimatedMandays = u.feature_assignments.reduce((sum, fa) => sum + fa.feature.mandays, 0)
+    const totalSpentDays = tasks
+      .filter((t) => t.actual_start && t.actual_end)
+      .reduce((sum, t) => {
+        const diff = new Date(t.actual_end!).getTime() - new Date(t.actual_start!).getTime()
+        return sum + diff / (1000 * 60 * 60 * 24)
+      }, 0)
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      tasksAssigned: tasks.length,
+      tasksDone,
+      tasksInProgress,
+      tasksDelayed,
+      estimatedMandays,
+      totalSpentDays: Math.round(totalSpentDays * 10) / 10,
+    }
+  })
 
   const statusMap: Record<string, string> = {
     Done: 'bg-green-50 text-green-700 dark:bg-green-900/50 dark:text-green-400',
@@ -133,6 +187,11 @@ export default async function ManagerPage() {
             </div>
           )
         })}
+      </div>
+
+      {/* Developer Analytics */}
+      <div className="mt-8">
+        <DeveloperAnalytics initialData={devStats} />
       </div>
     </AppLayout>
   )

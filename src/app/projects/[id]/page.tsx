@@ -4,6 +4,7 @@ import { redirect, notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import AppLayout from '@/components/Layout'
 import Link from 'next/link'
+import FeaturesSection from '@/components/FeaturesSection'
 
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -53,9 +54,17 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               <span>Deadline: <span className="text-slate-700 dark:text-slate-300">{new Date(project.deadline).toLocaleDateString()}</span></span>
             </div>
           </div>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusColors[project.status] || statusColors.Pending}`}>
-            {statusLabel[project.status] || project.status}
-          </span>
+          <div className="flex items-center gap-3 shrink-0">
+            <Link
+              href={`/projects/${project.id}/timeline`}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors"
+            >
+              View Timeline
+            </Link>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusColors[project.status] || statusColors.Pending}`}>
+              {statusLabel[project.status] || project.status}
+            </span>
+          </div>
         </div>
         <div className="mt-4">
           <div className="flex justify-between text-sm mb-1">
@@ -125,6 +134,15 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Features Section */}
+      <div className="mt-6">
+        <FeaturesSection
+          projectId={project.id}
+          unitId={project.unit_id}
+          userRole={(session.user as any).role}
+        />
       </div>
     </AppLayout>
   )
