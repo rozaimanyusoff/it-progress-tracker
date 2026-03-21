@@ -52,3 +52,34 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return NextResponse.json(project)
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = session.user as any
+  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const projectId = Number(id)
+
+  await prisma.$transaction([
+    prisma.task.deleteMany({ where: { feature: { project_id: projectId } } }),
+    prisma.featureDeveloper.deleteMany({ where: { feature: { project_id: projectId } } }),
+    prisma.feature.deleteMany({ where: { project_id: projectId } }),
+    prisma.projectUpdate.deleteMany({ where: { project_id: projectId } }),
+    prisma.issue.deleteMany({ where: { project_id: projectId } }),
+    prisma.project.delete({ where: { id: projectId } }),
+  ])
+
+  await prisma.auditLog.create({
+    data: {
+      user_id: Number(user.id),
+      action: 'DELETE',
+      target_type: 'Project',
+      target_id: projectId,
+      metadata: {},
+    },
+  })
+
+  return NextResponse.json({ success: true })
+}
