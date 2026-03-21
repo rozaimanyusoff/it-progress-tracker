@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
   const user = await prisma.user.findUnique({
-    where: { activation_token: params.token },
+    where: { activation_token: token },
     select: { id: true, name: true, email: true, is_active: true, activation_token_expiry: true },
   })
 
@@ -17,7 +18,8 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   return NextResponse.json({ name: user.name, email: user.email })
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
   const { password } = await req.json()
 
   if (!password || password.length < 8) {
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   }
 
   const user = await prisma.user.findUnique({
-    where: { activation_token: params.token },
+    where: { activation_token: token },
   })
 
   if (!user) return NextResponse.json({ error: 'Invalid or expired activation link' }, { status: 404 })

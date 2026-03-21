@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
+import TaskUpdateModal from './TaskUpdateModal'
 
 interface Task {
   id: number
@@ -33,9 +34,17 @@ function buildBoard(tasks: Task[]): BoardState {
   return board
 }
 
+function findTask(board: BoardState, taskId: number): Task | undefined {
+  for (const col of COLUMNS) {
+    const found = board[col.id].find((t) => t.id === taskId)
+    if (found) return found
+  }
+}
+
 export default function KanbanBoard() {
   const [board, setBoard] = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
 
   useEffect(() => {
     fetch('/api/tasks/my')
@@ -54,27 +63,21 @@ export default function KanbanBoard() {
     const taskId = Number(draggableId)
     const newStatus = destination.droppableId
 
-    // Optimistic update
     setBoard((prev) => {
       const next: BoardState = {}
       for (const col of COLUMNS) next[col.id] = [...prev[col.id]]
-
       const task = next[source.droppableId].find((t) => t.id === taskId)!
       next[source.droppableId] = next[source.droppableId].filter((t) => t.id !== taskId)
-      const updated = { ...task, status: newStatus }
-      next[destination.droppableId].splice(destination.index, 0, updated)
+      next[destination.droppableId].splice(destination.index, 0, { ...task, status: newStatus })
       return next
     })
 
-    // API call
     const res = await fetch(`/api/tasks/${taskId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
     })
-
     if (!res.ok) {
-      // Revert on failure
       const tasks: Task[] = await fetch('/api/tasks/my').then((r) => r.json())
       setBoard(buildBoard(tasks))
     }
@@ -87,7 +90,6 @@ export default function KanbanBoard() {
     if (newIdx < 0 || newIdx >= colIds.length) return
 
     const newStatus = colIds[newIdx]
-
     setBoard((prev) => {
       const next: BoardState = {}
       for (const col of COLUMNS) next[col.id] = [...prev[col.id]]
@@ -104,6 +106,22 @@ export default function KanbanBoard() {
     })
   }
 
+  function handleStatusChange(taskId: number, newStatus: string) {
+    setBoard((prev) => {
+      const next: BoardState = {}
+      for (const col of COLUMNS) next[col.id] = [...prev[col.id]]
+      for (const col of COLUMNS) {
+        const task = next[col.id].find((t) => t.id === taskId)
+        if (task) {
+          next[col.id] = next[col.id].filter((t) => t.id !== taskId)
+          next[newStatus] = [...next[newStatus], { ...task, status: newStatus }]
+          break
+        }
+      }
+      return next
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-500 dark:text-slate-400">
@@ -113,6 +131,7 @@ export default function KanbanBoard() {
   }
 
   const totalTasks = COLUMNS.reduce((sum, col) => sum + board[col.id].length, 0)
+  const activeTask = activeTaskId !== null ? findTask(board, activeTaskId) : null
 
   return (
     <div>
@@ -127,22 +146,18 @@ export default function KanbanBoard() {
           <div className="grid grid-cols-4 gap-4 items-start">
             {COLUMNS.map((col) => (
               <div key={col.id} className="flex flex-col">
-                {/* Column header */}
                 <div className={`rounded-lg px-3 py-2 mb-3 flex items-center justify-between ${col.headerClass}`}>
                   <span className="font-semibold text-sm">{col.label}</span>
                   <span className="text-xs font-medium opacity-70">{board[col.id].length}</span>
                 </div>
 
-                {/* Droppable column */}
                 <Droppable droppableId={col.id}>
                   {(provided, snapshot) => (
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
                       className={`flex flex-col gap-2 min-h-24 rounded-lg p-1 transition-colors ${
-                        snapshot.isDraggingOver
-                          ? 'bg-blue-50 dark:bg-blue-900/10'
-                          : 'bg-transparent'
+                        snapshot.isDraggingOver ? 'bg-blue-50 dark:bg-blue-900/10' : 'bg-transparent'
                       }`}
                     >
                       {board[col.id].map((task, index) => (
@@ -164,26 +179,31 @@ export default function KanbanBoard() {
                                 <span className="inline-block mt-1.5 text-xs text-slate-400 dark:text-slate-500">SDLC</span>
                               )}
 
-                              {/* Move buttons */}
-                              <div className="flex items-center gap-1 mt-2">
-                                {col.id !== 'Todo' && (
-                                  <button
-                                    onClick={() => moveTask(task.id, col.id, 'prev')}
-                                    className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700"
-                                    title="Move back"
-                                  >
-                                    ←
-                                  </button>
-                                )}
-                                {col.id !== 'Done' && (
-                                  <button
-                                    onClick={() => moveTask(task.id, col.id, 'next')}
-                                    className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700"
-                                    title="Move forward"
-                                  >
-                                    →
-                                  </button>
-                                )}
+                              {/* Action row */}
+                              <div className="flex items-center justify-between mt-2 gap-1">
+                                <div className="flex items-center gap-1">
+                                  {col.id !== 'Todo' && (
+                                    <button
+                                      onClick={() => moveTask(task.id, col.id, 'prev')}
+                                      className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700"
+                                      title="Move back"
+                                    >←</button>
+                                  )}
+                                  {col.id !== 'Done' && (
+                                    <button
+                                      onClick={() => moveTask(task.id, col.id, 'next')}
+                                      className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700"
+                                      title="Move forward"
+                                    >→</button>
+                                  )}
+                                </div>
+
+                                <button
+                                  onClick={() => setActiveTaskId(task.id)}
+                                  className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                >
+                                  Update
+                                </button>
                               </div>
                             </div>
                           )}
@@ -197,6 +217,18 @@ export default function KanbanBoard() {
             ))}
           </div>
         </DragDropContext>
+      )}
+
+      {activeTask && (
+        <TaskUpdateModal
+          taskId={activeTask.id}
+          taskTitle={activeTask.title}
+          featureTitle={activeTask.feature.title}
+          projectTitle={activeTask.feature.project.title}
+          currentStatus={activeTask.status}
+          onClose={() => setActiveTaskId(null)}
+          onStatusChange={handleStatusChange}
+        />
       )}
     </div>
   )

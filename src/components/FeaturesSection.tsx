@@ -8,6 +8,11 @@ interface Developer {
   user: { id: number; name: string }
 }
 
+interface UnitMember {
+  id: number
+  name: string
+}
+
 interface Feature {
   id: number
   title: string
@@ -46,12 +51,22 @@ function fmt(dateStr?: string | null) {
 
 export default function FeaturesSection({ projectId, unitId, userRole }: Props) {
   const [features, setFeatures] = useState<Feature[]>([])
+  const [unitMembers, setUnitMembers] = useState<UnitMember[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingFeature, setEditingFeature] = useState<Feature | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
-  useEffect(() => { fetchFeatures() }, [projectId])
+  useEffect(() => {
+    fetchFeatures()
+    fetchUnitMembers()
+  }, [projectId])
+
+  async function fetchUnitMembers() {
+    const res = await fetch(`/api/users`)
+    const data = await res.json()
+    setUnitMembers(data)
+  }
 
   async function fetchFeatures() {
     setLoading(true)
@@ -177,7 +192,7 @@ export default function FeaturesSection({ projectId, unitId, userRole }: Props) 
                     <FeatureTaskList
                       featureId={feature.id}
                       userRole={userRole}
-                      developers={feature.developers}
+                      developers={unitMembers.map((m) => ({ user: m }))}
                     />
                   </div>
                 )}

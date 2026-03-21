@@ -46,13 +46,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json(feature)
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const featureId = Number(params.id)
+  const { id } = await params
+  const featureId = Number(id)
   const existing = await prisma.feature.findUnique({ where: { id: featureId } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

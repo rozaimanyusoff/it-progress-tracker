@@ -115,13 +115,13 @@ export async function generatePPTX(
 
     if (rows.length > 0) {
       slide.addTable([
-        headers.map(h => ({ text: h, options: { bold: true, color: WHITE, fill: '1e3a5f', fontSize: 11 } })),
+        headers.map(h => ({ text: h, options: { bold: true, color: WHITE, fill: { color: '1e3a5f' }, fontSize: 11 } })),
         ...rows.map(row => row.map((cell, i) => ({
           text: cell,
           options: {
             color: i === 3 ? statusColor(projects[rows.indexOf(row)]?.status || '') : 'e2e8f0',
             fontSize: 10,
-            fill: '162d4a',
+            fill: { color: '162d4a' },
           },
         }))),
       ], {
@@ -142,16 +142,16 @@ export async function generatePPTX(
   } else {
     issSlide.addTable([
       [
-        { text: 'Issue', options: { bold: true, color: WHITE, fill: '1e3a5f', fontSize: 11 } },
-        { text: 'Project', options: { bold: true, color: WHITE, fill: '1e3a5f', fontSize: 11 } },
-        { text: 'Unit', options: { bold: true, color: WHITE, fill: '1e3a5f', fontSize: 11 } },
-        { text: 'Severity', options: { bold: true, color: WHITE, fill: '1e3a5f', fontSize: 11 } },
+        { text: 'Issue', options: { bold: true, color: WHITE, fill: { color: '1e3a5f' }, fontSize: 11 } },
+        { text: 'Project', options: { bold: true, color: WHITE, fill: { color: '1e3a5f' }, fontSize: 11 } },
+        { text: 'Unit', options: { bold: true, color: WHITE, fill: { color: '1e3a5f' }, fontSize: 11 } },
+        { text: 'Severity', options: { bold: true, color: WHITE, fill: { color: '1e3a5f' }, fontSize: 11 } },
       ],
       ...openIssues.slice(0, 15).map(iss => [
-        { text: iss.title, options: { color: 'e2e8f0', fontSize: 10, fill: '162d4a' } },
-        { text: iss.project, options: { color: 'e2e8f0', fontSize: 10, fill: '162d4a' } },
-        { text: iss.unit, options: { color: 'e2e8f0', fontSize: 10, fill: '162d4a' } },
-        { text: iss.severity.toUpperCase(), options: { color: severityColor(iss.severity), fontSize: 10, fill: '162d4a', bold: true } },
+        { text: iss.title, options: { color: 'e2e8f0', fontSize: 10, fill: { color: '162d4a' } } },
+        { text: iss.project, options: { color: 'e2e8f0', fontSize: 10, fill: { color: '162d4a' } } },
+        { text: iss.unit, options: { color: 'e2e8f0', fontSize: 10, fill: { color: '162d4a' } } },
+        { text: iss.severity.toUpperCase(), options: { color: severityColor(iss.severity), fontSize: 10, fill: { color: '162d4a' }, bold: true } },
       ]),
     ], {
       x: 0.5, y: 1.1, w: 12.3, colW: [4.5, 3.5, 2.5, 1.8],

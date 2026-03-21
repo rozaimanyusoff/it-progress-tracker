@@ -33,6 +33,7 @@ model User {
   feature_assignments      FeatureDeveloper[]
   created_features         Feature[]          @relation("FeatureCreator")
   assigned_tasks           Task[]             @relation("TaskAssignee")
+  task_updates             TaskUpdate[]
 }
 
 model Project {
@@ -158,17 +159,29 @@ model FeatureDeveloper {
 }
 
 model Task {
-  id            Int        @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
   feature_id    Int
   title         String
   description   String?
-  status        TaskStatus @default(Todo)
+  status        TaskStatus   @default(Todo)
   assigned_to   Int?
-  order         Int        @default(0)
-  is_predefined Boolean    @default(false)
+  order         Int          @default(0)
+  is_predefined Boolean      @default(false)
   actual_start  DateTime?
   actual_end    DateTime?
-  created_at    DateTime   @default(now())
-  feature       Feature    @relation(fields: [feature_id], references: [id], onDelete: Cascade)
-  assignee      User?      @relation("TaskAssignee", fields: [assigned_to], references: [id])
+  created_at    DateTime     @default(now())
+  feature       Feature      @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  assignee      User?        @relation("TaskAssignee", fields: [assigned_to], references: [id])
+  task_updates  TaskUpdate[]
+}
+
+model TaskUpdate {
+  id         Int      @id @default(autoincrement())
+  task_id    Int
+  user_id    Int
+  notes      String?
+  media_urls String[]
+  created_at DateTime @default(now())
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id])
 }

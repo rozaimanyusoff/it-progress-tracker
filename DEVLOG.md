@@ -10,6 +10,34 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-22 — Kanban Task Update Form, Assignee Fix & Sidebar Active State
+
+### Ditambah
+- **`TaskUpdate` model (Prisma)** — Model baharu untuk simpan rekod kemaskini tugas: `notes`, `media_urls` (array), `user_id`, `created_at`
+- **`POST /api/upload`** — Endpoint upload fail (imej & video, max 50MB); disimpan dalam `public/uploads/tasks/[id]/`
+- **`GET/POST /api/tasks/[id]/updates`** — Endpoint untuk ambil & hantar kemaskini tugas
+  - `POST` auto-tukar status: `Todo` → `InProgress` apabila pertama kali dikemaskini
+  - `mark_complete: true` → tukar status ke `InReview` (menunggu semakan manager)
+- **`TaskUpdateModal` component** — Modal progress update dalam Kanban Board
+  - Textarea nota kemajuan
+  - Lampiran imej/video dengan preview sebelum hantar
+  - Butang **Submit Update** dan **Mark Complete**
+  - Sejarah kemaskini dengan avatar, timestamp & media
+- **Butang "Update"** pada setiap kad Kanban — Buka `TaskUpdateModal`
+
+### Diubah
+- **`KanbanBoard.tsx`** — Integrasi `TaskUpdateModal`; `handleStatusChange` untuk kemas kini state kad tanpa reload
+- **`FeaturesSection.tsx`** — Senarai ahli yang boleh di-assign kini memuatkan **semua** ahli (bukan terhad kepada unit projek sahaja), melalui `GET /api/users` tanpa `unit_id`
+- **`Sidebar.tsx`** — Tambah `activePrefixes` pada nav item supaya menu kekal aktif (highlighted) ketika berada di halaman detail projek (`/projects/[id]`)
+
+### Diperbaiki (Build)
+- **`/api/activate/[token]`** — Tukar params kepada `Promise<{ token: string }>` (Next.js 15+ async params)
+- **`/api/admin/users/[id]` POST** — Tukar params kepada `Promise<{ id: string }>`
+- **`/api/features/[id]` DELETE** — Tukar params kepada `Promise<{ id: string }>`
+- **`src/lib/pptx.ts`** — Tukar `fill: 'hex'` kepada `fill: { color: 'hex' }` mengikut spec `ShapeFillProps` pptxgenjs
+
+---
+
 ## 2026-03-21 — Manager Delete Project
 
 **Commit:** `50f6e30`

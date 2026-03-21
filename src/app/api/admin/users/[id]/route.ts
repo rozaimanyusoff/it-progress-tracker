@@ -31,7 +31,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json({ ok: true })
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Resend activation email
   const session = await getServerSession(authOptions)
   if (!session || (session.user as any).role !== 'manager') {
@@ -41,7 +41,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { sendActivationEmail } = await import('@/lib/email')
   const crypto = await import('crypto')
 
-  const userId = Number(params.id)
+  const { id } = await params
+  const userId = Number(id)
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
   if (user.is_active) return NextResponse.json({ error: 'User already active' }, { status: 400 })

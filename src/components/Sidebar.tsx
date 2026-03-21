@@ -6,9 +6,9 @@ import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['manager', 'member'] },
+  { href: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['manager', 'member'], activePrefixes: ['/dashboard', '/projects/'] },
   { href: '/kanban', label: 'My Kanban', icon: '▦', roles: ['member'] },
-  { href: '/manager', label: 'Manager View', icon: '◈', roles: ['manager'] },
+  { href: '/manager', label: 'Manager View', icon: '◈', roles: ['manager'], activePrefixes: ['/manager', '/projects/'] },
   { href: '/projects/new', label: 'New Project', icon: '+', roles: ['manager'] },
   { href: '/issues', label: 'Issues', icon: '⚠', roles: ['manager', 'member'] },
   { href: '/admin/users', label: 'Team Members', icon: '👥', roles: ['manager'] },
@@ -41,7 +41,10 @@ export default function Sidebar() {
 
       <nav className="flex-1 p-4 space-y-1">
         {filtered.map(item => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/')
+          const isProjectDetailPage = pathname.startsWith('/projects/') && !pathname.startsWith('/projects/new')
+          const active = pathname === item.href
+            || pathname.startsWith(item.href + '/')
+            || (item.activePrefixes?.some(p => p === '/projects/' ? isProjectDetailPage : pathname.startsWith(p)) ?? false)
           return (
             <Link
               key={item.href}
