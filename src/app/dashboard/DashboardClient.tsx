@@ -49,6 +49,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
   const [issueForm, setIssueForm] = useState({ title: '', description: '', severity: 'medium' })
   const [saving, setSaving] = useState(false)
   const [localProjects, setLocalProjects] = useState(projects)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   async function submitUpdate() {
     if (!selectedProject) return
@@ -61,6 +62,14 @@ export default function DashboardClient({ projects, session }: { projects: Proje
     setSaving(false)
     setShowUpdateModal(false)
     window.location.reload()
+  }
+
+  async function deleteProject(project: Project) {
+    if (!confirm(`Delete "${project.title}"? This will permanently remove the project and all its data.`)) return
+    setDeletingId(project.id)
+    await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
+    setDeletingId(null)
+    setLocalProjects(prev => prev.filter(p => p.id !== project.id))
   }
 
   async function submitIssue() {
@@ -157,6 +166,15 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                     >
                       + Issue
                     </button>
+                    {session.user.role === 'manager' && (
+                      <button
+                        onClick={() => deleteProject(project)}
+                        disabled={deletingId === project.id}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {deletingId === project.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
