@@ -10,6 +10,22 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-21 — Manager Delete Project
+
+**Commit:** `50f6e30`
+**Branch:** `claude/add-manager-delete-project-ZQACW`
+
+### Ditambah
+- **DELETE `/api/projects/[id]`** — Endpoint baharu untuk padam projek; hanya boleh diakses oleh `manager`
+  - Cascade delete dalam satu Prisma transaction: `Task` → `FeatureDeveloper` → `Feature` → `ProjectUpdate` → `Issue` → `Project`
+  - Audit log `DELETE` dicatat selepas projek berjaya dipadam
+- **Butang "Delete" dalam Dashboard** (`DashboardClient.tsx`) — Visible hanya kepada manager
+  - Confirmation dialog sebelum padam (`window.confirm`)
+  - State `deletingId` untuk disable butang semasa proses delete berlangsung
+  - UI dikemas kini secara optimistic (project dibuang daripada senarai tanpa reload)
+
+---
+
 ## 2026-03-18 — Dark / Light Mode + Theme-aware UI
 
 **Branch:** `main`
