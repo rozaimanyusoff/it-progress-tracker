@@ -8,19 +8,17 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const unit = searchParams.get('unit')
   const severity = searchParams.get('severity')
   const resolved = searchParams.get('resolved')
 
   const where: any = {}
   if (severity) where.severity = severity
   if (resolved !== null && resolved !== '') where.resolved = resolved === 'true'
-  if (unit) where.project = { unit_id: Number(unit) }
 
   const issues = await prisma.issue.findMany({
     where,
     include: {
-      project: { include: { unit: true } },
+      project: true,
       user: { select: { name: true } },
     },
     orderBy: { created_at: 'desc' },

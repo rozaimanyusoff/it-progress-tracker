@@ -17,32 +17,26 @@ export async function POST(req: NextRequest) {
   // Fetch all projects
   const projects = await prisma.project.findMany({
     include: {
-      unit: true,
       owner: { select: { name: true } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
     },
   })
 
-  // Group by unit
-  const projectsByUnit: Record<string, any[]> = {}
-  for (const p of projects) {
-    const unitName = p.unit.name
-    if (!projectsByUnit[unitName]) projectsByUnit[unitName] = []
+  const projectData = projects.map(p => {
     const lastUpdate = p.updates[0]
-    projectsByUnit[unitName].push({
+    return {
       title: p.title,
       progress: lastUpdate?.progress_pct ?? 0,
       status: p.status,
       owner: p.owner.name,
-      unit: unitName,
-    })
-  }
+    }
+  })
 
   // Fetch open issues
   const issues = await prisma.issue.findMany({
     where: { resolved: false },
     include: {
-      project: { include: { unit: true } },
+      project: true,
     },
   })
 
@@ -50,10 +44,9 @@ export async function POST(req: NextRequest) {
     title: i.title,
     project: i.project.title,
     severity: i.severity,
-    unit: i.project.unit.name,
   }))
 
-  const buffer = await generatePPTX(month, projectsByUnit, issueData)
+  const buffer = await generatePPTX(month, projectData, issueData)
 
   // Send email
   const allUsers = await prisma.user.findMany({ select: { email: true } })

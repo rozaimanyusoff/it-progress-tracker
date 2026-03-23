@@ -13,7 +13,6 @@ export async function GET(req: NextRequest) {
   const projects = await prisma.project.findMany({
     where,
     include: {
-      unit: true,
       owner: { select: { id: true, name: true, email: true } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
       _count: { select: { issues: { where: { resolved: false } } } },
@@ -35,7 +34,6 @@ export async function POST(req: NextRequest) {
     data: {
       title: body.title,
       description: body.description,
-      unit_id: Number(body.unit_id),
       owner_id: Number(body.owner_id),
       start_date: new Date(body.start_date),
       deadline: new Date(body.deadline),

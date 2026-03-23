@@ -14,7 +14,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const project = await prisma.project.findUnique({
     where: { id: Number(id) },
     include: {
-      unit: true,
       owner: { select: { id: true, name: true, email: true } },
       updates: { include: { user: { select: { name: true } } }, orderBy: { created_at: 'desc' } },
       issues: { include: { user: { select: { name: true } } }, orderBy: { created_at: 'desc' } },
@@ -50,7 +49,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{project.title}</h1>
             {project.description && <p className="text-slate-500 dark:text-slate-400 mt-1">{project.description}</p>}
             <div className="flex items-center gap-4 mt-3 text-sm text-slate-500 dark:text-slate-400">
-              <span>Unit: <span className="text-slate-700 dark:text-slate-300">{project.unit.name}</span></span>
               <span>PIC: <span className="text-slate-700 dark:text-slate-300">{project.owner.name}</span></span>
               <span>Deadline: <span className="text-slate-700 dark:text-slate-300">{new Date(project.deadline).toLocaleDateString()}</span></span>
             </div>
@@ -141,7 +139,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       <div className="mt-6">
         <FeaturesSection
           projectId={project.id}
-          unitId={project.unit_id}
           userRole={(session.user as any).role}
         />
       </div>

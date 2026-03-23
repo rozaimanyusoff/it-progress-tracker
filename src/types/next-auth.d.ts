@@ -8,8 +8,6 @@ declare module 'next-auth' {
       name?: string | null
       email?: string | null
       role: 'manager' | 'member'
-      unit_id: string | null
-      unit_name: string | null
     }
   }
 }
@@ -17,7 +15,5 @@ declare module 'next-auth' {
 declare module 'next-auth/jwt' {
   interface JWT {
     role: 'manager' | 'member'
-    unit_id: string | null
-    unit_name: string | null
   }
 }

@@ -10,7 +10,6 @@ interface Developer {
 
 interface Props {
   projectId: number
-  unitId: number
   onClose: () => void
   onCreated: () => void
   editFeature?: {
@@ -25,7 +24,7 @@ interface Props {
   } | null
 }
 
-export default function AddFeatureModal({ projectId, unitId, onClose, onCreated, editFeature }: Props) {
+export default function AddFeatureModal({ projectId, onClose, onCreated, editFeature }: Props) {
   const [title, setTitle] = useState(editFeature?.title ?? '')
   const [description, setDescription] = useState(editFeature?.description ?? '')
   const [mandays, setMandays] = useState(editFeature?.mandays?.toString() ?? '1')
@@ -44,10 +43,10 @@ export default function AddFeatureModal({ projectId, unitId, onClose, onCreated,
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`/api/users?unit_id=${unitId}`)
+    fetch('/api/users')
       .then((r) => r.json())
-      .then((data) => setDevelopers(data.filter((u: any) => u.role === 'member')))
-  }, [unitId])
+      .then((data) => setDevelopers(data))
+  }, [])
 
   function toggleDev(id: number) {
     setSelectedDevIds((prev) =>
@@ -156,7 +155,7 @@ export default function AddFeatureModal({ projectId, unitId, onClose, onCreated,
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Assign Developers</label>
             {developers.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">No members in this unit.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">No members available.</p>
             ) : (
               <div className="space-y-1 max-h-36 overflow-y-auto border border-slate-200 dark:border-navy-700 rounded-lg p-2">
                 {developers.map((dev) => (

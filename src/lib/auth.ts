@@ -15,7 +15,6 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
-          include: { unit: true },
         })
         if (!user) return null
         if (!user.is_active) return null
@@ -27,8 +26,6 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
-          unit_id: user.unit_id ? String(user.unit_id) : null,
-          unit_name: user.unit?.name ?? null,
         }
       },
     }),
@@ -37,8 +34,6 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as any).role
-        token.unit_id = (user as any).unit_id
-        token.unit_name = (user as any).unit_name
       }
       return token
     },
@@ -46,8 +41,6 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.sub
         ;(session.user as any).role = token.role
-        ;(session.user as any).unit_id = token.unit_id
-        ;(session.user as any).unit_name = token.unit_name
       }
       return session
     },

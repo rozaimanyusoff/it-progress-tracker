@@ -4,7 +4,6 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 
-type Unit = { id: number; name: string }
 type User = {
   id: number
   name: string
@@ -12,7 +11,6 @@ type User = {
   role: string
   is_active: boolean
   created_at: string
-  unit: Unit | null
 }
 
 export default function UserManagementPage() {
@@ -20,13 +18,12 @@ export default function UserManagementPage() {
   const router = useRouter()
 
   const [users, setUsers] = useState<User[]>([])
-  const [units, setUnits] = useState<Unit[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
-  const [form, setForm] = useState({ name: '', email: '', role: 'member', unit_id: '' })
+  const [form, setForm] = useState({ name: '', email: '', role: 'member' })
 
   useEffect(() => {
     if (status === 'loading') return
@@ -36,12 +33,8 @@ export default function UserManagementPage() {
   }, [session, status, router])
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/admin/users').then(r => r.json()),
-      fetch('/api/units').then(r => r.json()),
-    ]).then(([u, un]) => {
+    fetch('/api/admin/users').then(r => r.json()).then(u => {
       setUsers(u)
-      setUnits(un)
       setLoading(false)
     })
   }, [])
@@ -57,13 +50,13 @@ export default function UserManagementPage() {
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: form.name, email: form.email, role: form.role, unit_id: form.unit_id || null }),
+      body: JSON.stringify({ name: form.name, email: form.email, role: form.role }),
     })
     setSubmitting(false)
     if (res.ok) {
       const fresh = await fetch('/api/admin/users').then(r => r.json())
       setUsers(fresh)
-      setForm({ name: '', email: '', role: 'member', unit_id: '' })
+      setForm({ name: '', email: '', role: 'member' })
       setShowForm(false)
       showToast('success', `Invitation sent to ${form.email}`)
     } else {
@@ -149,13 +142,6 @@ export default function UserManagementPage() {
                   <option value="manager">Manager</option>
                 </select>
               </div>
-              <div>
-                <label className={labelClass}>Unit</label>
-                <select value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))} className={inputClass}>
-                  <option value="">— No unit —</option>
-                  {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              </div>
               <div className="sm:col-span-2 flex gap-3 pt-1">
                 <button type="submit" disabled={submitting} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
                   {submitting ? 'Sending...' : 'Send Invitation'}
@@ -173,7 +159,6 @@ export default function UserManagementPage() {
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
                 <th className="text-left px-6 py-3 font-medium">Name</th>
-                <th className="text-left px-6 py-3 font-medium">Unit</th>
                 <th className="text-left px-6 py-3 font-medium">Role</th>
                 <th className="text-left px-6 py-3 font-medium">Status</th>
                 <th className="text-right px-6 py-3 font-medium">Actions</th>
@@ -193,7 +178,6 @@ export default function UserManagementPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{user.unit?.name ?? <span className="text-slate-400">—</span>}</td>
                   <td className="px-6 py-4">
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       user.role === 'manager'
@@ -230,7 +214,7 @@ export default function UserManagementPage() {
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400">No members yet.</td>
+                  <td colSpan={4} className="px-6 py-12 text-center text-slate-400">No members yet.</td>
                 </tr>
               )}
             </tbody>

@@ -7,15 +7,9 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { searchParams } = new URL(req.url)
-  const unit_id = searchParams.get('unit_id')
-
-  const where: any = { role: 'member' }
-  if (unit_id) where.unit_id = Number(unit_id)
-
   const users = await prisma.user.findMany({
-    where,
-    select: { id: true, name: true, email: true, unit_id: true },
+    where: { role: 'member' },
+    select: { id: true, name: true, email: true },
     orderBy: { name: 'asc' },
   })
 

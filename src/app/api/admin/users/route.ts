@@ -20,7 +20,6 @@ export async function GET() {
       role: true,
       is_active: true,
       created_at: true,
-      unit: { select: { id: true, name: true } },
     },
   })
 
@@ -33,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { name, email, role, unit_id } = await req.json()
+  const { name, email, role } = await req.json()
   if (!name || !email) {
     return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
   }
@@ -51,7 +50,6 @@ export async function POST(req: NextRequest) {
       name,
       email,
       role: role ?? 'member',
-      unit_id: unit_id ? Number(unit_id) : null,
       is_active: false,
       activation_token: token,
       activation_token_expiry: expiry,

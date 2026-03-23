@@ -7,10 +7,9 @@ import AppLayout from '@/components/Layout'
 export default function NewProjectPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [units, setUnits] = useState<any[]>([])
   const [members, setMembers] = useState<any[]>([])
   const [form, setForm] = useState({
-    title: '', description: '', unit_id: '', owner_id: '', start_date: '', deadline: '', status: 'Pending',
+    title: '', description: '', owner_id: '', start_date: '', deadline: '', status: 'Pending',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -18,16 +17,8 @@ export default function NewProjectPage() {
   const user = session?.user as any
 
   useEffect(() => {
-    fetch('/api/units').then(r => r.json()).then(setUnits)
+    fetch('/api/users').then(r => r.json()).then(setMembers)
   }, [])
-
-  useEffect(() => {
-    if (form.unit_id) {
-      fetch(`/api/users?unit_id=${form.unit_id}`).then(r => r.json()).then(setMembers)
-    } else {
-      fetch('/api/users').then(r => r.json()).then(setMembers)
-    }
-  }, [form.unit_id])
 
   if (user?.role !== 'manager') {
     return (
@@ -60,7 +51,7 @@ export default function NewProjectPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-2xl">
+      <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">New Project</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Create a new project and assign to a team member</p>
@@ -77,21 +68,12 @@ export default function NewProjectPage() {
               <label className={labelClass}>Description</label>
               <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={`${inputClass} h-24 resize-none`} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Unit *</label>
-                <select required value={form.unit_id} onChange={e => setForm({ ...form, unit_id: e.target.value, owner_id: '' })} className={inputClass}>
-                  <option value="">Select unit...</option>
-                  {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>PIC (Owner) *</label>
-                <select required value={form.owner_id} onChange={e => setForm({ ...form, owner_id: e.target.value })} className={inputClass}>
-                  <option value="">Select member...</option>
-                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className={labelClass}>PIC (Owner) *</label>
+              <select required value={form.owner_id} onChange={e => setForm({ ...form, owner_id: e.target.value })} className={inputClass}>
+                <option value="">Select member...</option>
+                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

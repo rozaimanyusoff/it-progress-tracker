@@ -7,25 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Unit {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
-  users    User[]
-  projects Project[]
-}
-
 model User {
   id                       Int             @id @default(autoincrement())
   name                     String
   email                    String          @unique
   password_hash            String?
   role                     Role            @default(member)
-  unit_id                  Int?
   is_active                Boolean         @default(false)
   activation_token         String?         @unique
   activation_token_expiry  DateTime?
   created_at               DateTime        @default(now())
-  unit                     Unit?              @relation(fields: [unit_id], references: [id])
   projects                 Project[]          @relation("ProjectOwner")
   updates                  ProjectUpdate[]
   issues                   Issue[]
@@ -40,13 +31,11 @@ model Project {
   id          Int             @id @default(autoincrement())
   title       String
   description String?
-  unit_id     Int
   owner_id    Int
   start_date  DateTime
   deadline    DateTime
   status      ProjectStatus   @default(Pending)
   created_at  DateTime        @default(now())
-  unit        Unit            @relation(fields: [unit_id], references: [id])
   owner       User            @relation("ProjectOwner", fields: [owner_id], references: [id])
   updates     ProjectUpdate[]
   issues      Issue[]

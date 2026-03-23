@@ -4,23 +4,6 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  // Create units
-  const swDev = await prisma.unit.upsert({
-    where: { name: 'Software Development' },
-    update: {},
-    create: { name: 'Software Development' },
-  })
-  const infra = await prisma.unit.upsert({
-    where: { name: 'Infra & Support' },
-    update: {},
-    create: { name: 'Infra & Support' },
-  })
-  const data = await prisma.unit.upsert({
-    where: { name: 'Data Support' },
-    update: {},
-    create: { name: 'Data Support' },
-  })
-
   // Create manager
   const managerHash = await bcrypt.hash('admin123', 10)
   const manager = await prisma.user.upsert({
@@ -40,17 +23,17 @@ async function main() {
   const member1 = await prisma.user.upsert({
     where: { email: 'alice@it.local' },
     update: {},
-    create: { name: 'Alice Dev', email: 'alice@it.local', password_hash: hash, role: Role.member, unit_id: swDev.id, is_active: true },
+    create: { name: 'Alice Dev', email: 'alice@it.local', password_hash: hash, role: Role.member, is_active: true },
   })
   const member2 = await prisma.user.upsert({
     where: { email: 'bob@it.local' },
     update: {},
-    create: { name: 'Bob Infra', email: 'bob@it.local', password_hash: hash, role: Role.member, unit_id: infra.id, is_active: true },
+    create: { name: 'Bob Infra', email: 'bob@it.local', password_hash: hash, role: Role.member, is_active: true },
   })
   const member3 = await prisma.user.upsert({
     where: { email: 'carol@it.local' },
     update: {},
-    create: { name: 'Carol Data', email: 'carol@it.local', password_hash: hash, role: Role.member, unit_id: data.id, is_active: true },
+    create: { name: 'Carol Data', email: 'carol@it.local', password_hash: hash, role: Role.member, is_active: true },
   })
 
   // Create sample projects
@@ -58,7 +41,6 @@ async function main() {
     data: {
       title: 'HR Portal Redesign',
       description: 'Modernize the HR self-service portal',
-      unit_id: swDev.id,
       owner_id: member1.id,
       start_date: new Date('2026-01-01'),
       deadline: new Date('2026-06-30'),
@@ -69,7 +51,6 @@ async function main() {
     data: {
       title: 'Network Infrastructure Upgrade',
       description: 'Upgrade core switches and routers',
-      unit_id: infra.id,
       owner_id: member2.id,
       start_date: new Date('2026-02-01'),
       deadline: new Date('2026-05-31'),
@@ -80,7 +61,6 @@ async function main() {
     data: {
       title: 'Data Warehouse Migration',
       description: 'Migrate legacy DW to cloud',
-      unit_id: data.id,
       owner_id: member3.id,
       start_date: new Date('2026-01-15'),
       deadline: new Date('2026-07-31'),

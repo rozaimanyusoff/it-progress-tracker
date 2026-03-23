@@ -14,8 +14,7 @@ export default async function DashboardPage() {
   const projects = await prisma.project.findMany({
     where: user.role === 'manager' ? {} : { owner_id: Number(user.id) },
     include: {
-      unit: true,
-      owner: { select: { id: true, name: true } },
+      owner: { select: { id: true, name: true, email: true } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
       _count: { select: { issues: { where: { resolved: false } } } },
     },

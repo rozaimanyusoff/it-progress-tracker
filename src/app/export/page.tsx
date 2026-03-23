@@ -54,13 +54,6 @@ export default function ExportPage() {
     setExporting(false)
   }
 
-  const byUnit: Record<string, any[]> = {}
-  for (const p of projects) {
-    const u = p.unit?.name || 'Unknown'
-    if (!byUnit[u]) byUnit[u] = []
-    byUnit[u].push(p)
-  }
-
   const statusLabel: Record<string, string> = { InProgress: 'In Progress', OnHold: 'On Hold', Done: 'Done', Pending: 'Pending' }
   const statusColors: Record<string, string> = {
     Done: 'text-green-600 dark:text-green-400',
@@ -104,46 +97,41 @@ export default function ExportPage() {
         </div>
       )}
 
-      <div className="space-y-6">
-        {loading && <p className="text-slate-400">Loading preview...</p>}
-        {Object.entries(byUnit).map(([unit, unitProjects]) => {
-          const avg = unitProjects.length
-            ? Math.round(unitProjects.reduce((s, p) => s + (p.updates?.[0]?.progress_pct ?? 0), 0) / unitProjects.length)
-            : 0
-          return (
-            <div key={unit} className="rounded-xl border overflow-hidden bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-              <div className="px-6 py-4 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between bg-slate-50 dark:bg-navy-700">
-                <h2 className="font-semibold text-slate-900 dark:text-white">{unit}</h2>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-slate-500 dark:text-slate-400">{unitProjects.length} projects</span>
-                  <span className="text-blue-600 dark:text-blue-400 font-medium">avg {avg}%</span>
+      <div className="rounded-xl border overflow-hidden bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between bg-slate-50 dark:bg-navy-700">
+          <h2 className="font-semibold text-slate-900 dark:text-white">All Projects</h2>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-slate-500 dark:text-slate-400">{projects.length} projects</span>
+            {projects.length > 0 && (
+              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                avg {Math.round(projects.reduce((s, p) => s + (p.updates?.[0]?.progress_pct ?? 0), 0) / projects.length)}%
+              </span>
+            )}
+          </div>
+        </div>
+        {loading && <p className="px-6 py-4 text-slate-400 text-sm">Loading preview...</p>}
+        <div className="divide-y divide-slate-100 dark:divide-navy-700">
+          {projects.map(p => {
+            const progress = p.updates?.[0]?.progress_pct ?? 0
+            return (
+              <div key={p.id} className="px-6 py-3 flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-slate-900 dark:text-white text-sm font-medium truncate">{p.title}</p>
+                  <p className="text-slate-500 text-xs">{p.owner?.name}</p>
                 </div>
+                <div className="flex items-center gap-2 w-32">
+                  <div className="flex-1 bg-slate-200 dark:bg-navy-900 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${progress}%` }} />
+                  </div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 w-8 text-right">{progress}%</span>
+                </div>
+                <span className={`text-xs font-medium w-20 text-right ${statusColors[p.status] || statusColors.Pending}`}>
+                  {statusLabel[p.status] || p.status}
+                </span>
               </div>
-              <div className="divide-y divide-slate-100 dark:divide-navy-700">
-                {unitProjects.map(p => {
-                  const progress = p.updates?.[0]?.progress_pct ?? 0
-                  return (
-                    <div key={p.id} className="px-6 py-3 flex items-center gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-slate-900 dark:text-white text-sm font-medium truncate">{p.title}</p>
-                        <p className="text-slate-500 text-xs">{p.owner?.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2 w-32">
-                        <div className="flex-1 bg-slate-200 dark:bg-navy-900 rounded-full h-1.5">
-                          <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${progress}%` }} />
-                        </div>
-                        <span className="text-xs text-slate-500 dark:text-slate-400 w-8 text-right">{progress}%</span>
-                      </div>
-                      <span className={`text-xs font-medium w-20 text-right ${statusColors[p.status] || statusColors.Pending}`}>
-                        {statusLabel[p.status] || p.status}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </AppLayout>
   )

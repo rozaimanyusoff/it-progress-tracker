@@ -8,7 +8,7 @@ interface Developer {
   user: { id: number; name: string }
 }
 
-interface UnitMember {
+interface Member {
   id: number
   name: string
 }
@@ -30,7 +30,6 @@ interface Feature {
 
 interface Props {
   projectId: number
-  unitId: number
   userRole: string
 }
 
@@ -49,9 +48,9 @@ function fmt(dateStr?: string | null) {
   return new Date(dateStr).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export default function FeaturesSection({ projectId, unitId, userRole }: Props) {
+export default function FeaturesSection({ projectId, userRole }: Props) {
   const [features, setFeatures] = useState<Feature[]>([])
-  const [unitMembers, setUnitMembers] = useState<UnitMember[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingFeature, setEditingFeature] = useState<Feature | null>(null)
@@ -59,13 +58,13 @@ export default function FeaturesSection({ projectId, unitId, userRole }: Props) 
 
   useEffect(() => {
     fetchFeatures()
-    fetchUnitMembers()
+    fetchMembers()
   }, [projectId])
 
-  async function fetchUnitMembers() {
-    const res = await fetch(`/api/users`)
+  async function fetchMembers() {
+    const res = await fetch('/api/users')
     const data = await res.json()
-    setUnitMembers(data)
+    setMembers(data)
   }
 
   async function fetchFeatures() {
@@ -192,7 +191,7 @@ export default function FeaturesSection({ projectId, unitId, userRole }: Props) 
                     <FeatureTaskList
                       featureId={feature.id}
                       userRole={userRole}
-                      developers={unitMembers.map((m) => ({ user: m }))}
+                      developers={members.map((m) => ({ user: m }))}
                     />
                   </div>
                 )}
@@ -205,7 +204,6 @@ export default function FeaturesSection({ projectId, unitId, userRole }: Props) 
       {showAddModal && (
         <AddFeatureModal
           projectId={projectId}
-          unitId={unitId}
           onClose={() => setShowAddModal(false)}
           onCreated={fetchFeatures}
         />
@@ -214,7 +212,6 @@ export default function FeaturesSection({ projectId, unitId, userRole }: Props) 
       {editingFeature && (
         <AddFeatureModal
           projectId={projectId}
-          unitId={unitId}
           onClose={() => setEditingFeature(null)}
           onCreated={() => { fetchFeatures(); setEditingFeature(null) }}
           editFeature={editingFeature}

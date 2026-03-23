@@ -4,18 +4,12 @@ import AppLayout from '@/components/Layout'
 
 export default function IssuesPage() {
   const [issues, setIssues] = useState<any[]>([])
-  const [units, setUnits] = useState<any[]>([])
-  const [filters, setFilters] = useState({ unit: '', severity: '', resolved: '' })
+  const [filters, setFilters] = useState({ severity: '', resolved: '' })
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetch('/api/units').then(r => r.json()).then(setUnits)
-  }, [])
 
   useEffect(() => {
     setLoading(true)
     const params = new URLSearchParams()
-    if (filters.unit) params.set('unit', filters.unit)
     if (filters.severity) params.set('severity', filters.severity)
     if (filters.resolved !== '') params.set('resolved', filters.resolved)
     fetch(`/api/issues?${params}`).then(r => r.json()).then(d => { setIssues(d); setLoading(false) })
@@ -47,10 +41,6 @@ export default function IssuesPage() {
 
       {/* Filters */}
       <div className="flex gap-3 mb-6">
-        <select value={filters.unit} onChange={e => setFilters({ ...filters, unit: e.target.value })} className={selectClass}>
-          <option value="">All Units</option>
-          {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
         <select value={filters.severity} onChange={e => setFilters({ ...filters, severity: e.target.value })} className={selectClass}>
           <option value="">All Severities</option>
           <option value="high">High</option>
@@ -70,7 +60,6 @@ export default function IssuesPage() {
             <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700">
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Issue</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Project</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Unit</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Severity</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Reported by</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
@@ -78,8 +67,8 @@ export default function IssuesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
-            {loading && <tr><td colSpan={7} className="px-6 py-10 text-center text-slate-400">Loading...</td></tr>}
-            {!loading && issues.length === 0 && <tr><td colSpan={7} className="px-6 py-10 text-center text-slate-400">No issues found.</td></tr>}
+            {loading && <tr><td colSpan={6} className="px-6 py-10 text-center text-slate-400">Loading...</td></tr>}
+            {!loading && issues.length === 0 && <tr><td colSpan={6} className="px-6 py-10 text-center text-slate-400">No issues found.</td></tr>}
             {issues.map(issue => (
               <tr key={issue.id} className="hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
                 <td className="px-6 py-4">
@@ -87,7 +76,6 @@ export default function IssuesPage() {
                   {issue.description && <p className="text-slate-500 text-xs mt-0.5">{issue.description}</p>}
                 </td>
                 <td className="px-6 py-4 text-slate-600 dark:text-slate-300 text-sm">{issue.project?.title}</td>
-                <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-sm">{issue.project?.unit?.name}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${sevColors[issue.severity] || sevColors.medium}`}>
                     {issue.severity.toUpperCase()}
