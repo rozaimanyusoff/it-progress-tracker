@@ -16,7 +16,12 @@ const navItems = [
   { href: '/export', label: 'Export', icon: '↓', roles: ['manager'] },
 ]
 
-export default function Sidebar() {
+interface Props {
+  open?: boolean
+  onClose?: () => void
+}
+
+export default function Sidebar({ open = false, onClose }: Props) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const role = (session?.user as any)?.role
@@ -28,8 +33,16 @@ export default function Sidebar() {
   const filtered = navItems.filter(item => item.roles.includes(role))
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-64 bg-white dark:bg-navy-800 border-r border-slate-200 dark:border-navy-700 flex flex-col z-50">
-      <div className="p-6 border-b border-slate-200 dark:border-navy-700">
+    <aside
+      className={`
+        fixed top-0 left-0 h-screen w-64 bg-white dark:bg-navy-800
+        border-r border-slate-200 dark:border-navy-700
+        flex flex-col z-50 transition-transform duration-200
+        md:translate-x-0
+        ${open ? 'translate-x-0' : '-translate-x-full'}
+      `}
+    >
+      <div className="p-6 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm">IT</div>
           <div>
@@ -37,9 +50,19 @@ export default function Sidebar() {
             <p className="text-slate-500 dark:text-slate-400 text-xs capitalize">{role}</p>
           </div>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          aria-label="Close menu"
+          className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-navy-700 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {filtered.map(item => {
           const isProjectDetailPage = pathname.startsWith('/projects/') && !pathname.startsWith('/projects/new')
           const active = pathname === item.href
@@ -49,6 +72,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 active
                   ? 'bg-blue-600 text-white'
@@ -63,7 +87,6 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-slate-200 dark:border-navy-700">
-        {/* Theme toggle */}
         {mounted && (
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -74,7 +97,6 @@ export default function Sidebar() {
           </button>
         )}
 
-        {/* User info */}
         <div className="flex items-center gap-3 px-3 py-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-600 flex items-center justify-center text-slate-900 dark:text-white text-sm font-medium">
             {session?.user?.name?.[0]?.toUpperCase() ?? '?'}

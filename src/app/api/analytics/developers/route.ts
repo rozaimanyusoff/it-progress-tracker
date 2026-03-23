@@ -7,7 +7,6 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('project_id')
@@ -20,8 +19,17 @@ export async function GET(req: NextRequest) {
     ? { feature: { project_id: Number(projectId) } }
     : {}
 
+  // Members can only see their own analytics
+  const userWhere =
+    user.role === 'manager'
+      ? { role: 'member' as const, is_active: true }
+      : { id: Number(user.id), is_active: true }
+
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+
   const users = await prisma.user.findMany({
-    where: { role: 'member', is_active: true },
+    where: userWhere,
     select: {
       id: true,
       name: true,
@@ -33,6 +41,7 @@ export async function GET(req: NextRequest) {
           status: true,
           actual_start: true,
           actual_end: true,
+          created_at: true,
           feature: {
             select: { planned_end: true, mandays: true },
           },
@@ -76,6 +85,20 @@ export async function GET(req: NextRequest) {
         return sum + diff / (1000 * 60 * 60 * 24)
       }, 0)
 
+    // Weekly metrics: tasks assigned (created) in last 7 days
+    const weeklyTasksAssigned = tasks.filter(
+      (t) => new Date(t.created_at) >= sevenDaysAgo
+    ).length
+
+    // Weekly time spent: sum of time for tasks with actual_start in last 7 days
+    const weeklyTimeSpentHours = tasks
+      .filter((t) => t.actual_start && t.actual_end && new Date(t.actual_start) >= sevenDaysAgo)
+      .reduce((sum, t) => {
+        const diff =
+          new Date(t.actual_end!).getTime() - new Date(t.actual_start!).getTime()
+        return sum + diff / (1000 * 60 * 60)
+      }, 0)
+
     return {
       id: u.id,
       name: u.name,
@@ -86,6 +109,8 @@ export async function GET(req: NextRequest) {
       tasksDelayed,
       estimatedMandays,
       totalSpentDays: Math.round(totalSpentDays * 10) / 10,
+      weeklyTasksAssigned,
+      weeklyTimeSpentHours: Math.round(weeklyTimeSpentHours * 10) / 10,
     }
   })
 

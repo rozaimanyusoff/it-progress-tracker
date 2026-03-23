@@ -97,7 +97,7 @@ export default async function ManagerPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8">
         {[
           { label: 'Total Projects', value: totalProjects, color: 'text-blue-600 dark:text-blue-400' },
           { label: 'Completed', value: doneProjects, color: 'text-green-600 dark:text-green-400' },
