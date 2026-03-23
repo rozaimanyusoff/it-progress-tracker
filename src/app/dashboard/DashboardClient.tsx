@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
+import DeveloperAnalytics from '@/components/DeveloperAnalytics'
 
 interface Project {
   id: number
@@ -29,14 +30,41 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function ProgressBar({ value }: { value: number }) {
-  const color = value >= 80 ? 'bg-green-500' : value >= 40 ? 'bg-orange-500' : 'bg-blue-500'
+function CircleProgress({ value }: { value: number }) {
+  const size = 52
+  const strokeWidth = 5
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (value / 100) * circumference
+  const color = value >= 80 ? '#22c55e' : value >= 40 ? '#f97316' : '#3b82f6'
+  const trackColor = 'var(--circle-track, #e2e8f0)'
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 bg-slate-200 dark:bg-navy-900 rounded-full h-2">
-        <div className={`h-2 rounded-full ${color}`} style={{ width: `${value}%` }} />
-      </div>
-      <span className="text-xs text-slate-500 dark:text-slate-400 w-8 text-right">{value}%</span>
+    <div className="flex flex-col items-center gap-0.5 shrink-0">
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={strokeWidth}
+          fill="none"
+          stroke={trackColor}
+          className="dark:[--circle-track:#162d4a]"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={strokeWidth}
+          fill="none"
+          stroke={color}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+        />
+      </svg>
+      <span className="text-xs font-bold" style={{ color }}>{value}%</span>
     </div>
   )
 }
@@ -49,7 +77,6 @@ export default function DashboardClient({ projects, session }: { projects: Proje
   const [issueForm, setIssueForm] = useState({ title: '', description: '', severity: 'medium' })
   const [saving, setSaving] = useState(false)
   const [localProjects, setLocalProjects] = useState(projects)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   async function submitUpdate() {
     if (!selectedProject) return
@@ -62,14 +89,6 @@ export default function DashboardClient({ projects, session }: { projects: Proje
     setSaving(false)
     setShowUpdateModal(false)
     window.location.reload()
-  }
-
-  async function deleteProject(project: Project) {
-    if (!confirm(`Delete "${project.title}"? This will permanently remove the project and all its data.`)) return
-    setDeletingId(project.id)
-    await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
-    setDeletingId(null)
-    setLocalProjects(prev => prev.filter(p => p.id !== project.id))
   }
 
   async function submitIssue() {
@@ -97,31 +116,31 @@ export default function DashboardClient({ projects, session }: { projects: Proje
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">
+      <div className="mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
           {session.user.role === 'manager' ? 'All projects overview' : `Your projects — ${session.user.unit_name || 'No unit'}`}
         </p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {[
           { label: 'Total Projects', value: stats.total, color: 'text-blue-600 dark:text-blue-400' },
           { label: 'In Progress', value: stats.inProgress, color: 'text-orange-600 dark:text-orange-400' },
           { label: 'Done', value: stats.done, color: 'text-green-600 dark:text-green-400' },
           { label: 'Open Issues', value: stats.issues, color: 'text-red-600 dark:text-red-400' },
         ].map(s => (
-          <div key={s.label} className="rounded-xl p-5 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-            <p className="text-slate-500 dark:text-slate-400 text-sm">{s.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+          <div key={s.label} className="rounded-xl p-4 sm:p-5 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+            <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">{s.label}</p>
+            <p className={`text-2xl sm:text-3xl font-bold mt-1 ${s.color}`}>{s.value}</p>
           </div>
         ))}
       </div>
 
       {/* Projects */}
-      <div className="rounded-xl border overflow-hidden bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-navy-700 flex justify-between items-center">
+      <div className="rounded-xl border overflow-hidden bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700 mb-6">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-navy-700 flex justify-between items-center">
           <h2 className="font-semibold text-slate-900 dark:text-white">Projects</h2>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-navy-700">
@@ -131,21 +150,31 @@ export default function DashboardClient({ projects, session }: { projects: Proje
           {localProjects.map(project => {
             const progress = project.updates[0]?.progress_pct ?? 0
             return (
-              <div key={project.id} className="px-6 py-4 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
-                <div className="flex items-start justify-between gap-4">
+              <div key={project.id} className="px-4 sm:px-6 py-4 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  {/* Circle progress */}
+                  <div className="pt-0.5">
+                    <CircleProgress value={progress} />
+                  </div>
+
+                  {/* Project info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                      <Link href={`/projects/${project.id}`} className="font-medium text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <Link
+                        href={`/projects/${project.id}`}
+                        className="font-medium text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm sm:text-base"
+                      >
                         {project.title}
                       </Link>
                       <StatusBadge status={project.status} />
-                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{project.unit.name}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                        {project.unit.name}
+                      </span>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm truncate">{project.description}</p>
-                    <div className="mt-2 max-w-xs">
-                      <ProgressBar value={progress} />
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-slate-400 dark:text-slate-500">
+                    {project.description && (
+                      <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm truncate mb-1">{project.description}</p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-slate-400 dark:text-slate-500">
                       <span>PIC: {project.owner.name}</span>
                       <span>Deadline: {new Date(project.deadline).toLocaleDateString()}</span>
                       {project._count.issues > 0 && (
@@ -153,28 +182,21 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+
+                  {/* Actions */}
+                  <div className="flex flex-col sm:flex-row gap-2 shrink-0">
                     <button
-                      onClick={() => { setSelectedProject(project); setShowUpdateModal(true) }}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
+                      onClick={() => { setSelectedProject(project); setUpdateForm({ progress_pct: String(progress), status: project.status, notes: '' }); setShowUpdateModal(true) }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors whitespace-nowrap"
                     >
                       Update
                     </button>
                     <button
                       onClick={() => { setSelectedProject(project); setShowIssueModal(true) }}
-                      className="px-3 py-1.5 bg-red-50 dark:bg-red-900/50 hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400 text-xs rounded-lg border border-red-200 dark:border-red-800 transition-colors"
+                      className="px-3 py-1.5 bg-red-50 dark:bg-red-900/50 hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400 text-xs rounded-lg border border-red-200 dark:border-red-800 transition-colors whitespace-nowrap"
                     >
                       + Issue
                     </button>
-                    {session.user.role === 'manager' && (
-                      <button
-                        onClick={() => deleteProject(project)}
-                        disabled={deletingId === project.id}
-                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {deletingId === project.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -182,6 +204,9 @@ export default function DashboardClient({ projects, session }: { projects: Proje
           })}
         </div>
       </div>
+
+      {/* Developer Analytics */}
+      <DeveloperAnalytics />
 
       {/* Update Modal */}
       {showUpdateModal && selectedProject && (
