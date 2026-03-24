@@ -11,8 +11,15 @@ export default async function DashboardPage() {
 
   const user = session.user as any
 
+  const memberWhere = {
+    OR: [
+      { owner_id: Number(user.id) },
+      { members: { some: { user_id: Number(user.id) } } },
+    ],
+  }
+
   const projects = await prisma.project.findMany({
-    where: user.role === 'manager' ? {} : { owner_id: Number(user.id) },
+    where: user.role === 'manager' ? {} : memberWhere,
     include: {
       unit: true,
       owner: { select: { id: true, name: true } },

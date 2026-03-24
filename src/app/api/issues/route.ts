@@ -11,11 +11,13 @@ export async function GET(req: NextRequest) {
   const unit = searchParams.get('unit')
   const severity = searchParams.get('severity')
   const resolved = searchParams.get('resolved')
+  const projectId = searchParams.get('project_id')
 
   const where: any = {}
   if (severity) where.severity = severity
   if (resolved !== null && resolved !== '') where.resolved = resolved === 'true'
-  if (unit) where.project = { unit_id: Number(unit) }
+  if (projectId) where.project_id = Number(projectId)
+  else if (unit) where.project = { unit_id: Number(unit) }
 
   const issues = await prisma.issue.findMany({
     where,

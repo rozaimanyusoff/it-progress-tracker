@@ -26,10 +26,17 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   const { feature_id, title, description, assigned_to } = body
+
+  // Members can only create tasks assigned to themselves
+  if (user.role !== 'manager') {
+    const effectiveAssignee = assigned_to ? Number(assigned_to) : null
+    if (effectiveAssignee && effectiveAssignee !== Number(user.id)) {
+      return NextResponse.json({ error: 'Members can only create tasks for themselves' }, { status: 403 })
+    }
+  }
 
   if (!feature_id || !title) {
     return NextResponse.json({ error: 'feature_id and title are required' }, { status: 400 })

@@ -8,8 +8,14 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
 
+  const { searchParams } = new URL(req.url)
+  const projectId = searchParams.get('project_id')
+
   const tasks = await prisma.task.findMany({
-    where: { assigned_to: Number(user.id) },
+    where: {
+      assigned_to: Number(user.id),
+      ...(projectId ? { feature: { project_id: Number(projectId) } } : {}),
+    },
     include: {
       feature: {
         select: {

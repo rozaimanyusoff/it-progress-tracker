@@ -84,6 +84,7 @@ model Issue {
   user_id     Int
   title       String
   description String?
+  response    String?
   severity    Severity      @default(medium)
   resolved    Boolean       @default(false)
   created_at  DateTime      @default(now())

@@ -10,9 +10,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = session.user as any
 
   const body = await req.json()
+  const data: Record<string, any> = {}
+  if (body.resolved !== undefined) data.resolved = body.resolved
+  if (body.response !== undefined) data.response = body.response
+
   const issue = await prisma.issue.update({
     where: { id: Number(id) },
-    data: { resolved: body.resolved },
+    data,
   })
 
   await prisma.auditLog.create({
@@ -21,7 +25,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       action: 'UPDATE',
       target_type: 'Issue',
       target_id: issue.id,
-      metadata: { resolved: body.resolved },
+      metadata: { resolved: data.resolved, hasResponse: !!data.response },
     },
   })
 
