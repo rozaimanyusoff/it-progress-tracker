@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       owner: { select: { id: true, name: true, email: true } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
       _count: { select: { issues: { where: { resolved: false } } } },
+      members: { include: { user: { select: { id: true, name: true, email: true } } } },
     },
     orderBy: { created_at: 'desc' },
   })
@@ -31,16 +32,37 @@ export async function POST(req: NextRequest) {
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const project = await prisma.project.create({
-    data: {
-      title: body.title,
-      description: body.description,
-      unit_id: Number(body.unit_id),
-      owner_id: Number(body.owner_id),
-      start_date: new Date(body.start_date),
-      deadline: new Date(body.deadline),
-      status: body.status || 'Pending',
-    },
+  const { title, description, category, unit_id, owner_id, start_date, deadline, status, member_ids = [] } = body
+
+  if (!title || !unit_id || !owner_id || !start_date || !deadline) {
+    return NextResponse.json({ error: 'title, unit_id, owner_id, start_date, deadline are required' }, { status: 400 })
+  }
+
+  const project = await prisma.$transaction(async (tx) => {
+    const created = await tx.project.create({
+      data: {
+        title,
+        description: description || null,
+        category: category || null,
+        unit_id: Number(unit_id),
+        owner_id: Number(owner_id),
+        start_date: new Date(start_date),
+        deadline: new Date(deadline),
+        status: status || 'Pending',
+      },
+    })
+
+    if (member_ids.length > 0) {
+      await tx.projectMember.createMany({
+        data: member_ids.map((uid: number) => ({
+          project_id: created.id,
+          user_id: Number(uid),
+        })),
+        skipDuplicates: true,
+      })
+    }
+
+    return created
   })
 
   await prisma.auditLog.create({
@@ -49,7 +71,7 @@ export async function POST(req: NextRequest) {
       action: 'CREATE',
       target_type: 'Project',
       target_id: project.id,
-      metadata: { title: project.title },
+      metadata: { title: project.title, category: project.category },
     },
   })
 

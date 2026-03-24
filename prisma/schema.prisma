@@ -34,12 +34,14 @@ model User {
   created_features         Feature[]          @relation("FeatureCreator")
   assigned_tasks           Task[]             @relation("TaskAssignee")
   task_updates             TaskUpdate[]
+  project_memberships      ProjectMember[]
 }
 
 model Project {
   id          Int             @id @default(autoincrement())
   title       String
   description String?
+  category    String?
   unit_id     Int
   owner_id    Int
   start_date  DateTime
@@ -51,6 +53,17 @@ model Project {
   updates     ProjectUpdate[]
   issues      Issue[]
   features    Feature[]
+  members     ProjectMember[]
+}
+
+model ProjectMember {
+  project_id  Int
+  user_id     Int
+  assigned_at DateTime  @default(now())
+  project     Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [user_id], references: [id])
+
+  @@id([project_id, user_id])
 }
 
 model ProjectUpdate {
