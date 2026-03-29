@@ -9,7 +9,7 @@ export default function NewProjectPage() {
   const router = useRouter()
   const [members, setMembers] = useState<any[]>([])
   const [form, setForm] = useState({
-    title: '', description: '', owner_id: '', start_date: '', deadline: '', status: 'Pending',
+    title: '', description: '', assignee_ids: [] as number[], start_date: '', deadline: '', status: 'Pending',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -28,8 +28,21 @@ export default function NewProjectPage() {
     )
   }
 
+  function toggleAssignee(id: number) {
+    setForm(prev => ({
+      ...prev,
+      assignee_ids: prev.assignee_ids.includes(id)
+        ? prev.assignee_ids.filter(x => x !== id)
+        : [...prev.assignee_ids, id],
+    }))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (form.assignee_ids.length === 0) {
+      setError('Please select at least one assignee.')
+      return
+    }
     setSaving(true)
     setError('')
     const res = await fetch('/api/projects', {
@@ -54,7 +67,7 @@ export default function NewProjectPage() {
       <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">New Project</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Create a new project and assign to a team member</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Create a new project and assign team members</p>
         </div>
 
         <div className="rounded-xl border p-6 bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
@@ -69,11 +82,27 @@ export default function NewProjectPage() {
               <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={`${inputClass} h-24 resize-none`} />
             </div>
             <div>
-              <label className={labelClass}>PIC (Owner) *</label>
-              <select required value={form.owner_id} onChange={e => setForm({ ...form, owner_id: e.target.value })} className={inputClass}>
-                <option value="">Select member...</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+              <label className={labelClass}>Assignees *</label>
+              <div className="rounded-lg border border-slate-300 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 divide-y divide-slate-200 dark:divide-navy-700">
+                {members.map(m => (
+                  <label key={m.id} className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-navy-800 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={form.assignee_ids.includes(m.id)}
+                      onChange={() => toggleAssignee(m.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-slate-800 dark:text-slate-200">{m.name}</span>
+                    <span className="text-xs text-slate-400 ml-auto">{m.email}</span>
+                  </label>
+                ))}
+                {members.length === 0 && (
+                  <p className="px-4 py-3 text-sm text-slate-400">No members available.</p>
+                )}
+              </div>
+              {form.assignee_ids.length > 0 && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">{form.assignee_ids.length} member(s) selected</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

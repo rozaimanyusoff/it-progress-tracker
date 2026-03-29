@@ -26,7 +26,6 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   const { feature_id, title, description, assigned_to } = body
@@ -34,6 +33,11 @@ export async function POST(req: NextRequest) {
   if (!feature_id || !title) {
     return NextResponse.json({ error: 'feature_id and title are required' }, { status: 400 })
   }
+
+  // Members can only create tasks assigned to themselves
+  const resolvedAssignee = user.role === 'manager'
+    ? (assigned_to ? Number(assigned_to) : null)
+    : Number(user.id)
 
   const maxOrderResult = await prisma.task.aggregate({
     where: { feature_id: Number(feature_id) },
@@ -46,13 +50,14 @@ export async function POST(req: NextRequest) {
       feature_id: Number(feature_id),
       title,
       description: description || null,
-      assigned_to: assigned_to ? Number(assigned_to) : null,
+      assigned_to: resolvedAssignee,
       order: nextOrder,
       is_predefined: false,
       status: 'Todo',
     },
     include: {
       assignee: { select: { id: true, name: true } },
+      feature: { select: { id: true, title: true, project: { select: { id: true, title: true } } } },
     },
   })
 

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   // Fetch all projects
   const projects = await prisma.project.findMany({
     include: {
-      owner: { select: { name: true } },
+      assignees: { include: { user: { select: { name: true } } } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
     },
   })
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       title: p.title,
       progress: lastUpdate?.progress_pct ?? 0,
       status: p.status,
-      owner: p.owner.name,
+      owner: p.assignees.map(a => a.user.name).join(', ') || '—',
     }
   })
 

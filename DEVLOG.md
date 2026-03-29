@@ -10,6 +10,169 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-29 — Projects Page: List, New Project & Features Management
+
+### Ditambah
+- **`src/app/projects/page.tsx`** — Halaman baru `/projects` dengan tiga tab:
+  - **Projects** — Senarai semua projek dalam grid kad; klik untuk navigasi ke detail projek; butang "+ New Project" untuk beralih ke tab New Project; tunjuk status, progress bar berdasarkan tarikh, assignee avatars, overdue indicator, dan issue count
+  - **New Project** — Borang inline untuk cipta projek baru (dipindah dari `/projects/new`); redirect balik ke tab Projects selepas berjaya
+  - **Features** — Dipindah dari Settings > Features tab; pilih projek, tambah feature dengan auto-calc mandays berdasarkan hari bekerja (Mon-Fri)
+
+### Diubah
+- **`src/components/Sidebar.tsx`** — Tukar "New Project" menu kepada "Projects" (`/projects`); active prefix termasuk `/projects/*`; Dashboard active prefix tidak lagi termasuk `/projects/`
+- **`src/app/settings/page.tsx`** — Buang tab "Features" (dipindah ke halaman Projects)
+
+---
+
+## 2026-03-29 — TaskUpdateModal: Thumbnail Grid for Attachments
+
+### Diubah
+- **`TaskUpdateModal.tsx`** — Preview sebelum submit: tambah file count label, video tunjuk play icon overlay (▶), filename di bawah thumbnail
+- **`TaskUpdateModal.tsx`** — Update history: media kini dipapar sebagai 80×80 thumbnail grid (konsisten dengan preview); klik thumbnail buka full view dalam tab baru; video tunjuk poster + play overlay; dokumen (PDF/DOCX/XLSX) tunjuk icon + label ext
+
+---
+
+## 2026-03-29 — Kanban: Task Update Modal Overhaul + Status Flow Fix
+
+### Diperbaiki
+- **`POST /api/tasks/[id]/updates`** — Bug `Forbidden`: `session.user.id` adalah string, `task.assigned_to` adalah number; kini guna `Number(userId)` untuk comparison yang betul
+- **`POST /api/tasks/[id]/updates`** — Tambah time tracking: Todo→InProgress set `time_started_at`; InProgress→InReview accumulate `time_spent_seconds` dan clear `time_started_at`
+
+### Diubah
+- **`KanbanBoard.tsx`** — Block drag dari `InReview` → `Todo` (hanya boleh ke `InProgress`); block arrow `←` dari `InReview` jika destination adalah `Todo`
+- **`KanbanBoard.tsx`** — Hantar `moduleTitle` prop ke `TaskUpdateModal`
+- **`TaskUpdateModal.tsx`** — Tambah `moduleTitle` prop; header kini tunjuk `Module › Feature · Project`
+- **`TaskUpdateModal.tsx`** — Tukar "Mark Complete" → **"Submit for Review"** (kuning), hanya visible pada `InProgress`
+- **`TaskUpdateModal.tsx`** — Butang submit tukar label mengikut status: `Todo` → "Start & Save Note", `InProgress` → "Save Note"
+- **`TaskUpdateModal.tsx`** — Form **dikunci** bila `InReview` atau `Done` — banner informatif dipaparkan, developer tidak boleh submit lagi
+
+---
+
+## 2026-03-29 — Kanban: Animated Timer on InProgress Cards
+
+### Diubah
+- **`KanbanBoard.tsx`** — Timer kini tunjuk **animated ping dot** (orange, `animate-ping`) pada kad bila status `InProgress`; dot hilang bila paused/done; masa teks guna `tabular-nums` untuk elak layout shift setiap saat
+
+---
+
+## 2026-03-29 — Kanban: Task Time Tracking + Module on Cards
+
+### Ditambah
+- **`Task` model** — Tambah `time_started_at DateTime?` dan `time_spent_seconds Int @default(0)`
+- **Migration `20260329020000_task_time_tracking`** — Add kedua-dua kolum baru pada table `Task`
+
+### Diubah
+- **`PUT /api/tasks/[id]`** — Time tracking logic:
+  - Task → `InProgress`: set `time_started_at = now()`
+  - Task keluar `InProgress` (ke Todo/InReview/Done): kira elapsed seconds, tambah ke `time_spent_seconds`, clear `time_started_at`
+  - Jika task dikembalikan ke Todo, timer **pause** (tidak terus) — akan resume semula bila balik ke InProgress
+- **`GET /api/tasks/my`** — Include `module` dalam `feature` select
+- **`KanbanBoard.tsx`**:
+  - Kad task kini tunjuk nama **Module** (purple) di atas feature title
+  - Tunjuk **masa elapsed** (⏱) pada kad — orange & live ticking jika InProgress, kelabu jika paused
+  - `setInterval` 1s untuk refresh timer cards yang sedang InProgress
+  - `handleDragEnd` & `moveTask` kemas kini board state daripada API response (bukan optimistic sahaja) — supaya `time_started_at` tepat
+  - **Module kini wajib** (`*`) jika project ada modules; validation sebelum submit
+  - `visibleFeatures` hanya tunjuk features dalam module yang dipilih
+
+---
+
+## 2026-03-29 — Upload: Support Mounted Share / Absolute Path
+
+### Ditambah
+- **`GET /api/files/[...path]`** — Endpoint serve files dari `UPLOAD_PATH` (absolute atau relative); require session; path traversal dilindungi; cache `immutable 1yr`; MIME type dari extension
+- **`UPLOAD_PUBLIC_URL`** env var — URL prefix untuk stored attachment URLs
+
+### Diubah
+- **`POST /api/upload`** — Fix absolute path support: guna `path.isAbsolute(UPLOAD_PATH)` untuk resolve filesystem path dengan betul; bina URL dari `UPLOAD_PUBLIC_URL` (bukan hardcode strip `public/`)
+
+### .env dev
+```
+UPLOAD_PATH="public/uploads"
+UPLOAD_PUBLIC_URL="/uploads"
+```
+
+### .env production (mounted share)
+```
+UPLOAD_PATH="/uploads"
+UPLOAD_PUBLIC_URL="/api/files"
+```
+
+---
+
+## 2026-03-29 — Kanban: File Upload + Inline Feature Creation for Members
+
+### Diubah
+- **`POST /api/features`** — Buka akses untuk member; member boleh create feature dalam project yang mereka di-assign sahaja (semakan `ProjectAssignee`)
+- **`POST /api/upload`** — Guna `UPLOAD_PATH` dari `.env`; tambah doc types (PDF, DOCX, XLSX, DOC, XLS), max 50MB
+- **`.env`** — Tambah `UPLOAD_PATH="public/uploads"`
+- **`KanbanBoard.tsx` (`AddTaskModal`)** — Tambah inline feature creation form (title, start, end, mandays); media upload (imej/video) dengan `URL.createObjectURL` preview; document upload (PDF/DOCX/XLSX) dengan icon preview; remove file dengan revoke object URL; upload dilakukan selepas task dicipta
+
+---
+
+## 2026-03-29 — Kanban: Always Show 4 Columns + Add Task Modal
+
+### Diubah
+- **`KanbanBoard.tsx`** — 4 kolum (Todo/In Progress/In Review/Done) kini sentiasa dipaparkan walaupun tiada task; butang `+` dalam header kolum Todo dan empty state dashed border untuk tambah task
+- **`AddTaskModal`** (dalam KanbanBoard) — Form popup: pilih Project → Module (optional) → Feature → Task Title + Description; task dicipta terus assigned kepada developer semasa
+- **`POST /api/tasks`** — Buka akses untuk member (sebelum ini manager sahaja); member akan auto-assign task kepada diri sendiri
+
+---
+
+## 2026-03-29 — Module Layer & Developer Task Self-Assignment
+
+### Ditambah
+- **`Module` model (Prisma)** — Lapisan baru antara Project dan Feature: `Module` → `Feature` → `Task`
+- **Migration `20260329010000_add_modules`** — Create `Module` table, add `module_id` (nullable) pada `Feature`
+- **`GET/POST /api/modules?project_id=X`** — List modules (with nested features+tasks) & create module
+- **`PUT/DELETE /api/modules/[id]`** — Edit & delete module; delete akan unlink features (set `module_id = null`)
+- **`POST /api/tasks/[id]/self-assign`** — Developer assign diri sendiri pada task dalam project mereka
+- **`GET /api/tasks/browse?project_id=X`** — Return tasks grouped by module/feature untuk developer browse
+- **`GET /api/features`** — Include `module_id` dan `module` info dalam response
+
+### Diubah
+- **`POST /api/features`** — Terima `module_id` optional
+- **`FeaturesSection.tsx`** — Rewrite: tunjuk hierarki Module → Feature → Task; manager boleh add/edit/delete modules dan features; module boleh expand/collapse
+- **`AddFeatureModal.tsx`** — Terima prop `moduleId` optional
+- **`KanbanBoard.tsx`** — Tambah panel "Browse & Add Tasks": developer pilih project → browse module/feature/task tree → click "+ Add to Board" untuk self-assign
+
+---
+
+## 2026-03-29 — Project Assignees: Replace Single Owner with Multiple Assignees
+
+### Diubah (Breaking Schema Change)
+- **`prisma/schema.prisma`** — Buang `owner_id` dari `Project`; tambah model `ProjectAssignee` (join table many-to-many antara `Project` dan `User`)
+- **Migration `20260329000000_replace_owner_with_assignees`** — Drop `owner_id`, create `ProjectAssignee` table
+- **`POST /api/projects`** — Terima `assignee_ids: number[]`, create `ProjectAssignee` records
+- **`PUT /api/projects/[id]`** — Terima `assignee_ids`, replace assignees sepenuhnya
+- **`GET /api/projects`** & **`dashboard/page.tsx`** — Filter project untuk member berdasarkan `assignees` (bukan `owner_id`)
+- **`GET /api/projects/[id]`** — Include `assignees` dengan user details
+- **`POST /api/export`** — Guna `assignees` untuk field owner dalam PPTX export
+- **`projects/new/page.tsx`** — Gantikan dropdown owner dengan senarai checkbox (multiple selection)
+- **`DashboardClient.tsx`** — Update interface, edit modal guna checkboxes, display tunjuk semua assignees
+- **`projects/[id]/page.tsx`** — Tunjuk semua assignees dalam project detail
+- **`prisma/seed.ts`** — Update untuk guna `assignees` instead of `owner_id`
+
+---
+
+## 2026-03-29 — Dashboard: % Label Inside Circle Progress
+
+### Diubah
+- **`DashboardClient.tsx` (`CircleProgress`)** — Pindahkan label `%` dari bawah bulatan ke dalam bulatan menggunakan `position: absolute` overlay
+
+---
+
+## 2026-03-29 — Developer Analytics: 4-Week Trend Charts
+
+### Diubah
+- **`GET /api/analytics/developers`** — Tukar metric mingguan (7 hari) kepada trend 4 minggu; kini mengembalikan `weeklyTasksTrend` dan `weeklyTimeTrend` (array 4 titik: W1–W4) sebagai ganti `weeklyTasksAssigned` & `weeklyTimeSpentHours`
+- **`DeveloperAnalytics.tsx`** — Gantikan static bar indicator dengan:
+  - **Line chart** (recharts) untuk "Tasks Assigned Trend" — satu line per developer, 4 minggu
+  - **Bar chart** (recharts) untuk "Time Spent Trend (hrs)" — grouped bars per developer, 4 minggu
+- Install **`recharts`** sebagai chart library
+
+---
+
 ## 2026-03-22 — Kanban Task Update Form, Assignee Fix & Sidebar Active State
 
 ### Ditambah

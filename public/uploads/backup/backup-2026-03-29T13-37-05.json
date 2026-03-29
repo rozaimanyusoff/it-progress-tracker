@@ -1,0 +1,677 @@
+{
+  "version": 1,
+  "created_at": "2026-03-29T13:37:05.483Z",
+  "created_by": "admin@it.local",
+  "data": {
+    "users": [
+      {
+        "id": 1,
+        "name": "Admin Manager",
+        "email": "admin@it.local",
+        "password_hash": "$2a$10$FciAr4fNb04s8GEK/ooEoOulbTha6t7ko9y3EyEEtuwp9ZWjYgcRq",
+        "role": "manager",
+        "is_active": true,
+        "activation_token": null,
+        "activation_token_expiry": null,
+        "created_at": "2026-03-28T07:44:56.827Z"
+      },
+      {
+        "id": 2,
+        "name": "Alice Dev",
+        "email": "alice@it.local",
+        "password_hash": "$2a$10$naictegdX.CkpYVGc1oaO.jKBQv8O1IQ.IBnQ7zNAXSPN5f8uCApy",
+        "role": "member",
+        "is_active": true,
+        "activation_token": null,
+        "activation_token_expiry": null,
+        "created_at": "2026-03-28T07:44:56.903Z"
+      },
+      {
+        "id": 3,
+        "name": "Bob Infra",
+        "email": "bob@it.local",
+        "password_hash": "$2a$10$naictegdX.CkpYVGc1oaO.jKBQv8O1IQ.IBnQ7zNAXSPN5f8uCApy",
+        "role": "member",
+        "is_active": true,
+        "activation_token": null,
+        "activation_token_expiry": null,
+        "created_at": "2026-03-28T07:44:56.905Z"
+      },
+      {
+        "id": 4,
+        "name": "Carol Data",
+        "email": "carol@it.local",
+        "password_hash": "$2a$10$naictegdX.CkpYVGc1oaO.jKBQv8O1IQ.IBnQ7zNAXSPN5f8uCApy",
+        "role": "member",
+        "is_active": true,
+        "activation_token": null,
+        "activation_token_expiry": null,
+        "created_at": "2026-03-28T07:44:56.907Z"
+      }
+    ],
+    "projects": [
+      {
+        "id": 2,
+        "title": "HR Portal Redesign",
+        "description": "Modernize the HR self-service portal",
+        "start_date": "2026-01-01T00:00:00.000Z",
+        "deadline": "2026-06-30T00:00:00.000Z",
+        "status": "InProgress",
+        "created_at": "2026-03-28T07:45:57.683Z"
+      },
+      {
+        "id": 3,
+        "title": "Network Infrastructure Upgrade",
+        "description": "Upgrade core switches and routers",
+        "start_date": "2026-02-01T00:00:00.000Z",
+        "deadline": "2026-05-31T00:00:00.000Z",
+        "status": "InProgress",
+        "created_at": "2026-03-28T07:45:57.687Z"
+      },
+      {
+        "id": 4,
+        "title": "Data Warehouse Migration",
+        "description": "Migrate legacy DW to cloud",
+        "start_date": "2026-01-15T00:00:00.000Z",
+        "deadline": "2026-07-31T00:00:00.000Z",
+        "status": "Pending",
+        "created_at": "2026-03-28T07:45:57.687Z"
+      },
+      {
+        "id": 5,
+        "title": "AquaSMART",
+        "description": "new version of AquaSMART",
+        "start_date": "2026-01-01T00:00:00.000Z",
+        "deadline": "2026-05-30T00:00:00.000Z",
+        "status": "Pending",
+        "created_at": "2026-03-28T18:23:05.401Z"
+      }
+    ],
+    "modules": [
+      {
+        "id": 1,
+        "project_id": 5,
+        "title": "Job Management System",
+        "description": "JMS",
+        "order": 1,
+        "created_at": "2026-03-28T19:11:56.555Z"
+      }
+    ],
+    "projectAssignees": [
+      {
+        "project_id": 5,
+        "user_id": 2,
+        "assigned_at": "2026-03-28T18:23:05.401Z"
+      },
+      {
+        "project_id": 5,
+        "user_id": 3,
+        "assigned_at": "2026-03-28T18:23:05.401Z"
+      },
+      {
+        "project_id": 5,
+        "user_id": 4,
+        "assigned_at": "2026-03-28T18:23:05.401Z"
+      }
+    ],
+    "projectUpdates": [
+      {
+        "id": 1,
+        "project_id": 2,
+        "user_id": 2,
+        "progress_pct": 40,
+        "status": "InProgress",
+        "notes": "Completed UI mockups",
+        "created_at": "2026-01-15T00:00:00.000Z"
+      },
+      {
+        "id": 2,
+        "project_id": 2,
+        "user_id": 2,
+        "progress_pct": 65,
+        "status": "InProgress",
+        "notes": "Backend APIs done",
+        "created_at": "2026-02-10T00:00:00.000Z"
+      },
+      {
+        "id": 3,
+        "project_id": 3,
+        "user_id": 3,
+        "progress_pct": 30,
+        "status": "InProgress",
+        "notes": "Procurement complete",
+        "created_at": "2026-02-20T00:00:00.000Z"
+      },
+      {
+        "id": 4,
+        "project_id": 4,
+        "user_id": 4,
+        "progress_pct": 10,
+        "status": "Pending",
+        "notes": "Planning phase",
+        "created_at": "2026-02-01T00:00:00.000Z"
+      }
+    ],
+    "issues": [
+      {
+        "id": 1,
+        "project_id": 2,
+        "user_id": 2,
+        "assignee_id": null,
+        "title": "Login SSO not working",
+        "description": "SSO redirect fails on IE",
+        "severity": "high",
+        "resolved": false,
+        "created_at": "2026-03-28T07:45:57.691Z"
+      },
+      {
+        "id": 3,
+        "project_id": 4,
+        "user_id": 4,
+        "assignee_id": null,
+        "title": "Schema mapping incomplete",
+        "description": "Legacy tables not fully mapped",
+        "severity": "low",
+        "resolved": true,
+        "created_at": "2026-03-28T07:45:57.691Z"
+      },
+      {
+        "id": 2,
+        "project_id": 3,
+        "user_id": 3,
+        "assignee_id": 2,
+        "title": "Switch delivery delayed",
+        "description": "Vendor shipping delay 2 weeks",
+        "severity": "medium",
+        "resolved": false,
+        "created_at": "2026-03-28T07:45:57.691Z"
+      }
+    ],
+    "features": [
+      {
+        "id": 1,
+        "project_id": 5,
+        "module_id": 1,
+        "title": "assign job form",
+        "description": null,
+        "mandays": 1,
+        "status": "Pending",
+        "planned_start": "2026-03-30T00:00:00.000Z",
+        "planned_end": "2026-04-01T00:00:00.000Z",
+        "actual_start": "2026-03-29T06:33:07.485Z",
+        "actual_end": null,
+        "order": 1,
+        "created_at": "2026-03-29T06:12:26.473Z",
+        "created_by_id": 2
+      },
+      {
+        "id": 2,
+        "project_id": 5,
+        "module_id": 1,
+        "title": "develop backend",
+        "description": null,
+        "mandays": 3,
+        "status": "Pending",
+        "planned_start": "2026-03-30T00:00:00.000Z",
+        "planned_end": "2026-04-01T00:00:00.000Z",
+        "actual_start": null,
+        "actual_end": null,
+        "order": 2,
+        "created_at": "2026-03-29T08:37:11.347Z",
+        "created_by_id": 2
+      }
+    ],
+    "featureDevelopers": [],
+    "tasks": [
+      {
+        "id": 1,
+        "feature_id": 1,
+        "title": "Requirements Gathering",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 1,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 2,
+        "feature_id": 1,
+        "title": "System Design",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 2,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 3,
+        "feature_id": 1,
+        "title": "UI/UX Design",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 3,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 4,
+        "feature_id": 1,
+        "title": "Development",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 4,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 5,
+        "feature_id": 1,
+        "title": "Code Review",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 5,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 6,
+        "feature_id": 1,
+        "title": "Unit Testing",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 6,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 7,
+        "feature_id": 1,
+        "title": "UAT",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 7,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 8,
+        "feature_id": 1,
+        "title": "Deployment",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 8,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 9,
+        "feature_id": 1,
+        "title": "Documentation",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 9,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T06:12:26.484Z"
+      },
+      {
+        "id": 11,
+        "feature_id": 2,
+        "title": "Requirements Gathering",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 1,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 12,
+        "feature_id": 2,
+        "title": "System Design",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 2,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 13,
+        "feature_id": 2,
+        "title": "UI/UX Design",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 3,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 14,
+        "feature_id": 2,
+        "title": "Development",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 4,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 15,
+        "feature_id": 2,
+        "title": "Code Review",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 5,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 16,
+        "feature_id": 2,
+        "title": "Unit Testing",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 6,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 17,
+        "feature_id": 2,
+        "title": "UAT",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 7,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 18,
+        "feature_id": 2,
+        "title": "Deployment",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 8,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 19,
+        "feature_id": 2,
+        "title": "Documentation",
+        "description": null,
+        "status": "Todo",
+        "assigned_to": null,
+        "order": 9,
+        "is_predefined": true,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:11.350Z"
+      },
+      {
+        "id": 20,
+        "feature_id": 2,
+        "title": "develop backend for job assignment",
+        "description": "develop backend for job assignment",
+        "status": "Todo",
+        "assigned_to": 2,
+        "order": 10,
+        "is_predefined": false,
+        "actual_start": null,
+        "actual_end": null,
+        "time_started_at": null,
+        "time_spent_seconds": 0,
+        "created_at": "2026-03-29T08:37:46.048Z"
+      },
+      {
+        "id": 10,
+        "feature_id": 1,
+        "title": "develop assign job form",
+        "description": "Job assignment form used by the operator that can be responded by the subcontractor",
+        "status": "Done",
+        "assigned_to": 2,
+        "order": 10,
+        "is_predefined": false,
+        "actual_start": "2026-03-29T06:33:07.485Z",
+        "actual_end": "2026-03-29T12:10:13.548Z",
+        "time_started_at": null,
+        "time_spent_seconds": 6178,
+        "created_at": "2026-03-29T06:12:34.501Z"
+      }
+    ],
+    "taskUpdates": [
+      {
+        "id": 1,
+        "task_id": 10,
+        "user_id": 2,
+        "notes": "1st progress",
+        "media_urls": [],
+        "created_at": "2026-03-29T06:44:43.459Z"
+      },
+      {
+        "id": 2,
+        "task_id": 10,
+        "user_id": 2,
+        "notes": "2nd progress",
+        "media_urls": [
+          "/uploadstasks/10/1774767002441-kfcv6nc4c9i.png"
+        ],
+        "created_at": "2026-03-29T06:50:02.472Z"
+      },
+      {
+        "id": 3,
+        "task_id": 10,
+        "user_id": 2,
+        "notes": "3rd progress",
+        "media_urls": [
+          "/uploads/tasks/10/1774768511186-7s2uzp9otq9.png"
+        ],
+        "created_at": "2026-03-29T07:15:11.206Z"
+      },
+      {
+        "id": 4,
+        "task_id": 10,
+        "user_id": 1,
+        "notes": null,
+        "media_urls": [],
+        "created_at": "2026-03-29T12:10:13.554Z"
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": 1,
+        "user_id": 1,
+        "action": "CREATE",
+        "target_type": "Project",
+        "target_id": 5,
+        "metadata": {
+          "title": "AquaSMART"
+        },
+        "created_at": "2026-03-28T18:23:05.409Z"
+      },
+      {
+        "id": 2,
+        "user_id": 2,
+        "action": "CREATE",
+        "target_type": "Feature",
+        "target_id": 1,
+        "metadata": {
+          "title": "assign job form",
+          "project_id": 5
+        },
+        "created_at": "2026-03-29T06:12:26.493Z"
+      },
+      {
+        "id": 3,
+        "user_id": 2,
+        "action": "CREATE",
+        "target_type": "Task",
+        "target_id": 10,
+        "metadata": {
+          "title": "develop assign job form",
+          "feature_id": 1
+        },
+        "created_at": "2026-03-29T06:12:34.507Z"
+      },
+      {
+        "id": 4,
+        "user_id": 2,
+        "action": "UPDATE",
+        "target_type": "Task",
+        "target_id": 10,
+        "metadata": {
+          "new_status": "InProgress",
+          "old_status": "Todo"
+        },
+        "created_at": "2026-03-29T06:33:07.494Z"
+      },
+      {
+        "id": 5,
+        "user_id": 2,
+        "action": "UPDATE",
+        "target_type": "Task",
+        "target_id": 10,
+        "metadata": {
+          "new_status": "InReview",
+          "old_status": "InProgress"
+        },
+        "created_at": "2026-03-29T08:16:05.869Z"
+      },
+      {
+        "id": 6,
+        "user_id": 2,
+        "action": "CREATE",
+        "target_type": "Feature",
+        "target_id": 2,
+        "metadata": {
+          "title": "develop backend",
+          "project_id": 5
+        },
+        "created_at": "2026-03-29T08:37:11.354Z"
+      },
+      {
+        "id": 7,
+        "user_id": 2,
+        "action": "CREATE",
+        "target_type": "Task",
+        "target_id": 20,
+        "metadata": {
+          "title": "develop backend for job assignment",
+          "feature_id": 2
+        },
+        "created_at": "2026-03-29T08:37:46.051Z"
+      },
+      {
+        "id": 8,
+        "user_id": 2,
+        "action": "UPDATE",
+        "target_type": "Issue",
+        "target_id": 2,
+        "metadata": {},
+        "created_at": "2026-03-29T08:50:00.765Z"
+      }
+    ],
+    "appSettings": [
+      {
+        "key": "brand_logo_url",
+        "value": "/uploads/brand/logo-1774790625804.png",
+        "updated_at": "2026-03-29T13:27:18.233Z"
+      },
+      {
+        "key": "brand_name",
+        "value": "Progress Tracker",
+        "updated_at": "2026-03-29T13:27:18.232Z"
+      },
+      {
+        "key": "theme_color",
+        "value": "rose",
+        "updated_at": "2026-03-29T13:27:18.233Z"
+      }
+    ]
+  }
+}

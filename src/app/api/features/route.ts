@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const features = await prisma.feature.findMany({
     where: { project_id: Number(projectId) },
     include: {
+      module: { select: { id: true, title: true } },
       developers: {
         include: { user: { select: { id: true, name: true, email: true } } },
       },
@@ -31,13 +32,20 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { project_id, title, description, mandays, planned_start, planned_end, developer_ids = [] } = body
+  const { project_id, module_id, title, description, mandays, planned_start, planned_end, developer_ids = [] } = body
 
   if (!project_id || !title || !planned_start || !planned_end) {
     return NextResponse.json({ error: 'project_id, title, planned_start, planned_end are required' }, { status: 400 })
+  }
+
+  // Members can only create features in projects they're assigned to
+  if (user.role !== 'manager') {
+    const assigned = await prisma.projectAssignee.findFirst({
+      where: { project_id: Number(project_id), user_id: Number(user.id) },
+    })
+    if (!assigned) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const maxOrderResult = await prisma.feature.aggregate({
@@ -50,6 +58,7 @@ export async function POST(req: NextRequest) {
     const created = await tx.feature.create({
       data: {
         project_id: Number(project_id),
+        module_id: module_id ? Number(module_id) : null,
         title,
         description: description || null,
         mandays: Number(mandays) || 0,

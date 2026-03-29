@@ -10,6 +10,7 @@ interface Developer {
 
 interface Props {
   projectId: number
+  moduleId?: number | null
   onClose: () => void
   onCreated: () => void
   editFeature?: {
@@ -24,7 +25,7 @@ interface Props {
   } | null
 }
 
-export default function AddFeatureModal({ projectId, onClose, onCreated, editFeature }: Props) {
+export default function AddFeatureModal({ projectId, moduleId, onClose, onCreated, editFeature }: Props) {
   const [title, setTitle] = useState(editFeature?.title ?? '')
   const [description, setDescription] = useState(editFeature?.description ?? '')
   const [mandays, setMandays] = useState(editFeature?.mandays?.toString() ?? '1')
@@ -81,6 +82,7 @@ export default function AddFeatureModal({ projectId, onClose, onCreated, editFea
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             project_id: projectId,
+            module_id: moduleId ?? null,
             title,
             description,
             mandays: Number(mandays),

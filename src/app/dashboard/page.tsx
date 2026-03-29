@@ -12,9 +12,11 @@ export default async function DashboardPage() {
   const user = session.user as any
 
   const projects = await prisma.project.findMany({
-    where: user.role === 'manager' ? {} : { owner_id: Number(user.id) },
+    where: user.role === 'manager'
+      ? {}
+      : { assignees: { some: { user_id: Number(user.id) } } },
     include: {
-      owner: { select: { id: true, name: true, email: true } },
+      assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
       _count: { select: { issues: { where: { resolved: false } } } },
     },

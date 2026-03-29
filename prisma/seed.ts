@@ -41,30 +41,30 @@ async function main() {
     data: {
       title: 'HR Portal Redesign',
       description: 'Modernize the HR self-service portal',
-      owner_id: member1.id,
       start_date: new Date('2026-01-01'),
       deadline: new Date('2026-06-30'),
       status: ProjectStatus.InProgress,
+      assignees: { create: [{ user_id: member1.id }] },
     },
   })
   const p2 = await prisma.project.create({
     data: {
       title: 'Network Infrastructure Upgrade',
       description: 'Upgrade core switches and routers',
-      owner_id: member2.id,
       start_date: new Date('2026-02-01'),
       deadline: new Date('2026-05-31'),
       status: ProjectStatus.InProgress,
+      assignees: { create: [{ user_id: member2.id }] },
     },
   })
   const p3 = await prisma.project.create({
     data: {
       title: 'Data Warehouse Migration',
       description: 'Migrate legacy DW to cloud',
-      owner_id: member3.id,
       start_date: new Date('2026-01-15'),
       deadline: new Date('2026-07-31'),
       status: ProjectStatus.Pending,
+      assignees: { create: [{ user_id: member3.id }] },
     },
   })
 

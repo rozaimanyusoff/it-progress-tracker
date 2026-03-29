@@ -8,12 +8,14 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const user = session.user as any
-  const where = user.role === 'manager' ? {} : { owner_id: Number(user.id) }
+  const where = user.role === 'manager'
+    ? {}
+    : { assignees: { some: { user_id: Number(user.id) } } }
 
   const projects = await prisma.project.findMany({
     where,
     include: {
-      owner: { select: { id: true, name: true, email: true } },
+      assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
       _count: { select: { issues: { where: { resolved: false } } } },
     },
@@ -30,14 +32,18 @@ export async function POST(req: NextRequest) {
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
+  const assigneeIds: number[] = (body.assignee_ids ?? []).map(Number)
+
   const project = await prisma.project.create({
     data: {
       title: body.title,
       description: body.description,
-      owner_id: Number(body.owner_id),
       start_date: new Date(body.start_date),
       deadline: new Date(body.deadline),
       status: body.status || 'Pending',
+      assignees: {
+        create: assigneeIds.map(uid => ({ user_id: uid })),
+      },
     },
   })
 

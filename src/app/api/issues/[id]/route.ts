@@ -10,9 +10,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = session.user as any
 
   const body = await req.json()
+  const data: any = {}
+  if (body.resolved !== undefined) data.resolved = body.resolved
+  if ('assignee_id' in body) data.assignee_id = body.assignee_id ?? null
+
   const issue = await prisma.issue.update({
     where: { id: Number(id) },
-    data: { resolved: body.resolved },
+    data,
+    include: { assignee: { select: { id: true, name: true } } },
   })
 
   await prisma.auditLog.create({

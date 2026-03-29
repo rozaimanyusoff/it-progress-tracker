@@ -14,7 +14,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const project = await prisma.project.findUnique({
     where: { id: Number(id) },
     include: {
-      owner: { select: { id: true, name: true, email: true } },
+      assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
       updates: { include: { user: { select: { name: true } } }, orderBy: { created_at: 'desc' } },
       issues: { include: { user: { select: { name: true } } }, orderBy: { created_at: 'desc' } },
     },
@@ -49,7 +49,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{project.title}</h1>
             {project.description && <p className="text-slate-500 dark:text-slate-400 mt-1">{project.description}</p>}
             <div className="flex items-center gap-4 mt-3 text-sm text-slate-500 dark:text-slate-400">
-              <span>PIC: <span className="text-slate-700 dark:text-slate-300">{project.owner.name}</span></span>
+              <span>Assignees: <span className="text-slate-700 dark:text-slate-300">{project.assignees.map(a => a.user.name).join(', ') || '—'}</span></span>
               <span>Deadline: <span className="text-slate-700 dark:text-slate-300">{new Date(project.deadline).toLocaleDateString()}</span></span>
             </div>
           </div>

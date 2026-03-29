@@ -45,6 +45,31 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
+  events: {
+    async signIn({ user }) {
+      if (!user?.id) return
+      await prisma.auditLog.create({
+        data: {
+          user_id: Number(user.id),
+          action: 'LOGIN',
+          target_type: 'User',
+          target_id: Number(user.id),
+          metadata: { email: user.email },
+        },
+      }).catch(() => {})
+    },
+    async signOut({ token }) {
+      if (!token?.sub) return
+      await prisma.auditLog.create({
+        data: {
+          user_id: Number(token.sub),
+          action: 'LOGOUT',
+          target_type: 'User',
+          target_id: Number(token.sub),
+        },
+      }).catch(() => {})
+    },
+  },
   pages: { signIn: '/login' },
   session: { strategy: 'jwt' },
 }

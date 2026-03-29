@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     where,
     include: {
       project: true,
-      user: { select: { name: true } },
+      user: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true } },
     },
     orderBy: { created_at: 'desc' },
   })

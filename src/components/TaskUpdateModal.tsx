@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSession } from 'next-auth/react'
 
 interface TaskUpdateEntry {
   id: number
@@ -13,6 +14,7 @@ interface TaskUpdateEntry {
 interface Props {
   taskId: number
   taskTitle: string
+  moduleTitle: string | null
   featureTitle: string
   projectTitle: string
   currentStatus: string
@@ -22,6 +24,16 @@ interface Props {
 
 function isVideo(url: string) {
   return /\.(mp4|webm|mov)$/i.test(url)
+}
+
+function isDoc(url: string) {
+  return /\.(pdf|docx?|xlsx?)$/i.test(url)
+}
+
+function docLabel(url: string) {
+  const ext = url.split('.').pop()?.toUpperCase() ?? 'FILE'
+  const icons: Record<string, string> = { PDF: '📄', DOC: '📝', DOCX: '📝', XLS: '📊', XLSX: '📊' }
+  return { icon: icons[ext] ?? '📎', ext }
 }
 
 function timeAgo(dateStr: string) {
@@ -37,7 +49,7 @@ function timeAgo(dateStr: string) {
 const STATUS_LABEL: Record<string, string> = {
   Todo: 'To Do',
   InProgress: 'In Progress',
-  InReview: 'In Review',
+  InReview: 'To Review',
   Done: 'Done',
 }
 const STATUS_COLOR: Record<string, string> = {
@@ -50,12 +62,16 @@ const STATUS_COLOR: Record<string, string> = {
 export default function TaskUpdateModal({
   taskId,
   taskTitle,
+  moduleTitle,
   featureTitle,
   projectTitle,
   currentStatus,
   onClose,
   onStatusChange,
 }: Props) {
+  const { data: session } = useSession()
+  const isManager = (session?.user as any)?.role === 'manager'
+
   const [updates, setUpdates] = useState<TaskUpdateEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [notes, setNotes] = useState('')
@@ -65,6 +81,11 @@ export default function TaskUpdateModal({
   const [error, setError] = useState('')
   const [status, setStatus] = useState(currentStatus)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Manager review state
+  const [reviewComment, setReviewComment] = useState('')
+  const [reviewing, setReviewing] = useState(false)
+  const [reviewError, setReviewError] = useState('')
 
   useEffect(() => {
     fetch(`/api/tasks/${taskId}/updates`)
@@ -97,7 +118,6 @@ export default function TaskUpdateModal({
     setSubmitting(true)
 
     try {
-      // Upload files first
       let mediaUrls: string[] = []
       if (files.length > 0) {
         const fd = new FormData()
@@ -114,7 +134,6 @@ export default function TaskUpdateModal({
         mediaUrls = urls
       }
 
-      // Submit update
       const res = await fetch(`/api/tasks/${taskId}/updates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,7 +158,32 @@ export default function TaskUpdateModal({
     }
   }
 
-  const canMarkComplete = status === 'InProgress' || status === 'Todo'
+  async function handleReview(action: 'approve' | 'reject') {
+    setReviewError('')
+    setReviewing(true)
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/updates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: reviewComment.trim() || null, media_urls: [], review_action: action }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setReviewError(err.error ?? 'Failed to submit review')
+        return
+      }
+      const { update, newStatus } = await res.json()
+      setUpdates((prev) => [update, ...prev])
+      setReviewComment('')
+      setStatus(newStatus)
+      onStatusChange(taskId, newStatus)
+    } finally {
+      setReviewing(false)
+    }
+  }
+
+  // Form is locked when task is in review or done — developer has no more actions
+  const formLocked = status === 'InReview' || status === 'Done'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -149,7 +193,17 @@ export default function TaskUpdateModal({
         <div className="flex items-start justify-between p-5 border-b border-slate-200 dark:border-navy-700">
           <div className="flex-1 min-w-0 pr-4">
             <h2 className="font-semibold text-slate-900 dark:text-white text-base leading-tight">{taskTitle}</h2>
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 truncate">{featureTitle} · {projectTitle}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {moduleTitle && (
+                <>
+                  <span className="text-xs text-purple-600 dark:text-purple-400 font-medium truncate">{moduleTitle}</span>
+                  <span className="text-xs text-slate-300 dark:text-slate-600">›</span>
+                </>
+              )}
+              <span className="text-xs text-blue-600 dark:text-blue-400 truncate">{featureTitle}</span>
+              <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
+              <span className="text-xs text-slate-400 truncate">{projectTitle}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[status]}`}>
@@ -162,84 +216,137 @@ export default function TaskUpdateModal({
         <div className="flex-1 overflow-y-auto">
           {/* Update form */}
           <div className="p-5 border-b border-slate-200 dark:border-navy-700">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Progress Note</label>
-            <textarea
-              className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              rows={3}
-              placeholder="Describe what you've done, blockers, or next steps..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
 
-            {/* File previews */}
-            {previews.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {previews.map((url, i) => (
-                  <div key={i} className="relative group">
-                    {isVideo(files[i]?.name ?? '') ? (
-                      <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
-                    ) : (
-                      <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
-                    )}
-                    <button
-                      onClick={() => removeFile(i)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >×</button>
-                  </div>
-                ))}
+            {/* Manager review panel */}
+            {status === 'InReview' && isManager && (
+              <div className="mb-4 rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-4 space-y-3">
+                <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">Manager Review</p>
+                <textarea
+                  className="w-full bg-white dark:bg-navy-900 border border-yellow-300 dark:border-yellow-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+                  rows={3}
+                  placeholder="Add a review comment (optional)..."
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                />
+                {reviewError && <p className="text-xs text-red-500">{reviewError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleReview('approve')}
+                    disabled={reviewing}
+                    className="flex-1 py-1.5 text-sm font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                  >
+                    {reviewing ? 'Saving...' : '✓ Approve → Done'}
+                  </button>
+                  <button
+                    onClick={() => handleReview('reject')}
+                    disabled={reviewing}
+                    className="flex-1 py-1.5 text-sm font-medium bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+                  >
+                    {reviewing ? 'Saving...' : '↩ Reject → In Progress'}
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Actions row */}
-            <div className="flex items-center justify-between mt-3 gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 dark:border-navy-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors"
-                >
-                  <span>📎</span> Attach
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*,video/*"
-                  className="hidden"
-                  onChange={(e) => handleFiles(e.target.files)}
-                />
+            {/* Developer waiting banner */}
+            {status === 'InReview' && !isManager && (
+              <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+                <span className="text-yellow-600 dark:text-yellow-400 text-base">🔍</span>
+                <p className="text-xs text-yellow-700 dark:text-yellow-300 font-medium">
+                  Task submitted for review — waiting for manager approval. No further updates from developer.
+                </p>
               </div>
-
-              <div className="flex items-center gap-2">
-                {canMarkComplete && (
-                  <button
-                    onClick={() => handleSubmit(true)}
-                    disabled={submitting}
-                    className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50 transition-colors"
-                  >
-                    {submitting ? 'Saving...' : '✓ Mark Complete'}
-                  </button>
-                )}
-                <button
-                  onClick={() => handleSubmit(false)}
-                  disabled={submitting}
-                  className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
-                >
-                  {submitting ? 'Saving...' : 'Submit Update'}
-                </button>
-              </div>
-            </div>
-
-            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
-
-            {status === 'InReview' && (
-              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 rounded-lg">
-                Task is in review — waiting for manager approval.
-              </p>
             )}
             {status === 'Done' && (
-              <p className="text-xs text-green-600 dark:text-green-400 mt-2 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
-                Task completed.
-              </p>
+              <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <span className="text-green-600 dark:text-green-400 text-base">✓</span>
+                <p className="text-xs text-green-700 dark:text-green-300 font-medium">
+                  Task completed and approved.
+                </p>
+              </div>
+            )}
+
+            {!formLocked && (
+              <>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Progress Note</label>
+                <textarea
+                  className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  placeholder={status === 'Todo' ? 'Add a note to start working on this task...' : 'Describe what you\'ve done, blockers, or next steps...'}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+
+                {/* File previews before submit */}
+                {previews.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-slate-400 mb-1.5">{previews.length} file{previews.length > 1 ? 's' : ''} attached</p>
+                    <div className="flex flex-wrap gap-2">
+                      {previews.map((url, i) => (
+                        <div key={i} className="relative group w-20 h-20 shrink-0">
+                          {isVideo(files[i]?.name ?? '') ? (
+                            <>
+                              <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
+                              <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 pointer-events-none">
+                                <span className="text-white text-lg">▶</span>
+                              </span>
+                            </>
+                          ) : (
+                            <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
+                          )}
+                          <button
+                            onClick={() => removeFile(i)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >×</button>
+                          <p className="text-xs text-slate-400 truncate w-20 mt-0.5 text-center">{files[i]?.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions row */}
+                <div className="flex items-center justify-between mt-3 gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 dark:border-navy-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors"
+                    >
+                      <span>📎</span> Attach
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*,video/*"
+                      className="hidden"
+                      onChange={(e) => handleFiles(e.target.files)}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Submit for Review — only from InProgress */}
+                    {status === 'InProgress' && (
+                      <button
+                        onClick={() => handleSubmit(true)}
+                        disabled={submitting}
+                        className="px-3 py-1.5 text-sm bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg disabled:opacity-50 transition-colors font-medium"
+                      >
+                        {submitting ? 'Saving...' : '→ Submit for Review'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleSubmit(false)}
+                      disabled={submitting}
+                      className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors font-medium"
+                    >
+                      {submitting ? 'Saving...' : status === 'Todo' ? 'Start & Save Note' : 'Save Note'}
+                    </button>
+                  </div>
+                </div>
+
+                {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+              </>
             )}
           </div>
 
@@ -265,15 +372,31 @@ export default function TaskUpdateModal({
                       {u.notes && <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 whitespace-pre-wrap">{u.notes}</p>}
                       {u.media_urls.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {u.media_urls.map((url, i) => (
-                            isVideo(url) ? (
-                              <video key={i} src={url} controls className="max-w-xs rounded-lg border border-slate-200 dark:border-navy-600" style={{ maxHeight: 160 }} />
-                            ) : (
-                              <a key={i} href={url} target="_blank" rel="noreferrer">
-                                <img src={url} alt="" className="max-w-xs rounded-lg border border-slate-200 dark:border-navy-600 hover:opacity-90 transition-opacity" style={{ maxHeight: 160 }} />
+                          {u.media_urls.map((url, i) => {
+                            if (isVideo(url)) return (
+                              <a key={i} href={url} target="_blank" rel="noreferrer" className="relative group block w-20 h-20 shrink-0">
+                                <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
+                                <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 group-hover:bg-black/50 transition-colors">
+                                  <span className="text-white text-xl">▶</span>
+                                </span>
                               </a>
                             )
-                          ))}
+                            if (isDoc(url)) {
+                              const { icon, ext } = docLabel(url)
+                              return (
+                                <a key={i} href={url} target="_blank" rel="noreferrer"
+                                  className="w-20 h-20 shrink-0 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 hover:bg-slate-100 dark:hover:bg-navy-700 transition-colors">
+                                  <span className="text-2xl">{icon}</span>
+                                  <span className="text-xs text-slate-500 mt-0.5">{ext}</span>
+                                </a>
+                              )
+                            }
+                            return (
+                              <a key={i} href={url} target="_blank" rel="noreferrer" className="block w-20 h-20 shrink-0 group">
+                                <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600 group-hover:opacity-90 transition-opacity" />
+                              </a>
+                            )
+                          })}
                         </div>
                       )}
                     </div>

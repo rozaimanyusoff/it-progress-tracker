@@ -25,8 +25,16 @@ export async function GET(req: NextRequest) {
       ? { role: 'member' as const, is_active: true }
       : { id: Number(user.id), is_active: true }
 
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  const now = new Date()
+
+  // Build 4 week boundaries (most recent week last)
+  const weeks = Array.from({ length: 4 }, (_, i) => {
+    const end = new Date(now)
+    end.setDate(now.getDate() - i * 7)
+    const start = new Date(end)
+    start.setDate(end.getDate() - 7)
+    return { start, end, label: `W${4 - i}` }
+  }).reverse()
 
   const users = await prisma.user.findMany({
     where: userWhere,
@@ -85,19 +93,27 @@ export async function GET(req: NextRequest) {
         return sum + diff / (1000 * 60 * 60 * 24)
       }, 0)
 
-    // Weekly metrics: tasks assigned (created) in last 7 days
-    const weeklyTasksAssigned = tasks.filter(
-      (t) => new Date(t.created_at) >= sevenDaysAgo
-    ).length
+    // 4-week trend: tasks assigned per week
+    const weeklyTasksTrend = weeks.map((w) => ({
+      week: w.label,
+      count: u.assigned_tasks.filter((t) => {
+        const created = new Date(t.created_at)
+        return created >= w.start && created < w.end
+      }).length,
+    }))
 
-    // Weekly time spent: sum of time for tasks with actual_start in last 7 days
-    const weeklyTimeSpentHours = tasks
-      .filter((t) => t.actual_start && t.actual_end && new Date(t.actual_start) >= sevenDaysAgo)
-      .reduce((sum, t) => {
-        const diff =
-          new Date(t.actual_end!).getTime() - new Date(t.actual_start!).getTime()
-        return sum + diff / (1000 * 60 * 60)
-      }, 0)
+    // 4-week trend: time spent per week (hours)
+    const weeklyTimeTrend = weeks.map((w) => ({
+      week: w.label,
+      hours: Math.round(
+        u.assigned_tasks
+          .filter((t) => t.actual_start && t.actual_end && new Date(t.actual_start) >= w.start && new Date(t.actual_start) < w.end)
+          .reduce((sum, t) => {
+            const diff = new Date(t.actual_end!).getTime() - new Date(t.actual_start!).getTime()
+            return sum + diff / (1000 * 60 * 60)
+          }, 0) * 10
+      ) / 10,
+    }))
 
     return {
       id: u.id,
@@ -109,8 +125,8 @@ export async function GET(req: NextRequest) {
       tasksDelayed,
       estimatedMandays,
       totalSpentDays: Math.round(totalSpentDays * 10) / 10,
-      weeklyTasksAssigned,
-      weeklyTimeSpentHours: Math.round(weeklyTimeSpentHours * 10) / 10,
+      weeklyTasksTrend,
+      weeklyTimeTrend,
     }
   })
 

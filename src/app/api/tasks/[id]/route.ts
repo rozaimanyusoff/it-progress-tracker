@@ -58,19 +58,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (body.status !== undefined) {
     updateData.status = body.status
+    const prevStatus = existing.status
+    const newStatus  = body.status
 
-    // Auto-set actual_start when moving to InProgress
-    if (body.status === 'InProgress' && !existing.actual_start) {
+    // ── Time tracking ──────────────────────────────────────────────
+    // Entering InProgress: start the timer
+    if (newStatus === 'InProgress' && prevStatus !== 'InProgress') {
+      updateData.time_started_at = new Date()
+    }
+
+    // Leaving InProgress: accumulate elapsed seconds and clear start
+    if (prevStatus === 'InProgress' && newStatus !== 'InProgress' && existing.time_started_at) {
+      const elapsed = Math.floor((Date.now() - existing.time_started_at.getTime()) / 1000)
+      updateData.time_spent_seconds = (existing.time_spent_seconds ?? 0) + elapsed
+      updateData.time_started_at = null
+    }
+
+    // ── actual_start / actual_end (for feature date roll-up) ───────
+    if (newStatus === 'InProgress' && !existing.actual_start) {
       updateData.actual_start = new Date()
     }
-
-    // Auto-set actual_end when Done
-    if (body.status === 'Done' && !existing.actual_end) {
+    if (newStatus === 'Done' && !existing.actual_end) {
       updateData.actual_end = new Date()
     }
-
-    // Clear actual_end if moved back from Done
-    if (existing.status === 'Done' && body.status !== 'Done') {
+    if (prevStatus === 'Done' && newStatus !== 'Done') {
       updateData.actual_end = null
     }
   }

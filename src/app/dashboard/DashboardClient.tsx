@@ -10,7 +10,7 @@ interface Project {
   status: string
   deadline: string
   start_date: string
-  owner: { id: number; name: string }
+  assignees: { user: { id: number; name: string } }[]
   updates: { progress_pct: number; status: string; created_at: string }[]
   _count: { issues: number }
 }
@@ -40,12 +40,12 @@ function CircleProgress({ value }: { value: number }) {
   const trackColor = 'var(--circle-track, #e2e8f0)'
 
   return (
-    <div className="flex flex-col items-center gap-0.5 shrink-0">
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
         <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" stroke={trackColor} className="dark:[--circle-track:#162d4a]" />
         <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" stroke={color} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
       </svg>
-      <span className="text-xs font-bold" style={{ color }}>{value}%</span>
+      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold" style={{ color }}>{value}%</span>
     </div>
   )
 }
@@ -65,7 +65,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
 
   // Edit project (manager)
   const [showEditModal, setShowEditModal] = useState(false)
-  const [editForm, setEditForm] = useState({ title: '', description: '', status: '', deadline: '', owner_id: '' })
+  const [editForm, setEditForm] = useState({ title: '', description: '', status: '', deadline: '', assignee_ids: [] as number[] })
   const [members, setMembers] = useState<{ id: number; name: string }[]>([])
 
   const [issueForm, setIssueForm] = useState({ title: '', description: '', severity: 'medium' })
@@ -83,7 +83,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
       description: project.description ?? '',
       status: project.status,
       deadline: project.deadline.slice(0, 10),
-      owner_id: String(project.owner.id),
+      assignee_ids: project.assignees.map(a => a.user.id),
     })
     setShowEditModal(true)
   }
@@ -107,7 +107,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
       const updated = await res.json()
       setLocalProjects(prev => prev.map(p =>
         p.id === selectedProject.id
-          ? { ...p, title: updated.title, description: updated.description, status: updated.status, deadline: updated.deadline, owner: members.find(m => m.id === Number(editForm.owner_id)) ? { id: Number(editForm.owner_id), name: members.find(m => m.id === Number(editForm.owner_id))!.name } : p.owner }
+          ? { ...p, title: updated.title, description: updated.description, status: updated.status, deadline: updated.deadline, assignees: members.filter(m => editForm.assignee_ids.includes(m.id)).map(m => ({ user: { id: m.id, name: m.name } })) }
           : p
       ))
     }
@@ -211,7 +211,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                       <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm truncate mb-1">{project.description}</p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-slate-400 dark:text-slate-500">
-                      <span>PIC: {project.owner.name}</span>
+                      <span>Assignees: {project.assignees.map(a => a.user.name).join(', ') || '—'}</span>
                       <span>Deadline: {new Date(project.deadline).toLocaleDateString()}</span>
                       {project._count.issues > 0 && (
                         <span className="text-red-500 dark:text-red-400">{project._count.issues} open issue(s)</span>
@@ -220,6 +220,12 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors whitespace-nowrap text-center"
+                    >
+                      View
+                    </Link>
                     {isManager ? (
                       <button
                         onClick={() => openEdit(project)}
@@ -230,7 +236,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                     ) : (
                       <button
                         onClick={() => openUpdate(project)}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors whitespace-nowrap"
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-300 text-xs rounded-lg border border-slate-200 dark:border-navy-600 transition-colors whitespace-nowrap"
                       >
                         Update
                       </button>
@@ -282,10 +288,28 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                 </div>
               </div>
               <div>
-                <label className={labelClass}>PIC (Owner)</label>
-                <select value={editForm.owner_id} onChange={e => setEditForm({ ...editForm, owner_id: e.target.value })} className={inputClass}>
-                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                <label className={labelClass}>Assignees</label>
+                <div className="rounded-lg border border-slate-300 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 divide-y divide-slate-200 dark:divide-navy-700 max-h-40 overflow-y-auto">
+                  {members.map(m => (
+                    <label key={m.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-navy-800 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={editForm.assignee_ids.includes(m.id)}
+                        onChange={() => setEditForm(prev => ({
+                          ...prev,
+                          assignee_ids: prev.assignee_ids.includes(m.id)
+                            ? prev.assignee_ids.filter(x => x !== m.id)
+                            : [...prev.assignee_ids, m.id],
+                        }))}
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-slate-800 dark:text-slate-200">{m.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {editForm.assignee_ids.length > 0 && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{editForm.assignee_ids.length} member(s) selected</p>
+                )}
               </div>
             </div>
             <div className="flex gap-3 mt-6">

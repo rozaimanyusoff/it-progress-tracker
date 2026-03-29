@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const project = await prisma.project.findUnique({
     where: { id: Number(id) },
     include: {
-      owner: { select: { id: true, name: true, email: true } },
+      assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
       updates: { include: { user: { select: { name: true } } }, orderBy: { created_at: 'desc' } },
       issues: { include: { user: { select: { name: true } } }, orderBy: { created_at: 'desc' } },
     },
@@ -29,6 +29,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
+  const assigneeIds: number[] = (body.assignee_ids ?? []).map(Number)
+
   const project = await prisma.project.update({
     where: { id: Number(id) },
     data: {
@@ -36,7 +38,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       description: body.description,
       status: body.status,
       deadline: body.deadline ? new Date(body.deadline) : undefined,
-      owner_id: body.owner_id ? Number(body.owner_id) : undefined,
+      assignees: assigneeIds.length > 0
+        ? {
+            deleteMany: {},
+            create: assigneeIds.map(uid => ({ user_id: uid })),
+          }
+        : undefined,
     },
   })
 

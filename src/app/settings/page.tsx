@@ -1,0 +1,808 @@
+'use client'
+import { useState, useEffect, useRef } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import Layout from '@/components/Layout'
+
+// ── Types ─────────────────────────────────────────────────────────
+type User = { id: number; name: string; email: string; role: string; is_active: boolean }
+type Feature = {
+  id: number; title: string; description: string | null; mandays: number
+  planned_start: string; planned_end: string; status: string
+  module: { id: number; title: string } | null
+  project: { id: number; title: string }
+}
+type Project = { id: number; title: string }
+type Settings = {
+  brand_name: string; brand_logo_url: string; theme_color: string
+  smtp_host: string; smtp_port: string; smtp_user: string; smtp_from: string
+}
+
+const TABS = ['Team Members', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
+type Tab = typeof TABS[number]
+
+const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1'
+
+// ── Toast ─────────────────────────────────────────────────────────
+function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
+  return (
+    <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-lg text-sm font-medium shadow-lg ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+      {msg}
+    </div>
+  )
+}
+
+// ── Team Members Tab ──────────────────────────────────────────────
+function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [users, setUsers]       = useState<User[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving]     = useState(false)
+  const [form, setForm]         = useState({ name: '', email: '', role: 'member' })
+
+  useEffect(() => {
+    fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(u); setLoading(false) })
+  }, [])
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true)
+    const res = await fetch('/api/admin/users', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    setSaving(false)
+    if (res.ok) {
+      const fresh = await fetch('/api/admin/users').then(r => r.json())
+      setUsers(fresh); setForm({ name: '', email: '', role: 'member' }); setShowForm(false)
+      showToast('success', `Invitation sent to ${form.email}`)
+    } else {
+      showToast('error', (await res.json()).error || 'Failed to add user')
+    }
+  }
+
+  async function handleDelete(user: User) {
+    if (!confirm(`Remove ${user.name}? This cannot be undone.`)) return
+    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
+    if (res.ok) { setUsers(prev => prev.filter(u => u.id !== user.id)); showToast('success', `${user.name} removed`) }
+    else showToast('error', 'Failed to remove user')
+  }
+
+  async function handleResend(user: User) {
+    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'POST' })
+    if (res.ok) showToast('success', `Activation email resent to ${user.email}`)
+    else showToast('error', (await res.json()).error || 'Failed to resend')
+  }
+
+  if (loading) return <p className="text-slate-400 py-8 text-center">Loading...</p>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400">{users.length} member{users.length !== 1 ? 's' : ''}</p>
+        <button onClick={() => setShowForm(v => !v)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
+          + Add Member
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-5 mb-5">
+          <h3 className="font-semibold text-slate-800 dark:text-white mb-4 text-sm">New Member</h3>
+          <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div><label className={labelClass}>Full Name</label><input required className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ahmad Razif" /></div>
+            <div><label className={labelClass}>Email</label><input required type="email" className={inputClass} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="ahmad@company.com" /></div>
+            <div><label className={labelClass}>Role</label>
+              <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                <option value="member">Member</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+            <div className="sm:col-span-3 flex gap-3">
+              <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">{saving ? 'Sending...' : 'Send Invitation'}</button>
+              <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
+              <th className="text-left px-5 py-3 font-medium">Name</th>
+              <th className="text-left px-5 py-3 font-medium">Role</th>
+              <th className="text-left px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.length === 0 && <tr><td colSpan={4} className="px-5 py-10 text-center text-slate-400">No members yet.</td></tr>}
+            {users.map(user => (
+              <tr key={user.id} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">{user.name[0].toUpperCase()}</div>
+                    <div><p className="font-medium text-slate-900 dark:text-white">{user.name}</p><p className="text-xs text-slate-400">{user.email}</p></div>
+                  </div>
+                </td>
+                <td className="px-5 py-3">
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'manager' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>{user.role}</span>
+                </td>
+                <td className="px-5 py-3">
+                  {user.is_active
+                    ? <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400 text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>Active</span>
+                    : <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>Pending</span>}
+                </td>
+                <td className="px-5 py-3 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    {!user.is_active && <button onClick={() => handleResend(user)} className="px-3 py-1 text-xs text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded-md hover:border-blue-500">Resend</button>}
+                    <button onClick={() => handleDelete(user)} className="px-3 py-1 text-xs text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 rounded-md hover:border-red-400">Remove</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Features Tab ──────────────────────────────────────────────────
+function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [projects, setProjects]   = useState<Project[]>([])
+  const [features, setFeatures]   = useState<Feature[]>([])
+  const [projectId, setProjectId] = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [showForm, setShowForm]   = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [form, setForm] = useState({ title: '', description: '', mandays: '1', planned_start: '', planned_end: '' })
+
+  useEffect(() => {
+    fetch('/api/projects').then(r => r.json()).then((data: any[]) =>
+      setProjects(data.map(p => ({ id: p.id, title: p.title })))
+    )
+  }, [])
+
+  useEffect(() => {
+    if (!projectId) { setFeatures([]); return }
+    setLoading(true)
+    fetch(`/api/features?project_id=${projectId}`).then(r => r.json()).then(data => { setFeatures(data); setLoading(false) })
+  }, [projectId])
+
+  function calcMandays(start: string, end: string) {
+    if (!start || !end) return form.mandays
+    const s = new Date(start), e = new Date(end)
+    if (e < s) return '1'
+    let days = 0; const cur = new Date(s)
+    while (cur <= e) { const d = cur.getDay(); if (d !== 0 && d !== 6) days++; cur.setDate(cur.getDate() + 1) }
+    return String(Math.max(1, days))
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault(); if (!projectId) return
+    setSaving(true)
+    const res = await fetch('/api/features', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: Number(projectId), title: form.title, description: form.description || null, mandays: Number(form.mandays), planned_start: form.planned_start, planned_end: form.planned_end }),
+    })
+    setSaving(false)
+    if (res.ok) {
+      const fresh = await fetch(`/api/features?project_id=${projectId}`).then(r => r.json())
+      setFeatures(fresh); setForm({ title: '', description: '', mandays: '1', planned_start: '', planned_end: '' }); setShowForm(false)
+      showToast('success', 'Feature added')
+    } else showToast('error', (await res.json()).error || 'Failed to add feature')
+  }
+
+  const statusColor: Record<string, string> = {
+    Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+    InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    OnHold: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300',
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <select value={projectId} onChange={e => setProjectId(e.target.value)}
+          className="text-sm bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Select project...</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select>
+        {projectId && (
+          <button onClick={() => setShowForm(v => !v)} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
+            + Add Feature
+          </button>
+        )}
+      </div>
+
+      {showForm && projectId && (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-5 mb-5">
+          <h3 className="font-semibold text-slate-800 dark:text-white mb-4 text-sm">New Feature</h3>
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div><label className={labelClass}>Title *</label><input required className={inputClass} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
+            <div><label className={labelClass}>Description</label><textarea className={`${inputClass} resize-none`} rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Start *</label>
+                <input type="date" required className={inputClass} value={form.planned_start}
+                  onChange={e => setForm(f => ({ ...f, planned_start: e.target.value, mandays: calcMandays(e.target.value, f.planned_end) }))} />
+              </div>
+              <div>
+                <label className={labelClass}>End *</label>
+                <input type="date" required className={inputClass} value={form.planned_end}
+                  onChange={e => setForm(f => ({ ...f, planned_end: e.target.value, mandays: calcMandays(f.planned_start, e.target.value) }))} />
+              </div>
+              <div><label className={labelClass}>Mandays</label><input type="number" min="1" className={inputClass} value={form.mandays} onChange={e => setForm(f => ({ ...f, mandays: e.target.value }))} /></div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">{saving ? 'Saving...' : 'Add Feature'}</button>
+              <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {!projectId && <p className="text-slate-400 text-sm py-8 text-center">Select a project to view features.</p>}
+      {projectId && loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
+      {projectId && !loading && features.length === 0 && <p className="text-slate-400 text-sm py-8 text-center">No features yet.</p>}
+      {!loading && features.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
+                <th className="text-left px-5 py-3 font-medium">Feature</th>
+                <th className="text-left px-5 py-3 font-medium">Module</th>
+                <th className="text-left px-5 py-3 font-medium">Period</th>
+                <th className="text-left px-5 py-3 font-medium">Mandays</th>
+                <th className="text-left px-5 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {features.map(f => (
+                <tr key={f.id} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700">
+                  <td className="px-5 py-3">
+                    <p className="font-medium text-slate-900 dark:text-white">{f.title}</p>
+                    {f.description && <p className="text-xs text-slate-400 truncate max-w-xs">{f.description}</p>}
+                  </td>
+                  <td className="px-5 py-3 text-slate-500 dark:text-slate-400 text-xs">{f.module?.title ?? '—'}</td>
+                  <td className="px-5 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                    {new Date(f.planned_start).toLocaleDateString()} → {new Date(f.planned_end).toLocaleDateString()}
+                  </td>
+                  <td className="px-5 py-3 text-slate-600 dark:text-slate-300 text-xs">{f.mandays}d</td>
+                  <td className="px-5 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[f.status] ?? statusColor.Pending}`}>{f.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Branding Tab ──────────────────────────────────────────────────
+function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [form, setForm]         = useState({ brand_name: '', brand_logo_url: '', theme_color: 'blue' })
+  const [saving, setSaving]     = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [preview, setPreview]   = useState<string | null>(null)
+  const fileInputRef            = useRef<HTMLInputElement>(null)
+
+  const COLORS = ['blue', 'indigo', 'violet', 'emerald', 'rose', 'orange', 'slate']
+  const COLOR_PREVIEW: Record<string, string> = {
+    blue: 'bg-blue-600', indigo: 'bg-indigo-600', violet: 'bg-violet-600',
+    emerald: 'bg-emerald-600', rose: 'bg-rose-600', orange: 'bg-orange-500', slate: 'bg-slate-700',
+  }
+
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      setForm({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url, theme_color: s.theme_color })
+      if (s.brand_logo_url) setPreview(s.brand_logo_url)
+    })
+  }, [])
+
+  async function handleLogoFile(file: File) {
+    setUploading(true)
+    setPreview(URL.createObjectURL(file))
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/upload/logo', { method: 'POST', body: fd })
+    setUploading(false)
+    if (res.ok) {
+      const { url } = await res.json()
+      setForm(f => ({ ...f, brand_logo_url: url }))
+    } else {
+      const err = await res.json()
+      showToast('error', err.error ?? 'Upload failed')
+      setPreview(form.brand_logo_url || null)
+    }
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true)
+    const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+    setSaving(false)
+    if (res.ok) showToast('success', 'Branding saved')
+    else showToast('error', 'Failed to save')
+  }
+
+  return (
+    <form onSubmit={save} className="max-w-lg space-y-5">
+      <div>
+        <label className={labelClass}>Brand / App Name</label>
+        <input className={inputClass} value={form.brand_name} onChange={e => setForm(f => ({ ...f, brand_name: e.target.value }))} placeholder="IT Tracker" />
+      </div>
+
+      <div>
+        <label className={labelClass}>Logo <span className="text-slate-400 font-normal">(JPEG, PNG, WebP, SVG — max 2MB)</span></label>
+
+        {/* Drop zone */}
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleLogoFile(f) }}
+          className="mt-1 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 dark:border-navy-600 rounded-xl p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
+        >
+          {uploading ? (
+            <p className="text-sm text-slate-400">Uploading...</p>
+          ) : preview ? (
+            <img src={preview} alt="logo" className="h-14 object-contain rounded" />
+          ) : (
+            <>
+              <span className="text-2xl text-slate-300">🖼</span>
+              <p className="text-sm text-slate-400">Click or drag & drop to upload logo</p>
+            </>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoFile(f) }}
+        />
+
+        {preview && (
+          <button type="button" onClick={() => { setPreview(null); setForm(f => ({ ...f, brand_logo_url: '' })) }}
+            className="mt-2 text-xs text-red-500 hover:text-red-700">
+            Remove logo
+          </button>
+        )}
+      </div>
+
+      <div>
+        <label className={labelClass}>Theme Color</label>
+        <div className="flex gap-2 flex-wrap mt-1">
+          {COLORS.map(c => (
+            <button key={c} type="button" onClick={() => setForm(f => ({ ...f, theme_color: c }))}
+              className={`w-8 h-8 rounded-full ${COLOR_PREVIEW[c]} transition-all ${form.theme_color === c ? 'ring-2 ring-offset-2 ring-blue-500 scale-110' : 'opacity-70 hover:opacity-100'}`}
+              title={c}
+            />
+          ))}
+        </div>
+        <p className="text-xs text-slate-400 mt-2">Selected: <span className="font-medium capitalize">{form.theme_color}</span></p>
+      </div>
+
+      <button type="submit" disabled={saving || uploading} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+        {saving ? 'Saving...' : 'Save Branding'}
+      </button>
+    </form>
+  )
+}
+
+// ── Email Tab ─────────────────────────────────────────────────────
+function EmailTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [form, setForm] = useState({ smtp_host: '', smtp_port: '587', smtp_user: '', smtp_from: '', smtp_pass: '' })
+  const [saving, setSaving] = useState(false)
+  const [showPass, setShowPass] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(s => setForm(f => ({ ...f, smtp_host: s.smtp_host, smtp_port: s.smtp_port, smtp_user: s.smtp_user, smtp_from: s.smtp_from })))
+  }, [])
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true)
+    const body: any = { smtp_host: form.smtp_host, smtp_port: form.smtp_port, smtp_user: form.smtp_user, smtp_from: form.smtp_from }
+    if (form.smtp_pass) body.smtp_pass = form.smtp_pass
+    const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    setSaving(false)
+    if (res.ok) showToast('success', 'Email settings saved')
+    else showToast('error', 'Failed to save')
+  }
+
+  return (
+    <form onSubmit={save} className="max-w-lg space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className={labelClass}>SMTP Host</label>
+          <input className={inputClass} value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com" />
+        </div>
+        <div>
+          <label className={labelClass}>SMTP Port</label>
+          <input className={inputClass} value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587" />
+        </div>
+      </div>
+      <div>
+        <label className={labelClass}>SMTP Username</label>
+        <input className={inputClass} value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com" />
+      </div>
+      <div>
+        <label className={labelClass}>SMTP Password</label>
+        <div className="relative">
+          <input type={showPass ? 'text' : 'password'} className={inputClass} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="Leave blank to keep existing" />
+          <button type="button" onClick={() => setShowPass(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600">
+            {showPass ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className={labelClass}>From Address</label>
+        <input className={inputClass} value={form.smtp_from} onChange={e => setForm(f => ({ ...f, smtp_from: e.target.value }))} placeholder="IT Tracker <no-reply@company.com>" />
+      </div>
+      <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+        {saving ? 'Saving...' : 'Save Email Settings'}
+      </button>
+    </form>
+  )
+}
+
+// ── Database Tab ──────────────────────────────────────────────────
+function DatabaseTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [form, setForm] = useState({ db_host: '', db_port: '5432', db_name: '', db_user: '', db_pass: '' })
+  const [saving, setSaving] = useState(false)
+  const [showPass, setShowPass] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(s =>
+      setForm(f => ({ ...f, db_host: s.db_host, db_port: s.db_port, db_name: s.db_name, db_user: s.db_user }))
+    )
+  }, [])
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true)
+    const body: any = { db_host: form.db_host, db_port: form.db_port, db_name: form.db_name, db_user: form.db_user }
+    if (form.db_pass) body.db_pass = form.db_pass
+    const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    setSaving(false)
+    if (res.ok) showToast('success', 'Database settings saved — restart required to apply')
+    else showToast('error', 'Failed to save')
+  }
+
+  return (
+    <form onSubmit={save} className="max-w-lg space-y-4">
+      <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-2">
+        <span className="text-amber-500 text-base mt-0.5">⚠</span>
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          Changes are saved to the database and take effect after a server restart. The active connection uses the current <code className="font-mono">DATABASE_URL</code> environment variable.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2">
+          <label className={labelClass}>Host</label>
+          <input className={inputClass} value={form.db_host} onChange={e => setForm(f => ({ ...f, db_host: e.target.value }))} placeholder="localhost" />
+        </div>
+        <div>
+          <label className={labelClass}>Port</label>
+          <input className={inputClass} value={form.db_port} onChange={e => setForm(f => ({ ...f, db_port: e.target.value }))} placeholder="5432" />
+        </div>
+      </div>
+
+      <div>
+        <label className={labelClass}>Database Name</label>
+        <input className={inputClass} value={form.db_name} onChange={e => setForm(f => ({ ...f, db_name: e.target.value }))} placeholder="it_tracker" />
+      </div>
+
+      <div>
+        <label className={labelClass}>Username</label>
+        <input className={inputClass} value={form.db_user} onChange={e => setForm(f => ({ ...f, db_user: e.target.value }))} placeholder="postgres" />
+      </div>
+
+      <div>
+        <label className={labelClass}>Password</label>
+        <div className="relative">
+          <input type={showPass ? 'text' : 'password'} className={inputClass} value={form.db_pass}
+            onChange={e => setForm(f => ({ ...f, db_pass: e.target.value }))} placeholder="Leave blank to keep existing" />
+          <button type="button" onClick={() => setShowPass(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            {showPass ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+
+      <div className="pt-1 flex items-center gap-4">
+        <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save Database Settings'}
+        </button>
+        <p className="text-xs text-slate-400">Current connection: PostgreSQL</p>
+      </div>
+    </form>
+  )
+}
+
+// ── Backup & Restore Tab ──────────────────────────────────────────
+function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [backups, setBackups]         = useState<any[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [creating, setCreating]       = useState(false)
+  const [restoring, setRestoring]     = useState<string | null>(null)
+  const [uploading, setUploading]     = useState(false)
+  const [confirmRestore, setConfirmRestore] = useState<string | null>(null)
+  const fileInputRef                  = useRef<HTMLInputElement>(null)
+
+  function loadBackups() {
+    setLoading(true)
+    fetch('/api/backup').then(r => r.json()).then(d => { setBackups(d); setLoading(false) })
+  }
+
+  useEffect(() => { loadBackups() }, [])
+
+  async function createBackup() {
+    setCreating(true)
+    const res = await fetch('/api/backup', { method: 'POST' })
+    setCreating(false)
+    if (res.ok) { showToast('success', 'Backup created'); loadBackups() }
+    else showToast('error', (await res.json()).error ?? 'Backup failed')
+  }
+
+  async function restoreFromFile(file: File) {
+    setUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/backup/restore', { method: 'POST', body: fd })
+    setUploading(false)
+    if (res.ok) showToast('success', 'Restore completed — please refresh the page')
+    else showToast('error', (await res.json()).error ?? 'Restore failed')
+  }
+
+  async function restoreFromBackup(filename: string) {
+    setRestoring(filename)
+    const res = await fetch('/api/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    })
+    setRestoring(null)
+    setConfirmRestore(null)
+    if (res.ok) showToast('success', 'Restore completed — please refresh the page')
+    else showToast('error', (await res.json()).error ?? 'Restore failed')
+  }
+
+  function formatSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  return (
+    <div className="max-w-2xl">
+      {/* Warning */}
+      <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-6">
+        <span className="text-amber-500 text-base mt-0.5">⚠</span>
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          Restore will <strong>overwrite all current data</strong> with the backup. This cannot be undone. Backup files are saved to <code className="font-mono">/uploads/backup/</code>.
+        </p>
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-wrap gap-3 mb-6">
+        <button onClick={createBackup} disabled={creating}
+          className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
+          {creating ? 'Creating backup...' : '↓ Create Backup Now'}
+        </button>
+        <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-50">
+          {uploading ? 'Uploading...' : '↑ Restore from File'}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".json" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) restoreFromFile(f); e.target.value = '' }} />
+      </div>
+
+      {/* Backup list */}
+      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Saved Backups</h3>
+      {loading && <p className="text-slate-400 text-sm py-4">Loading...</p>}
+      {!loading && backups.length === 0 && (
+        <p className="text-slate-400 text-sm py-4">No backups yet. Create your first backup above.</p>
+      )}
+      {!loading && backups.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800 divide-y divide-slate-100 dark:divide-navy-700">
+          {backups.map(b => (
+            <div key={b.filename} className="flex items-center gap-3 px-5 py-3">
+              <span className="text-lg">🗄</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{b.filename}</p>
+                <p className="text-xs text-slate-400">{new Date(b.created_at).toLocaleString()} · {formatSize(b.size)}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a href={b.url} download className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700">
+                  Download
+                </a>
+                <button
+                  onClick={() => setConfirmRestore(b.filename)}
+                  disabled={restoring === b.filename}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-orange-300 dark:border-orange-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 disabled:opacity-50"
+                >
+                  {restoring === b.filename ? 'Restoring...' : 'Restore'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Confirm restore modal */}
+      {confirmRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white dark:bg-navy-800 rounded-xl shadow-xl w-full max-w-sm p-6 border border-slate-200 dark:border-navy-700">
+            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Confirm Restore</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">
+              This will overwrite <strong>all current data</strong> with:
+            </p>
+            <p className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-navy-900 px-3 py-2 rounded-lg mb-4 break-all">{confirmRestore}</p>
+            <div className="flex gap-3">
+              <button onClick={() => restoreFromBackup(confirmRestore)} disabled={!!restoring}
+                className="flex-1 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+                {restoring ? 'Restoring...' : 'Yes, Restore'}
+              </button>
+              <button onClick={() => setConfirmRestore(null)}
+                className="flex-1 py-2 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-300 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-navy-700">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Audit Logs Tab ────────────────────────────────────────────────
+function AuditLogsTab() {
+  const [logs, setLogs]         = useState<any[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [filterAction, setFilterAction] = useState('')
+  const [filterUser, setFilterUser]     = useState('')
+  const [users, setUsers]       = useState<{ id: number; name: string }[]>([])
+
+  useEffect(() => {
+    fetch('/api/admin/users').then(r => r.json()).then(setUsers)
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (filterAction) params.set('action', filterAction)
+    if (filterUser)   params.set('user_id', filterUser)
+    fetch(`/api/audit-logs?${params}`).then(r => r.json()).then(d => { setLogs(d); setLoading(false) })
+  }, [filterAction, filterUser])
+
+  const ACTION_COLORS: Record<string, string> = {
+    CREATE:          'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+    UPDATE:          'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+    DELETE:          'bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+    EXPORT:          'bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400',
+    LOGIN:           'bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400',
+    LOGOUT:          'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
+    CHANGE_PASSWORD: 'bg-orange-50 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    BACKUP:          'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
+    RESTORE:         'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
+  }
+
+  const ALL_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'EXPORT', 'LOGIN', 'LOGOUT', 'CHANGE_PASSWORD', 'BACKUP', 'RESTORE']
+  const selectCls = 'text-sm bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500'
+
+  return (
+    <div>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <select value={filterAction} onChange={e => setFilterAction(e.target.value)} className={selectCls}>
+          <option value="">All Actions</option>
+          {ALL_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={filterUser} onChange={e => setFilterUser(e.target.value)} className={selectCls}>
+          <option value="">All Users</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+        {(filterAction || filterUser) && (
+          <button onClick={() => { setFilterAction(''); setFilterUser('') }} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            Clear
+          </button>
+        )}
+        <span className="ml-auto text-xs text-slate-400">{logs.length} entries</span>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
+              <th className="text-left px-5 py-3 font-medium">Time</th>
+              <th className="text-left px-5 py-3 font-medium">User</th>
+              <th className="text-left px-5 py-3 font-medium">Action</th>
+              <th className="text-left px-5 py-3 font-medium">Target</th>
+              <th className="text-left px-5 py-3 font-medium">Details</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
+            {loading && <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400">Loading...</td></tr>}
+            {!loading && logs.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400">No logs found.</td></tr>}
+            {logs.map(log => (
+              <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
+                <td className="px-5 py-3 text-slate-400 text-xs whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                <td className="px-5 py-3">
+                  <p className="text-slate-900 dark:text-white text-sm font-medium">{log.user.name}</p>
+                  <p className="text-xs text-slate-400">{log.user.email}</p>
+                </td>
+                <td className="px-5 py-3">
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${ACTION_COLORS[log.action] ?? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'}`}>
+                    {log.action}
+                  </span>
+                </td>
+                <td className="px-5 py-3 text-slate-600 dark:text-slate-300 text-xs">{log.target_type} #{log.target_id}</td>
+                <td className="px-5 py-3 text-slate-400 text-xs font-mono max-w-xs truncate">
+                  {log.metadata ? JSON.stringify(log.metadata) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────
+export default function SettingsPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<Tab>('Team Members')
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!session || (session.user as any).role !== 'manager') router.replace('/dashboard')
+  }, [session, status, router])
+
+  function showToast(type: 'success' | 'error', msg: string) {
+    setToast({ type, msg })
+    setTimeout(() => setToast(null), 4000)
+  }
+
+  return (
+    <Layout>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Manage team, features, branding, and email configuration</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-slate-200 dark:border-navy-700">
+        {TABS.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === tab
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'Team Members' && <TeamTab showToast={showToast} />}
+      {activeTab === 'Branding'     && <BrandingTab showToast={showToast} />}
+      {activeTab === 'Email'        && <EmailTab showToast={showToast} />}
+      {activeTab === 'Database'        && <DatabaseTab showToast={showToast} />}
+      {activeTab === 'Backup & Restore' && <BackupTab showToast={showToast} />}
+      {activeTab === 'Audit Logs'      && <AuditLogsTab />}
+    </Layout>
+  )
+}

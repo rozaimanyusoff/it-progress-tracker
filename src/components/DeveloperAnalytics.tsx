@@ -1,6 +1,22 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from 'recharts'
+
+interface WeekPoint {
+  week: string
+  [name: string]: number | string
+}
 
 interface DeveloperStat {
   id: number
@@ -12,8 +28,8 @@ interface DeveloperStat {
   tasksDelayed: number
   estimatedMandays: number
   totalSpentDays: number
-  weeklyTasksAssigned?: number
-  weeklyTimeSpentHours?: number
+  weeklyTasksTrend: { week: string; count: number }[]
+  weeklyTimeTrend: { week: string; hours: number }[]
 }
 
 interface Props {
@@ -40,6 +56,8 @@ function MiniCircle({ value, size = 36, color }: { value: number; size?: number;
     </svg>
   )
 }
+
+const DEV_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#14b8a6']
 
 export default function DeveloperAnalytics({ initialData, projectId }: Props) {
   const [devStats, setDevStats] = useState<DeveloperStat[]>(initialData ?? [])
@@ -75,8 +93,24 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
     )
   }
 
-  const maxWeeklyTasks = Math.max(...devStats.map((d) => d.weeklyTasksAssigned ?? 0), 1)
-  const maxWeeklyHours = Math.max(...devStats.map((d) => d.weeklyTimeSpentHours ?? 0), 1)
+  // Build chart data: one row per week, one key per developer
+  const weeks = devStats[0]?.weeklyTasksTrend.map((w) => w.week) ?? []
+
+  const tasksChartData: WeekPoint[] = weeks.map((week, wi) => {
+    const row: WeekPoint = { week }
+    devStats.forEach((dev) => {
+      row[dev.name] = dev.weeklyTasksTrend[wi]?.count ?? 0
+    })
+    return row
+  })
+
+  const timeChartData: WeekPoint[] = weeks.map((week, wi) => {
+    const row: WeekPoint = { week }
+    devStats.forEach((dev) => {
+      row[dev.name] = dev.weeklyTimeTrend[wi]?.hours ?? 0
+    })
+    return row
+  })
 
   return (
     <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-4 sm:p-6">
@@ -104,58 +138,64 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
           </div>
         </div>
 
-        {/* 2. Weekly Tasks Assigned */}
+        {/* 2. Weekly Tasks Assigned — Line Chart (4 weeks) */}
         <div className="rounded-lg border border-slate-100 dark:border-navy-700 p-4 bg-slate-50 dark:bg-navy-900/50">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Weekly Tasks Assigned</p>
-          <div className="space-y-2.5">
-            {devStats.map((dev) => {
-              const weekly = dev.weeklyTasksAssigned ?? 0
-              const pct = (weekly / maxWeeklyTasks) * 100
-              return (
-                <div key={dev.id}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate flex-1 mr-2">{dev.name}</p>
-                    <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{weekly}</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-200 dark:bg-navy-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Tasks Assigned Trend</p>
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={tasksChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+              <XAxis dataKey="week" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 11 }} />
+              {devStats.map((dev, i) => (
+                <Line
+                  key={dev.id}
+                  type="monotone"
+                  dataKey={dev.name}
+                  stroke={DEV_COLORS[i % DEV_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+            {devStats.map((dev, i) => (
+              <span key={dev.id} className="flex items-center gap-1 text-xs text-slate-500">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: DEV_COLORS[i % DEV_COLORS.length] }} />
+                {dev.name}
+              </span>
+            ))}
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Last 7 days</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Last 4 weeks</p>
         </div>
 
-        {/* 3. Weekly Time Spent */}
+        {/* 3. Weekly Time Spent — Bar Chart (4 weeks) */}
         <div className="rounded-lg border border-slate-100 dark:border-navy-700 p-4 bg-slate-50 dark:bg-navy-900/50">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Weekly Time Spent</p>
-          <div className="space-y-2.5">
-            {devStats.map((dev) => {
-              const hours = dev.weeklyTimeSpentHours ?? 0
-              const pct = (hours / maxWeeklyHours) * 100
-              return (
-                <div key={dev.id}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate flex-1 mr-2">{dev.name}</p>
-                    <span className="text-xs font-bold text-purple-600 dark:text-purple-400">
-                      {hours >= 8 ? `${(hours / 8).toFixed(1)}d` : `${hours}h`}
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-slate-200 dark:bg-navy-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-purple-500 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Time Spent Trend (hrs)</p>
+          <ResponsiveContainer width="100%" height={120}>
+            <BarChart data={timeChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+              <XAxis dataKey="week" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 11 }} />
+              {devStats.map((dev, i) => (
+                <Bar
+                  key={dev.id}
+                  dataKey={dev.name}
+                  fill={DEV_COLORS[i % DEV_COLORS.length]}
+                  radius={[2, 2, 0, 0]}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+            {devStats.map((dev, i) => (
+              <span key={dev.id} className="flex items-center gap-1 text-xs text-slate-500">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: DEV_COLORS[i % DEV_COLORS.length] }} />
+                {dev.name}
+              </span>
+            ))}
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Last 7 days</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Last 4 weeks</p>
         </div>
       </div>
 
@@ -205,7 +245,7 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
         </div>
       </div>
 
-      {/* Stats table — hidden on very small screens, scroll on tablet */}
+      {/* Stats table */}
       <div className="hidden sm:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
