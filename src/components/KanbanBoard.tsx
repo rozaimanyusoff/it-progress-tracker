@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSession } from 'next-auth/react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import TaskUpdateModal from './TaskUpdateModal'
 
@@ -11,12 +12,11 @@ interface Task {
   is_predefined: boolean
   time_started_at: string | null
   time_spent_seconds: number
-  feature: {
-    id: number
-    title: string
-    module: { id: number; title: string } | null
-    project: { id: number; title: string }
-  }
+  review_count: number
+  project: { id: number; title: string } | null
+  module: { id: number; title: string } | null
+  feature: { id: number; title: string } | null
+  deliverable: { id: number; title: string } | null
 }
 
 type BoardState = Record<string, Task[]>
@@ -31,6 +31,16 @@ const COLUMNS: { id: string; label: string; color: string }[] = [
   { id: 'InReview',   label: 'To Review',   color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
   { id: 'Done',       label: 'Done',        color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
 ]
+
+function reviewCardStyle(task: { status: string; review_count: number }): string {
+  if (task.status === 'Done')
+    return 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 border-l-[3px] border-l-green-400'
+  if (task.status === 'InReview')
+    return 'bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-300 dark:border-yellow-700/60 border-l-[3px] border-l-yellow-400'
+  if (task.status !== 'Todo' && task.review_count > 0)
+    return 'bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/50 border-l-[3px] border-l-orange-400'
+  return 'bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700'
+}
 
 function buildBoard(tasks: Task[]): BoardState {
   const board: BoardState = { Todo: [], InProgress: [], InReview: [], Done: [] }
@@ -299,6 +309,8 @@ interface AssignedIssue {
 
 // ── Main Board ────────────────────────────────────────────────────
 export default function KanbanBoard() {
+  const { data: session } = useSession()
+  const isManager = (session?.user as any)?.role === 'manager'
   const [allTasks, setAllTasks]         = useState<Task[]>([])
   const [assignedIssues, setAssignedIssues] = useState<AssignedIssue[]>([])
   const [loading, setLoading]           = useState(true)
@@ -309,6 +321,7 @@ export default function KanbanBoard() {
   // Filters
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterFeatureId, setFilterFeatureId] = useState('')
+  const [showLegend, setShowLegend] = useState(false)
 
   // Tick every second so InProgress timers re-render
   useEffect(() => {
@@ -332,20 +345,20 @@ export default function KanbanBoard() {
 
   // Derive filter options from loaded tasks
   const projectOptions = Array.from(
-    new Map(allTasks.map(t => [t.feature.project.id, t.feature.project])).values()
+    new Map(allTasks.filter(t => t.project).map(t => [t.project!.id, t.project!])).values()
   )
   const featureOptions = Array.from(
     new Map(
       allTasks
-        .filter(t => !filterProjectId || t.feature.project.id === Number(filterProjectId))
-        .map(t => [t.feature.id, { id: t.feature.id, title: t.feature.title }])
+        .filter(t => t.feature && (!filterProjectId || t.project?.id === Number(filterProjectId)))
+        .map(t => [t.feature!.id, { id: t.feature!.id, title: t.feature!.title }])
     ).values()
   )
 
   // Derive visible board from filters
   const visibleTasks = allTasks.filter(t => {
-    if (filterProjectId && t.feature.project.id !== Number(filterProjectId)) return false
-    if (filterFeatureId && t.feature.id !== Number(filterFeatureId)) return false
+    if (filterProjectId && t.project?.id !== Number(filterProjectId)) return false
+    if (filterFeatureId && t.feature?.id !== Number(filterFeatureId)) return false
     return true
   })
   const board = buildBoard(visibleTasks)
@@ -364,6 +377,8 @@ export default function KanbanBoard() {
 
     // InReview cannot go back to Todo — only to InProgress
     if (source.droppableId === 'InReview' && newStatus === 'Todo') return
+    // Members cannot drag directly to InReview — must use Submit for Review in modal
+    if (!isManager && newStatus === 'InReview') return
 
     // Optimistic update
     setAllTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
@@ -389,6 +404,8 @@ export default function KanbanBoard() {
 
     // InReview cannot go back to Todo
     if (currentStatus === 'InReview' && newStatus === 'Todo') return
+    // Members cannot move directly to InReview — must use Submit for Review in modal
+    if (!isManager && newStatus === 'InReview') return
 
     setAllTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
 
@@ -449,7 +466,90 @@ export default function KanbanBoard() {
         <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
           {totalVisible} task{totalVisible !== 1 ? 's' : ''}
         </span>
+        <button
+          onClick={() => setShowLegend(v => !v)}
+          className={`w-6 h-6 rounded-full text-xs font-bold border transition-colors ${showLegend ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-navy-600 text-slate-400 hover:border-blue-400 hover:text-blue-500'}`}
+          title="Show legend"
+        >?</button>
       </div>
+
+      {/* Legend panel */}
+      {showLegend && (
+        <div className="mb-5 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-4 text-xs text-slate-600 dark:text-slate-300">
+          <p className="font-semibold text-slate-800 dark:text-white mb-3 text-sm">Board Legend</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+            {/* Card colours */}
+            <div>
+              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Card Colours</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shrink-0" />
+                  <span>Normal — not yet reviewed</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-orange-200 bg-orange-50 border-l-[3px] border-l-orange-400 shrink-0" />
+                  <span>Reviewed &amp; sent back — fixes required</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-yellow-300 bg-yellow-50 border-l-[3px] border-l-yellow-400 shrink-0" />
+                  <span>Awaiting manager review</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-green-200 bg-green-50 border-l-[3px] border-l-green-400 shrink-0" />
+                  <span>Approved &amp; done</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Badges */}
+            <div>
+              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Badges</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 whitespace-nowrap">↩ 2</span>
+                  <span>Reviewed N times (rejected back)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 border border-orange-200 whitespace-nowrap">↩ 1×</span>
+                  <span>Review count shown in modal header</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-600 uppercase whitespace-nowrap">REVIEW</span>
+                  <span>Manager review entry in history</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Role permissions */}
+            <div>
+              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Permissions</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Developer</p>
+                  <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                    <li>✓ Submit progress notes &amp; attachments</li>
+                    <li>✓ Submit for Review (note + attachment required)</li>
+                    <li>✓ Move tasks with ← → arrows</li>
+                    <li>✗ Cannot move directly to To Review</li>
+                    <li>✗ Cannot update tasks in To Review</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Manager</p>
+                  <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                    <li>✓ Approve or reject tasks in To Review</li>
+                    <li>✓ View update history on any task</li>
+                    <li>✓ Attach evidence &amp; log findings on reject</li>
+                    <li>✗ Cannot submit progress as developer</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="grid grid-cols-4 gap-4 items-start">
@@ -516,14 +616,28 @@ export default function KanbanBoard() {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            className={`bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg p-3 shadow-sm select-none ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400' : 'hover:shadow-md'}`}
+                            className={`rounded-lg p-3 shadow-sm select-none transition-colors ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400' : 'hover:shadow-md'}`}
                           >
-                            <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
-                            {task.feature.module && (
-                              <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.feature.module.title}</p>
+                            <div className="flex items-start justify-between gap-1 mb-0.5">
+                              <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
+                              {task.review_count > 0 && task.status !== 'Todo' && (
+                                <span
+                                  title={`Reviewed ${task.review_count} time${task.review_count > 1 ? 's' : ''}`}
+                                  className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap"
+                                >
+                                  ↩ {task.review_count}
+                                </span>
+                              )}
+                            </div>
+                            {task.module && (
+                              <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.module.title}</p>
                             )}
-                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 truncate">{task.feature.title}</p>
-                            <p className="text-xs text-slate-400 truncate">{task.feature.project.title}</p>
+                            {(task.feature || task.deliverable) && (
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 truncate">{task.feature?.title ?? task.deliverable?.title}</p>
+                            )}
+                            {task.project && (
+                              <p className="text-xs text-slate-400 truncate">{task.project.title}</p>
+                            )}
                             <div className="flex items-center gap-2 mt-1">
                               {task.is_predefined && <span className="text-xs text-slate-400">SDLC</span>}
                               {(() => {
@@ -554,7 +668,11 @@ export default function KanbanBoard() {
                                   <button onClick={() => moveTask(task.id, col.id, 'next')} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 hover:bg-slate-50" title="Move forward">→</button>
                                 )}
                               </div>
-                              <button onClick={() => setActiveTaskId(task.id)} className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 hover:bg-blue-50">Update</button>
+                              <button
+                                onClick={() => setActiveTaskId(task.id)}
+                                disabled={!isManager && task.status === 'InReview'}
+                                className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              >Update</button>
                             </div>
                           </div>
                         )}
@@ -575,11 +693,12 @@ export default function KanbanBoard() {
         <TaskUpdateModal
           taskId={activeTask.id}
           taskTitle={activeTask.title}
-          moduleTitle={activeTask.feature.module?.title ?? null}
-          featureTitle={activeTask.feature.title}
-          projectTitle={activeTask.feature.project.title}
+          moduleTitle={activeTask.module?.title ?? null}
+          featureTitle={activeTask.feature?.title ?? activeTask.deliverable?.title ?? null}
+          projectTitle={activeTask.project?.title ?? null}
           currentStatus={activeTask.status}
-          onClose={() => setActiveTaskId(null)}
+          reviewCount={activeTask.review_count}
+          onClose={() => { setActiveTaskId(null); loadMyTasks() }}
           onStatusChange={handleStatusChange}
         />
       )}

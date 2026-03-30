@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import TaskUpdateModal from './TaskUpdateModal'
 
 interface Task {
   id: number
   title: string
   status: string
+  review_count: number
   time_started_at: string | null
   time_spent_seconds: number
   assignee: { id: number; name: string } | null
@@ -176,6 +178,16 @@ const COLUMNS: { id: string; label: string; color: string }[] = [
   { id: 'Done',       label: 'Done',        color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
 ]
 
+function reviewCardStyle(task: { status: string; review_count: number }): string {
+  if (task.status === 'Done')
+    return 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 border-l-[3px] border-l-green-400'
+  if (task.status === 'InReview')
+    return 'bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-300 dark:border-yellow-700/60 border-l-[3px] border-l-yellow-400'
+  if (task.status !== 'Todo' && task.review_count > 0)
+    return 'bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/50 border-l-[3px] border-l-orange-400'
+  return 'bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700'
+}
+
 function buildBoard(tasks: Task[]): BoardState {
   const board: BoardState = { Todo: [], InProgress: [], InReview: [], Done: [] }
   for (const t of tasks) {
@@ -210,6 +222,8 @@ function AssigneeAvatar({ name }: { name: string }) {
 }
 
 export default function TeamKanbanBoard() {
+  const { data: session } = useSession()
+  const isManager = (session?.user as any)?.role === 'manager'
   const [board, setBoard]     = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)
   const [, setTick]           = useState(0)
@@ -286,6 +300,7 @@ export default function TeamKanbanBoard() {
     : null
 
   const totalTasks = COLUMNS.reduce((s, c) => s + board[c.id].length, 0)
+  const [showLegend, setShowLegend] = useState(false)
 
   return (
     <div>
@@ -320,7 +335,90 @@ export default function TeamKanbanBoard() {
         )}
 
         <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">{totalTasks} task{totalTasks !== 1 ? 's' : ''}</span>
+        <button
+          onClick={() => setShowLegend(v => !v)}
+          className={`w-6 h-6 rounded-full text-xs font-bold border transition-colors ${showLegend ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-navy-600 text-slate-400 hover:border-blue-400 hover:text-blue-500'}`}
+          title="Show legend"
+        >?</button>
       </div>
+
+      {/* Legend panel */}
+      {showLegend && (
+        <div className="mb-5 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-4 text-xs text-slate-600 dark:text-slate-300">
+          <p className="font-semibold text-slate-800 dark:text-white mb-3 text-sm">Board Legend</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+            {/* Card colours */}
+            <div>
+              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Card Colours</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shrink-0" />
+                  <span>Normal — not yet reviewed</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-orange-200 bg-orange-50 border-l-[3px] border-l-orange-400 shrink-0" />
+                  <span>Reviewed &amp; sent back — fixes required</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-yellow-300 bg-yellow-50 border-l-[3px] border-l-yellow-400 shrink-0" />
+                  <span>Awaiting manager review</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-8 rounded border border-green-200 bg-green-50 border-l-[3px] border-l-green-400 shrink-0" />
+                  <span>Approved &amp; done</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Badges */}
+            <div>
+              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Badges</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 whitespace-nowrap">↩ 2</span>
+                  <span>Reviewed N times (rejected back)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 border border-orange-200 whitespace-nowrap">↩ 1×</span>
+                  <span>Review count in modal header</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-600 uppercase whitespace-nowrap">REVIEW</span>
+                  <span>Manager review entry in history</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Role permissions */}
+            <div>
+              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Permissions</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Developer</p>
+                  <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                    <li>✓ Submit progress notes &amp; attachments</li>
+                    <li>✓ Submit for Review (note + attachment required)</li>
+                    <li>✓ Move tasks with ← → arrows</li>
+                    <li>✗ Cannot move directly to To Review</li>
+                    <li>✗ Cannot update tasks in To Review</li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Manager</p>
+                  <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                    <li>✓ Approve or reject tasks in To Review</li>
+                    <li>✓ View update history on any task</li>
+                    <li>✓ Attach evidence &amp; log findings on reject</li>
+                    <li>✗ Cannot submit progress as developer</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center h-48 text-slate-400">Loading...</div>
@@ -353,9 +451,19 @@ export default function TeamKanbanBoard() {
                 {board[col.id].map(task => (
                   <div
                     key={task.id}
-                    className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow"
+                    className={`rounded-lg p-3 shadow-sm hover:shadow-md transition-all ${reviewCardStyle(task)}`}
                   >
-                    <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
+                    <div className="flex items-start justify-between gap-1 mb-0.5">
+                      <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
+                      {task.review_count > 0 && task.status !== 'Todo' && (
+                        <span
+                          title={`Reviewed ${task.review_count} time${task.review_count > 1 ? 's' : ''}`}
+                          className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 whitespace-nowrap"
+                        >
+                          ↩ {task.review_count}
+                        </span>
+                      )}
+                    </div>
 
                     {task.context.module && (
                       <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.context.module.title}</p>
@@ -406,6 +514,14 @@ export default function TeamKanbanBoard() {
                           Review
                         </button>
                       )}
+                      {isManager && task.status !== 'InReview' && (
+                        <button
+                          onClick={() => setActiveTaskId(task.id)}
+                          className="text-xs px-2 py-0.5 rounded border border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700 shrink-0"
+                        >
+                          View
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -431,7 +547,8 @@ export default function TeamKanbanBoard() {
           featureTitle={activeTask.context.title}
           projectTitle={activeTask.context.project.title}
           currentStatus={activeTask.status}
-          onClose={() => setActiveTaskId(null)}
+          reviewCount={activeTask.review_count}
+          onClose={() => { setActiveTaskId(null); loadTasks() }}
           onStatusChange={handleStatusChange}
         />
       )}

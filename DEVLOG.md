@@ -10,6 +10,78 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-30 — Kanban legend panel & card colour fixes
+
+### Ditambah
+- **`KanbanBoard` & `TeamKanbanBoard`** — butang `?` toggle di filter bar; panel legend boleh lipat dengan 3 bahagian: warna kad, badges, dan kebenaran Developer/Manager
+- **Card colours** — Done = hijau; reviewed (non-Todo) = oren; InReview = kuning; default = putih
+- **Badge `↩ N`** — tersembunyi di lajur To Do, visible di semua lajur lain
+
+### Diperbaiki
+- **`KanbanBoard`** — `useState(showLegend)` dipindah ke atas sebelum early return `if (loading)` untuk ikut Rules of Hooks
+
+---
+
+## 2026-03-30 — Reviewed badge in TaskUpdateModal
+
+### Ditambah
+- **`TaskUpdateModal`** — badge `↩ N×` di header apabila `reviewCount > 0`; prop `reviewCount` dihantar dari `KanbanBoard` dan `TeamKanbanBoard`
+
+---
+
+## 2026-03-30 — Kanban card: review status visual indicator
+
+### Dikemaskini
+- **`KanbanBoard` & `TeamKanbanBoard`** — Helper `reviewCardStyle()` menentukan gaya kad berdasarkan status review: InReview = border kiri kuning + latar kuning pudar; `review_count > 0` (ditolak balik) = border kiri oren + latar oren pudar; normal = putih/navy; badge `↩ N` ditambah ke TeamKanbanBoard juga
+
+---
+
+## 2026-03-30 — Kanban card: reviewed indicator badge
+
+### Ditambah
+- **`Task` model** — kolum `review_count Int @default(0)`; migration `20260330130000_add_task_review_count`
+- **`/api/tasks/[id]/updates`** — increment `review_count` pada setiap `review_action` (approve & reject)
+- **`KanbanBoard`** — badge merah `↩ N` di penjuru kanan tajuk kad apabila `review_count > 0`; tooltip menunjukkan bilangan kali di-review
+
+---
+
+## 2026-03-30 — Manager Review: Issue Checkboxes & Attachment
+
+### Ditambah
+- **`TaskUpdateModal`** — Panel Manager Review kini ada checkboxes 8 isu predefined (Bug/Logic Error, UI/UX, Missing Functionality, dll.) di bawah textarea; isu yang ditanda disusun sebagai senarai "Findings:" dalam nota review; sokongan upload attachment bukti review (`📎 Attach evidence`); fail diupload sebelum hantar dan dilampirkan pada entri update history
+
+---
+
+## 2026-03-30 — Fix KanbanBoard crash for deliverable tasks
+
+### Diperbaiki
+- **`/api/tasks/my`** — Include `deliverable` (with project) in query; normalize response to lift `project` and `module` to top level so both feature-tasks and deliverable-tasks share the same shape
+- **`KanbanBoard.tsx`** — Update `Task` interface: `feature` and `deliverable` now nullable, `project` and `module` at top level; fix `projectOptions`, `featureOptions`, `visibleTasks`, and card rendering to guard against null feature
+
+---
+
+## 2026-03-30 — Task Inline Edit for Manager
+
+### Ditambah
+- **`FeatureTaskList`** — Manager kini boleh edit tajuk task terus dalam jadual: klik ikon pensil (✎) sebelum ✕ untuk masuk mod edit inline; tekan Enter atau ✓ untuk simpan, Escape atau ✕ untuk batal; panggil `PUT /api/tasks/[id]`
+
+---
+
+## 2026-03-30 — DeliverableRecord Library, Dropdown Title, Deliverables Tab
+
+### Ditambah
+- **`DeliverableRecord` model (Prisma)** — Model baharu untuk menyimpan template deliverable boleh-guna-semula: `id`, `title` (unique), `description?`, `created_at`
+- **Migration `20260330120000_add_deliverable_records`** — Create `DeliverableRecord` table dengan unique index pada `title`
+- **`GET/POST /api/deliverable-records`** — List semua rekod (awam); POST hanya untuk manager (403 jika bukan manager); tolak jika `title` sudah wujud
+- **`PUT/DELETE /api/deliverable-records/[id]`** — Kemaskini dan padam rekod (manager sahaja)
+- **Tab "Deliverables" dalam `/projects`** — Tab baharu untuk urus library rekod deliverable; papar senarai dalam jadual; sokongan tambah, edit, dan padam rekod terus dari halaman Projects
+
+### Diubah
+- **`DeliverableSection.tsx`** — Field Title dalam modal New/Edit Deliverable kini menggunakan dropdown (pilih dari `DeliverableRecord` library); pilih "＋ Add new title..." untuk masuk teks bebas; butang "Library" untuk balik ke dropdown; apabila rekod dipilih, `description` auto-filled; Est. Mandays dialih ke bawah Planned Start/End; `titleIsCustom` state untuk toggle antara dropdown dan input teks
+- **`src/app/projects/page.tsx`** — Tambah `DeliverableRecord` type; tambah `DeliverablesTab` component; `TABS` kini termasuk `'Deliverables'`; render `<DeliverablesTab>` apabila tab aktif
+
+---
+
 ## 2026-03-30 — Deliverables, Gantt Dual-Bar & Manager Kanban Restrictions
 
 ### Ditambah

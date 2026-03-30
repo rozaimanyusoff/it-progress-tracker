@@ -44,6 +44,8 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskAssignee, setNewTaskAssignee] = useState('')
   const [addingTask, setAddingTask] = useState(false)
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
 
   useEffect(() => {
     fetchTasks()
@@ -84,6 +86,19 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
             : t
         )
       )
+    }
+  }
+
+  async function saveTaskTitle(taskId: number) {
+    if (!editingTitle.trim()) return
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: editingTitle.trim() }),
+    })
+    if (res.ok) {
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, title: editingTitle.trim() } : t))
+      setEditingTaskId(null)
     }
   }
 
@@ -136,9 +151,21 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
             <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-navy-700/30">
               <td className="px-3 py-2 text-slate-400">{task.order}</td>
               <td className="px-3 py-2 text-slate-800 dark:text-slate-200">
-                {task.title}
-                {task.is_predefined && (
-                  <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">SDLC</span>
+                {editingTaskId === task.id ? (
+                  <input
+                    className={`${inputClass} w-full`}
+                    value={editingTitle}
+                    onChange={e => setEditingTitle(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveTaskTitle(task.id); if (e.key === 'Escape') setEditingTaskId(null) }}
+                    autoFocus
+                  />
+                ) : (
+                  <>
+                    {task.title}
+                    {task.is_predefined && (
+                      <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">SDLC</span>
+                    )}
+                  </>
                 )}
               </td>
               <td className="px-3 py-2">
@@ -176,15 +203,33 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
               </td>
               {userRole === 'manager' && (
                 <td className="px-3 py-2">
-                  {!task.is_predefined && (
-                    <button
-                      onClick={() => deleteTask(task.id)}
-                      className="text-red-400 hover:text-red-600 text-xs"
-                      title="Delete task"
-                    >
-                      ✕
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {editingTaskId === task.id ? (
+                      <>
+                        <button onClick={() => saveTaskTitle(task.id)} className="text-green-500 hover:text-green-700 text-xs" title="Save">✓</button>
+                        <button onClick={() => setEditingTaskId(null)} className="text-slate-400 hover:text-slate-600 text-xs" title="Cancel">✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => { setEditingTaskId(task.id); setEditingTitle(task.title) }}
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
+                          title="Edit task"
+                        >
+                          ✎
+                        </button>
+                        {!task.is_predefined && (
+                          <button
+                            onClick={() => deleteTask(task.id)}
+                            className="text-red-400 hover:text-red-600 text-xs"
+                            title="Delete task"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>

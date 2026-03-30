@@ -16,8 +16,11 @@ type Feature = {
   status: string
   project_links?: { project: { id: number; title: string } }[]
 }
+type DeliverableRecord = {
+  id: number; title: string; description: string | null; created_at: string
+}
 
-const TABS = ['Projects', 'New Project', 'Features'] as const
+const TABS = ['Projects', 'New Project', 'Features', 'Deliverables'] as const
 type Tab = typeof TABS[number]
 
 const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -389,6 +392,131 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
   )
 }
 
+// ── Deliverables Tab ──────────────────────────────────────────────
+function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [records, setRecords] = useState<DeliverableRecord[]>([])
+  const [loading, setLoading] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ title: '', description: '' })
+  const [editingRecord, setEditingRecord] = useState<DeliverableRecord | null>(null)
+
+  function fetchRecords() {
+    setLoading(true)
+    fetch('/api/deliverable-records').then(r => r.json()).then(data => {
+      setRecords(Array.isArray(data) ? data : [])
+      setLoading(false)
+    })
+  }
+
+  useEffect(() => { fetchRecords() }, [])
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    const url = editingRecord ? `/api/deliverable-records/${editingRecord.id}` : '/api/deliverable-records'
+    const method = editingRecord ? 'PUT' : 'POST'
+    const res = await fetch(url, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: form.title, description: form.description || null }),
+    })
+    setSaving(false)
+    if (res.ok) {
+      fetchRecords()
+      setForm({ title: '', description: '' })
+      setShowForm(false)
+      setEditingRecord(null)
+      showToast('success', editingRecord ? 'Record updated' : 'Record created')
+    } else {
+      showToast('error', (await res.json()).error || 'Failed to save')
+    }
+  }
+
+  async function handleDelete(id: number, title: string) {
+    if (!confirm(`Delete "${title}"?`)) return
+    const res = await fetch(`/api/deliverable-records/${id}`, { method: 'DELETE' })
+    if (res.ok) { fetchRecords(); showToast('success', 'Deleted') }
+    else showToast('error', 'Failed to delete')
+  }
+
+  function openEdit(r: DeliverableRecord) {
+    setEditingRecord(r)
+    setForm({ title: r.title, description: r.description || '' })
+    setShowForm(true)
+  }
+
+  function cancelForm() {
+    setShowForm(false)
+    setEditingRecord(null)
+    setForm({ title: '', description: '' })
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400 flex-1">Reusable deliverable templates for use in projects.</p>
+        <button onClick={() => { cancelForm(); setShowForm(v => !v) }} className="btn-primary px-4 py-1.5 rounded-lg text-sm font-semibold">
+          + New Record
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-5 mb-5">
+          <h3 className="font-semibold text-slate-800 dark:text-white mb-4 text-sm">{editingRecord ? 'Edit Record' : 'New Deliverable Record'}</h3>
+          <form onSubmit={handleSave} className="space-y-3">
+            <div>
+              <label className={labelClass}>Title *</label>
+              <input required className={inputClass} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Dashboard, User Management" />
+            </div>
+            <div>
+              <label className={labelClass}>Description</label>
+              <textarea className={`${inputClass} resize-none`} rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
+                {saving ? 'Saving...' : editingRecord ? 'Save Changes' : 'Add Record'}
+              </button>
+              <button type="button" onClick={cancelForm} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
+      {!loading && records.length === 0 && <p className="text-slate-400 text-sm py-8 text-center">No deliverable records yet.</p>}
+      {!loading && records.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
+                <th className="text-left px-5 py-3 font-medium">Title</th>
+                <th className="text-left px-5 py-3 font-medium">Description</th>
+                <th className="text-right px-5 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map(r => (
+                <tr key={r.id} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700">
+                  <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{r.title}</td>
+                  <td className="px-5 py-3 text-xs text-slate-400 max-w-xs truncate">{r.description || <span className="italic">—</span>}</td>
+                  <td className="px-5 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => openEdit(r)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
+                      <button onClick={() => handleDelete(r.id, r.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────
 export default function ProjectsPage() {
   const { data: session, status } = useSession()
@@ -435,6 +563,7 @@ export default function ProjectsPage() {
       {activeTab === 'Projects'    && <ProjectsTab onNewProject={() => setActiveTab('New Project')} />}
       {activeTab === 'New Project' && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
       {activeTab === 'Features'    && <FeaturesTab showToast={showToast} />}
+      {activeTab === 'Deliverables' && <DeliverablesTab showToast={showToast} />}
     </AppLayout>
   )
 }

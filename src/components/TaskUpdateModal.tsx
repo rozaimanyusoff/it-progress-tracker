@@ -8,16 +8,17 @@ interface TaskUpdateEntry {
   notes: string | null
   media_urls: string[]
   created_at: string
-  user: { id: number; name: string }
+  user: { id: number; name: string; role: string }
 }
 
 interface Props {
   taskId: number
   taskTitle: string
   moduleTitle: string | null
-  featureTitle: string
-  projectTitle: string
+  featureTitle: string | null
+  projectTitle: string | null
   currentStatus: string
+  reviewCount?: number
   onClose: () => void
   onStatusChange: (taskId: number, newStatus: string) => void
 }
@@ -46,6 +47,17 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+const REVIEW_ISSUES = [
+  'Bug / Logic Error',
+  'UI/UX Issue',
+  'Missing Functionality',
+  'Performance Issue',
+  'Code Quality',
+  'Security Concern',
+  'Test / Validation Missing',
+  'Incomplete Implementation',
+]
+
 const STATUS_LABEL: Record<string, string> = {
   Todo: 'To Do',
   InProgress: 'In Progress',
@@ -66,6 +78,7 @@ export default function TaskUpdateModal({
   featureTitle,
   projectTitle,
   currentStatus,
+  reviewCount = 0,
   onClose,
   onStatusChange,
 }: Props) {
@@ -84,8 +97,12 @@ export default function TaskUpdateModal({
 
   // Manager review state
   const [reviewComment, setReviewComment] = useState('')
+  const [reviewIssues, setReviewIssues] = useState<Set<string>>(new Set())
+  const [reviewFiles, setReviewFiles] = useState<File[]>([])
+  const [reviewPreviews, setReviewPreviews] = useState<string[]>([])
   const [reviewing, setReviewing] = useState(false)
   const [reviewError, setReviewError] = useState('')
+  const reviewFileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch(`/api/tasks/${taskId}/updates`)
@@ -110,7 +127,11 @@ export default function TaskUpdateModal({
   }
 
   async function handleSubmit(markComplete = false) {
-    if (!notes.trim() && files.length === 0) {
+    if (markComplete && (!notes.trim() || files.length === 0)) {
+      setError('Please add a progress note and at least one attachment before submitting for review.')
+      return
+    }
+    if (!markComplete && !notes.trim() && files.length === 0) {
       setError('Please add a note or attach media.')
       return
     }
@@ -158,14 +179,55 @@ export default function TaskUpdateModal({
     }
   }
 
+  function toggleReviewIssue(issue: string) {
+    setReviewIssues(prev => {
+      const next = new Set(prev)
+      next.has(issue) ? next.delete(issue) : next.add(issue)
+      return next
+    })
+  }
+
+  function handleReviewFiles(selected: FileList | null) {
+    if (!selected) return
+    const newFiles = Array.from(selected)
+    setReviewFiles(prev => [...prev, ...newFiles])
+    newFiles.forEach(f => setReviewPreviews(prev => [...prev, URL.createObjectURL(f)]))
+  }
+
+  function removeReviewFile(index: number) {
+    URL.revokeObjectURL(reviewPreviews[index])
+    setReviewFiles(prev => prev.filter((_, i) => i !== index))
+    setReviewPreviews(prev => prev.filter((_, i) => i !== index))
+  }
+
   async function handleReview(action: 'approve' | 'reject') {
     setReviewError('')
     setReviewing(true)
     try {
+      let mediaUrls: string[] = []
+      if (reviewFiles.length > 0) {
+        const fd = new FormData()
+        fd.append('task_id', String(taskId))
+        reviewFiles.forEach(f => fd.append('files', f))
+        const uploadRes = await fetch('/api/upload', { method: 'POST', body: fd })
+        if (!uploadRes.ok) {
+          setReviewError((await uploadRes.json()).error ?? 'Upload failed')
+          return
+        }
+        const { urls } = await uploadRes.json()
+        mediaUrls = urls
+      }
+
+      // Compose notes: issues list + free-text comment
+      const issueLines = reviewIssues.size > 0
+        ? `Findings:\n${Array.from(reviewIssues).map(i => `• ${i}`).join('\n')}`
+        : ''
+      const combined = [issueLines, reviewComment.trim()].filter(Boolean).join('\n\n') || null
+
       const res = await fetch(`/api/tasks/${taskId}/updates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: reviewComment.trim() || null, media_urls: [], review_action: action }),
+        body: JSON.stringify({ notes: combined, media_urls: mediaUrls, review_action: action }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -175,6 +237,9 @@ export default function TaskUpdateModal({
       const { update, newStatus } = await res.json()
       setUpdates((prev) => [update, ...prev])
       setReviewComment('')
+      setReviewIssues(new Set())
+      setReviewFiles([])
+      setReviewPreviews([])
       setStatus(newStatus)
       onStatusChange(taskId, newStatus)
     } finally {
@@ -183,7 +248,7 @@ export default function TaskUpdateModal({
   }
 
   // Form is locked when task is in review or done — developer has no more actions
-  const formLocked = status === 'InReview' || status === 'Done'
+  const formLocked = status === 'InReview' || status === 'Done' || isManager
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -200,12 +265,17 @@ export default function TaskUpdateModal({
                   <span className="text-xs text-slate-300 dark:text-slate-600">›</span>
                 </>
               )}
-              <span className="text-xs text-blue-600 dark:text-blue-400 truncate">{featureTitle}</span>
-              <span className="text-xs text-slate-300 dark:text-slate-600">·</span>
-              <span className="text-xs text-slate-400 truncate">{projectTitle}</span>
+              {featureTitle && <span className="text-xs text-blue-600 dark:text-blue-400 truncate">{featureTitle}</span>}
+              {featureTitle && projectTitle && <span className="text-xs text-slate-300 dark:text-slate-600">·</span>}
+              {projectTitle && <span className="text-xs text-slate-400 truncate">{projectTitle}</span>}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {reviewCount > 0 && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 border border-orange-200 dark:border-orange-800/50">
+                ↩ {reviewCount}×
+              </span>
+            )}
             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[status]}`}>
               {STATUS_LABEL[status]}
             </span>
@@ -228,6 +298,54 @@ export default function TaskUpdateModal({
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
                 />
+
+                {/* Predefined issue checkboxes */}
+                <div>
+                  <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-1.5">Issues found (optional)</p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {REVIEW_ISSUES.map(issue => (
+                      <label key={issue} className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={reviewIssues.has(issue)}
+                          onChange={() => toggleReviewIssue(issue)}
+                          className="w-3.5 h-3.5 rounded border-yellow-400 text-yellow-600 focus:ring-yellow-500"
+                        />
+                        <span className="text-xs text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white">{issue}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Review file attachment */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => reviewFileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-yellow-300 dark:border-yellow-700 rounded-lg text-yellow-700 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
+                  >
+                    <span>📎</span> Attach evidence
+                  </button>
+                  <input ref={reviewFileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={e => handleReviewFiles(e.target.files)} />
+                  {reviewPreviews.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {reviewPreviews.map((url, i) => (
+                        <div key={i} className="relative group w-16 h-16 shrink-0">
+                          {isVideo(reviewFiles[i]?.name ?? '') ? (
+                            <video src={url} className="w-16 h-16 object-cover rounded border border-yellow-200 dark:border-yellow-800" muted />
+                          ) : (
+                            <img src={url} alt="" className="w-16 h-16 object-cover rounded border border-yellow-200 dark:border-yellow-800" />
+                          )}
+                          <button
+                            onClick={() => removeReviewFile(i)}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {reviewError && <p className="text-xs text-red-500">{reviewError}</p>}
                 <div className="flex gap-2">
                   <button
@@ -359,17 +477,20 @@ export default function TaskUpdateModal({
               <p className="text-sm text-slate-400 text-center py-4">No updates yet. Submit your first progress note above.</p>
             ) : (
               <div className="space-y-4">
-                {updates.map((u) => (
-                  <div key={u.id} className="flex gap-3">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-300 text-xs font-semibold shrink-0 mt-0.5">
+                {updates.map((u) => {
+                  const isMgrEntry = u.user.role === 'manager'
+                  return (
+                  <div key={u.id} className={`flex gap-3 rounded-lg p-2 -mx-2 ${isMgrEntry ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${isMgrEntry ? 'bg-blue-200 dark:bg-blue-800/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-navy-700 text-slate-600 dark:text-slate-300'}`}>
                       {u.user.name[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-medium text-slate-800 dark:text-white">{u.user.name}</span>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className={`text-sm font-medium ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-white'}`}>{u.user.name}</span>
+                        {isMgrEntry && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 uppercase tracking-wide">Review</span>}
                         <span className="text-xs text-slate-400">{timeAgo(u.created_at)}</span>
                       </div>
-                      {u.notes && <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 whitespace-pre-wrap">{u.notes}</p>}
+                      {u.notes && <p className={`text-sm mt-0.5 whitespace-pre-wrap ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300'}`}>{u.notes}</p>}
                       {u.media_urls.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-2">
                           {u.media_urls.map((url, i) => {
@@ -401,7 +522,7 @@ export default function TaskUpdateModal({
                       )}
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             )}
           </div>

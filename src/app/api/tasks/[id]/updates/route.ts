@@ -10,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const updates = await prisma.taskUpdate.findMany({
     where: { task_id: Number(id) },
-    include: { user: { select: { id: true, name: true } } },
+    include: { user: { select: { id: true, name: true, role: true } } },
     orderBy: { created_at: 'desc' },
   })
 
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const now = new Date()
     const newStatus = review_action === 'approve' ? 'Done' : 'InProgress'
-    const taskData: any = { status: newStatus }
+    const taskData: any = { status: newStatus, review_count: { increment: 1 } }
 
     if (review_action === 'approve') {
       taskData.actual_end = now
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const update = await prisma.taskUpdate.create({
       data: { task_id: taskId, user_id: userId, notes, media_urls },
-      include: { user: { select: { id: true, name: true } } },
+      include: { user: { select: { id: true, name: true, role: true } } },
     })
 
     return NextResponse.json({ update, newStatus })

@@ -33,6 +33,12 @@ interface Member {
   name: string
 }
 
+interface DeliverableRecord {
+  id: number
+  title: string
+  description?: string | null
+}
+
 interface Props {
   projectId: number
   userRole: string
@@ -164,6 +170,8 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   const [delivForm, setDelivForm] = useState(BLANK_DELIVERABLE_FORM)
   const [delivSaving, setDelivSaving] = useState(false)
   const [delivError, setDelivError] = useState('')
+  const [delivRecords, setDeliverableRecords] = useState<DeliverableRecord[]>([])
+  const [titleIsCustom, setTitleIsCustom] = useState(false)
 
   // Module modal
   const [showModuleModal, setShowModuleModal] = useState(false)
@@ -174,6 +182,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   useEffect(() => {
     fetchAll()
     fetch('/api/users').then(r => r.json()).then(setMembers)
+    fetch('/api/deliverable-records').then(r => r.json()).then(d => setDeliverableRecords(Array.isArray(d) ? d : []))
   }, [projectId])
 
   async function fetchAll() {
@@ -194,6 +203,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     setEditingDeliv(null)
     setDelivForm({ ...BLANK_DELIVERABLE_FORM, module_id: moduleId?.toString() ?? '' })
     setDelivError('')
+    setTitleIsCustom(false)
     setShowDelivModal(true)
   }
 
@@ -209,6 +219,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
       planned_end: toInputDate(d.planned_end),
     })
     setDelivError('')
+    setTitleIsCustom(!delivRecords.some(r => r.title === d.title))
     setShowDelivModal(true)
   }
 
@@ -497,28 +508,48 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
-                <input className={inputClass} value={delivForm.title} onChange={e => setDelivForm({ ...delivForm, title: e.target.value })} placeholder="e.g. Dashboard, User Management" />
+                {!titleIsCustom ? (
+                  <select
+                    className={inputClass}
+                    value={delivForm.title}
+                    onChange={e => {
+                      if (e.target.value === '__new__') {
+                        setTitleIsCustom(true)
+                        setDelivForm({ ...delivForm, title: '' })
+                      } else {
+                        const rec = delivRecords.find(r => r.title === e.target.value)
+                        setDelivForm({ ...delivForm, title: e.target.value, description: rec?.description || delivForm.description })
+                      }
+                    }}
+                  >
+                    <option value="">-- Select deliverable --</option>
+                    {delivRecords.map(r => <option key={r.id} value={r.title}>{r.title}</option>)}
+                    <option value="__new__">＋ Add new title...</option>
+                  </select>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      className={inputClass}
+                      value={delivForm.title}
+                      onChange={e => setDelivForm({ ...delivForm, title: e.target.value })}
+                      placeholder="e.g. Dashboard, User Management"
+                      autoFocus
+                    />
+                    {delivRecords.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setTitleIsCustom(false); setDelivForm({ ...delivForm, title: '' }) }}
+                        className="shrink-0 text-xs px-2 py-1 border border-slate-300 dark:border-navy-600 rounded text-slate-500 hover:bg-slate-50 dark:hover:bg-navy-700"
+                      >
+                        Library
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
                 <textarea className={`${inputClass} resize-none`} rows={2} value={delivForm.description} onChange={e => setDelivForm({ ...delivForm, description: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
-                  <input type="number" min="1" className={inputClass} value={delivForm.mandays} onChange={e => setDelivForm({ ...delivForm, mandays: e.target.value })} />
-                </div>
-                {editingDeliv && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
-                    <select className={inputClass} value={delivForm.status} onChange={e => setDelivForm({ ...delivForm, status: e.target.value })}>
-                      <option value="Pending">Pending</option>
-                      <option value="InProgress">In Progress</option>
-                      <option value="Done">Done</option>
-                      <option value="OnHold">On Hold</option>
-                    </select>
-                  </div>
-                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -539,6 +570,23 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                     onChange={e => setDelivForm({ ...delivForm, planned_end: e.target.value })}
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
+                  <input type="number" min="1" className={inputClass} value={delivForm.mandays} onChange={e => setDelivForm({ ...delivForm, mandays: e.target.value })} />
+                </div>
+                {editingDeliv && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
+                    <select className={inputClass} value={delivForm.status} onChange={e => setDelivForm({ ...delivForm, status: e.target.value })}>
+                      <option value="Pending">Pending</option>
+                      <option value="InProgress">In Progress</option>
+                      <option value="Done">Done</option>
+                      <option value="OnHold">On Hold</option>
+                    </select>
+                  </div>
+                )}
               </div>
               {modules.length > 0 && (
                 <div>
