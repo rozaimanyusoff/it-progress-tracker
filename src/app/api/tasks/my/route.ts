@@ -15,8 +15,10 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           title: true,
-          module: { select: { id: true, title: true } },
-          project: { select: { id: true, title: true } },
+          project_links: {
+            select: { project: { select: { id: true, title: true } }, module: { select: { id: true, title: true } } },
+            take: 1,
+          },
         },
       },
     },

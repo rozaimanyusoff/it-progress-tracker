@@ -93,7 +93,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   // Recalculate feature actual dates after task status change
-  if (body.status !== undefined) {
+  if (body.status !== undefined && task.feature_id != null) {
     await recalculateFeatureDates(task.feature_id)
   }
 

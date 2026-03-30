@@ -10,6 +10,45 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-30 — Deliverables, Gantt Dual-Bar & Manager Kanban Restrictions
+
+### Ditambah
+- **`Deliverable` model (Prisma)** — Model baharu untuk work breakdown dalam project: `project_id`, `module_id?`, `title`, `description`, `status`, `mandays`, `planned_start DateTime?`, `planned_end DateTime?`, `actual_start DateTime?`, `actual_end DateTime?`, `order`, `created_at`
+- **Migration `20260330100000_add_deliverables`** — Create `Deliverable` table; tambah `deliverable_id` pada `Task`; buat `Task.feature_id` nullable
+- **Migration `20260330110000_add_dates_to_module_deliverable`** — Tambah `start_date`, `end_date` pada `Module`; `planned_start`, `planned_end` pada `Deliverable`
+- **`GET/POST /api/projects/[id]/deliverables`** — List dan create deliverables untuk sesebuah project; task tidak lagi dijana secara SDLC — kosong dan ditambah secara manual
+- **`PUT/DELETE /api/deliverables/[id]`** — Kemaskini dan padam deliverable (cascade tasks)
+- **`src/components/DeliverableSection.tsx`** — Komponen baharu "Modules & Deliverables":
+  - Manager boleh tambah module (dengan `start_date`/`end_date`) kemudian deliverable di bawahnya, atau terus tambah deliverable tanpa module
+  - Header badge tunjuk bilangan modul (biru) dan deliverable (indigo)
+  - Setiap modul bertanda badge "MODULE" biru; setiap deliverable bertanda "DELIVERABLE" violet
+  - Butang "View Tasks" tunjuk kiraan semasa `Tasks (N)`
+  - Papar planned & actual dates bersebelahan dalam kad deliverable
+  - Validasi tarikh: mesti dalam julat tarikh projek; start tidak boleh melebihi end
+
+### Diubah
+- **`GanttChart.tsx`** — Prop `features` → `deliverables` (`GanttDeliverable`); tambah `embedded?: boolean` prop untuk strip outer card border apabila dirender dalam kad lain; setiap baris kini render dua bar: planned (kelabu nipis, atas) + actual (berwarna, bawah); legend tambah "Planned"; `computeRange` ambil kira `planned_start`/`planned_end`
+- **`src/app/projects/[id]/page.tsx`** — Buang FeaturesSection, Progress Timeline, dan Issues grid; Gantt chart dipindahkan masuk ke dalam header kad projek (divider `border-b`); `GanttChart` guna prop `embedded`; `DeliverableSection` terima `projectStartDate` dan `projectDeadline`
+- **`src/app/projects/[id]/timeline/page.tsx`** & **`/api/projects/[id]/timeline/route.ts`** — Fetch `deliverables` (bukan `featureLinks`); kembalikan `planned_start`/`planned_end` dalam response
+- **`GET /api/tasks/team`** — Tukar query dari feature-only kepada OR query: cari task melalui `feature.project_links` atau `deliverable.project_id`; normalize output kepada bentuk `context: { type: 'feature'|'deliverable', id, title, module, project }`
+- **`GET/POST /api/tasks`** — Sokong `?feature_id=` atau `?deliverable_id=`; POST terima sama ada `feature_id` atau `deliverable_id`
+- **`GET/POST /api/modules`** & **`PUT /api/modules/[id]`** — Terima `start_date` dan `end_date`
+- **`PUT /api/tasks/[id]`** — Fix: `recalculateFeatureDates` hanya dipanggil jika `task.feature_id != null`
+- **`POST /api/tasks/[id]/self-assign`** — Fix: guna optional chaining `task.feature?.project_links.some(...) ?? false` (feature kini nullable)
+- **`FeatureTaskList.tsx`** — Prop `featureId` kini optional; tambah `deliverableId?: number`; query API guna parameter yang berkenaan
+- **`TeamKanbanBoard.tsx`** — Interface `Task` guna `context` (bukan `feature`); card papar badge `Deliv`/`Feat`; manager hanya nampak butang "Review" (kuning) untuk task berstatus `InReview` — tidak boleh kemaskini task Todo/InProgress ahli pasukan
+
+### Diperbaiki
+- **`PUT /api/tasks/[id]`** — TypeScript error: `feature_id` kini `number | null`, dilindungi dengan null check sebelum panggil `recalculateFeatureDates`
+- **`POST /api/tasks/[id]/self-assign`** — TypeScript error: `task.feature` kini optional, guna `?.` untuk elak crash
+
+### Dibuang
+- **Predefined SDLC tasks** — Deliverable tidak lagi auto-generate task SDLC semasa creation
+- **FeaturesSection** dari halaman detail projek — digantikan oleh `DeliverableSection`
+- **Progress Timeline & Issues grid** dari halaman detail projek
+
+---
+
 ## 2026-03-29 — Projects Page: List, New Project & Features Management
 
 ### Ditambah

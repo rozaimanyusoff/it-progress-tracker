@@ -17,45 +17,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const features = await prisma.feature.findMany({
-    where: { project_id: projectId },
-    include: {
-      tasks: {
-        include: { assignee: { select: { id: true, name: true } } },
-        orderBy: { order: 'asc' },
+  const [modules, deliverables] = await Promise.all([
+    prisma.module.findMany({
+      where: { project_id: projectId },
+      orderBy: { order: 'asc' },
+      select: { id: true, title: true },
+    }),
+    prisma.deliverable.findMany({
+      where: { project_id: projectId },
+      include: {
+        tasks: {
+          include: { assignee: { select: { id: true, name: true } } },
+          orderBy: { order: 'asc' },
+        },
       },
-    },
-    orderBy: { order: 'asc' },
-  })
-
-  const today = new Date()
-
-  const enrichedFeatures = features.map((f) => {
-    const isDelayed = f.actual_end
-      ? f.actual_end > f.planned_end
-      : today > f.planned_end
-
-    return {
-      id: f.id,
-      title: f.title,
-      status: f.status,
-      mandays: f.mandays,
-      planned_start: f.planned_start.toISOString(),
-      planned_end: f.planned_end.toISOString(),
-      actual_start: f.actual_start?.toISOString() ?? null,
-      actual_end: f.actual_end?.toISOString() ?? null,
-      isDelayed,
-      tasks: f.tasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        actual_start: t.actual_start?.toISOString() ?? null,
-        actual_end: t.actual_end?.toISOString() ?? null,
-        assigned_to: t.assigned_to,
-        assignee: t.assignee,
-      })),
-    }
-  })
+      orderBy: { order: 'asc' },
+    }),
+  ])
 
   return NextResponse.json({
     project: {
@@ -64,6 +42,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       start_date: project.start_date.toISOString(),
       deadline: project.deadline.toISOString(),
     },
-    features: enrichedFeatures,
+    modules,
+    deliverables: deliverables.map(d => ({
+      id: d.id,
+      title: d.title,
+      status: d.status,
+      mandays: d.mandays,
+      planned_start: d.planned_start?.toISOString() ?? null,
+      planned_end: d.planned_end?.toISOString() ?? null,
+      actual_start: d.actual_start?.toISOString() ?? null,
+      actual_end: d.actual_end?.toISOString() ?? null,
+      module_id: d.module_id ?? null,
+      tasks: d.tasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        actual_start: t.actual_start?.toISOString() ?? null,
+        actual_end: t.actual_end?.toISOString() ?? null,
+        assigned_to: t.assigned_to,
+        assignee: t.assignee,
+      })),
+    })),
   })
 }

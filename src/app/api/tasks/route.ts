@@ -9,10 +9,18 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const featureId = searchParams.get('feature_id')
-  if (!featureId) return NextResponse.json({ error: 'feature_id required' }, { status: 400 })
+  const deliverableId = searchParams.get('deliverable_id')
+
+  if (!featureId && !deliverableId) {
+    return NextResponse.json({ error: 'feature_id or deliverable_id required' }, { status: 400 })
+  }
+
+  const where = featureId
+    ? { feature_id: Number(featureId) }
+    : { deliverable_id: Number(deliverableId) }
 
   const tasks = await prisma.task.findMany({
-    where: { feature_id: Number(featureId) },
+    where,
     include: {
       assignee: { select: { id: true, name: true } },
     },
@@ -28,26 +36,27 @@ export async function POST(req: NextRequest) {
   const user = session.user as any
 
   const body = await req.json()
-  const { feature_id, title, description, assigned_to } = body
+  const { feature_id, deliverable_id, title, description, assigned_to } = body
 
-  if (!feature_id || !title) {
-    return NextResponse.json({ error: 'feature_id and title are required' }, { status: 400 })
+  if ((!feature_id && !deliverable_id) || !title) {
+    return NextResponse.json({ error: 'feature_id or deliverable_id, and title are required' }, { status: 400 })
   }
 
-  // Members can only create tasks assigned to themselves
   const resolvedAssignee = user.role === 'manager'
     ? (assigned_to ? Number(assigned_to) : null)
     : Number(user.id)
 
+  const whereClause = feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }
+
   const maxOrderResult = await prisma.task.aggregate({
-    where: { feature_id: Number(feature_id) },
+    where: whereClause,
     _max: { order: true },
   })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
   const task = await prisma.task.create({
     data: {
-      feature_id: Number(feature_id),
+      ...(feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }),
       title,
       description: description || null,
       assigned_to: resolvedAssignee,
@@ -57,7 +66,6 @@ export async function POST(req: NextRequest) {
     },
     include: {
       assignee: { select: { id: true, name: true } },
-      feature: { select: { id: true, title: true, project: { select: { id: true, title: true } } } },
     },
   })
 
@@ -67,7 +75,7 @@ export async function POST(req: NextRequest) {
       action: 'CREATE',
       target_type: 'Task',
       target_id: task.id,
-      metadata: { title: task.title, feature_id: task.feature_id },
+      metadata: { title: task.title, feature_id: task.feature_id, deliverable_id: task.deliverable_id },
     },
   })
 

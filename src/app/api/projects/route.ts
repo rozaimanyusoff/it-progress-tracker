@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       start_date: new Date(body.start_date),
       deadline: new Date(body.deadline),
       status: body.status || 'Pending',
+      category: body.category || 'NonClaimable',
       assignees: {
         create: assigneeIds.map(uid => ({ user_id: uid })),
       },

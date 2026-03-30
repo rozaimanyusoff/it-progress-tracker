@@ -9,8 +9,6 @@ interface Developer {
 }
 
 interface Props {
-  projectId: number
-  moduleId?: number | null
   onClose: () => void
   onCreated: () => void
   editFeature?: {
@@ -18,23 +16,15 @@ interface Props {
     title: string
     description?: string | null
     mandays: number
-    planned_start: string
-    planned_end: string
     status: string
     developers: { user: { id: number; name: string } }[]
   } | null
 }
 
-export default function AddFeatureModal({ projectId, moduleId, onClose, onCreated, editFeature }: Props) {
+export default function AddFeatureModal({ onClose, onCreated, editFeature }: Props) {
   const [title, setTitle] = useState(editFeature?.title ?? '')
   const [description, setDescription] = useState(editFeature?.description ?? '')
   const [mandays, setMandays] = useState(editFeature?.mandays?.toString() ?? '1')
-  const [plannedStart, setPlannedStart] = useState(
-    editFeature?.planned_start ? editFeature.planned_start.slice(0, 10) : ''
-  )
-  const [plannedEnd, setPlannedEnd] = useState(
-    editFeature?.planned_end ? editFeature.planned_end.slice(0, 10) : ''
-  )
   const [status, setStatus] = useState(editFeature?.status ?? 'Pending')
   const [selectedDevIds, setSelectedDevIds] = useState<number[]>(
     editFeature?.developers?.map((d) => d.user.id) ?? []
@@ -66,7 +56,7 @@ export default function AddFeatureModal({ projectId, moduleId, onClose, onCreate
         const res = await fetch(`/api/features/${editFeature.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, description, mandays: Number(mandays), planned_start: plannedStart, planned_end: plannedEnd, status }),
+          body: JSON.stringify({ title, description, mandays: Number(mandays), status }),
         })
         if (!res.ok) throw new Error((await res.json()).error)
 
@@ -81,13 +71,9 @@ export default function AddFeatureModal({ projectId, moduleId, onClose, onCreate
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            project_id: projectId,
-            module_id: moduleId ?? null,
             title,
             description,
             mandays: Number(mandays),
-            planned_start: plannedStart,
-            planned_end: plannedEnd,
             developer_ids: selectedDevIds,
           }),
         })
@@ -111,7 +97,7 @@ export default function AddFeatureModal({ projectId, moduleId, onClose, onCreate
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            {editFeature ? 'Edit Feature' : 'Add Feature'}
+            {editFeature ? 'Edit Feature' : 'New Feature'}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xl">✕</button>
         </div>
@@ -127,19 +113,9 @@ export default function AddFeatureModal({ projectId, moduleId, onClose, onCreate
             <textarea className={inputClass} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mandays *</label>
-              <input type="number" min="1" className={inputClass} value={mandays} onChange={(e) => setMandays(e.target.value)} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned Start *</label>
-              <input type="date" className={inputClass} value={plannedStart} onChange={(e) => setPlannedStart(e.target.value)} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned End *</label>
-              <input type="date" className={inputClass} value={plannedEnd} onChange={(e) => setPlannedEnd(e.target.value)} required />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Estimated Mandays *</label>
+            <input type="number" min="1" className={inputClass} value={mandays} onChange={(e) => setMandays(e.target.value)} required />
           </div>
 
           {editFeature && (

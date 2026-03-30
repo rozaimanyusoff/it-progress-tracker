@@ -16,7 +16,6 @@ export async function GET(req: NextRequest) {
           where: {
             status: 'Todo',
             is_predefined: false,
-            feature: { project: {} },
           },
         })
       : prisma.task.count({ where: { assigned_to: userId, status: 'Todo', is_predefined: false } }),

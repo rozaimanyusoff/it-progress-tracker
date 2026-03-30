@@ -21,8 +21,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.description !== undefined) updateData.description = body.description || null
   if (body.mandays !== undefined) updateData.mandays = Number(body.mandays)
   if (body.status !== undefined) updateData.status = body.status
-  if (body.planned_start !== undefined) updateData.planned_start = new Date(body.planned_start)
-  if (body.planned_end !== undefined) updateData.planned_end = new Date(body.planned_end)
 
   const feature = await prisma.feature.update({
     where: { id: featureId },

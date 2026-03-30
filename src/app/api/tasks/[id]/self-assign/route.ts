@@ -11,15 +11,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const task = await prisma.task.findUnique({
     where: { id: Number(id) },
-    include: { feature: { include: { project: { include: { assignees: true } } } } },
+    include: {
+      feature: {
+        include: {
+          project_links: {
+            include: { project: { include: { assignees: true } } },
+          },
+        },
+      },
+    },
   })
 
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Verify developer is assigned to the project
-  const isAssigned = task.feature.project.assignees.some(a => a.user_id === Number(user.id))
-  if (!isAssigned && user.role !== 'manager') {
-    return NextResponse.json({ error: 'You are not assigned to this project' }, { status: 403 })
+  // Verify developer is assigned to at least one project this feature belongs to
+  if (user.role !== 'manager') {
+    const isAssigned = task.feature?.project_links.some(l =>
+      l.project.assignees.some(a => a.user_id === Number(user.id))
+    ) ?? false
+    if (!isAssigned) {
+      return NextResponse.json({ error: 'You are not assigned to this project' }, { status: 403 })
+    }
   }
 
   const updated = await prisma.task.update({
@@ -27,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     data: { assigned_to: Number(user.id) },
     include: {
       assignee: { select: { id: true, name: true } },
-      feature: { select: { id: true, title: true, project: { select: { id: true, title: true } } } },
+      feature: { select: { id: true, title: true } },
     },
   })
 

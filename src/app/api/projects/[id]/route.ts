@@ -70,9 +70,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const projectId = Number(id)
 
   await prisma.$transaction([
-    prisma.task.deleteMany({ where: { feature: { project_id: projectId } } }),
-    prisma.featureDeveloper.deleteMany({ where: { feature: { project_id: projectId } } }),
-    prisma.feature.deleteMany({ where: { project_id: projectId } }),
     prisma.projectUpdate.deleteMany({ where: { project_id: projectId } }),
     prisma.issue.deleteMany({ where: { project_id: projectId } }),
     prisma.project.delete({ where: { id: projectId } }),

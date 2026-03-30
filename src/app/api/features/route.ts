@@ -10,17 +10,39 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('project_id')
-  if (!projectId) return NextResponse.json({ error: 'project_id required' }, { status: 400 })
 
-  const features = await prisma.feature.findMany({
-    where: { project_id: Number(projectId) },
-    include: {
-      module: { select: { id: true, title: true } },
-      developers: {
-        include: { user: { select: { id: true, name: true, email: true } } },
+  if (projectId) {
+    // Return features linked to a project, with module_id from ProjectFeature
+    const links = await prisma.projectFeature.findMany({
+      where: { project_id: Number(projectId) },
+      include: {
+        feature: {
+          include: {
+            developers: { include: { user: { select: { id: true, name: true, email: true } } } },
+            tasks: { select: { status: true } },
+            created_by: { select: { id: true, name: true } },
+          },
+        },
+        module: { select: { id: true, title: true } },
       },
+      orderBy: { feature: { order: 'asc' } },
+    })
+
+    const features = links.map(l => ({
+      ...l.feature,
+      module_id: l.module_id,
+      module: l.module,
+    }))
+    return NextResponse.json(features)
+  }
+
+  // Return all standalone features (catalog)
+  const features = await prisma.feature.findMany({
+    include: {
+      developers: { include: { user: { select: { id: true, name: true, email: true } } } },
       tasks: { select: { status: true } },
       created_by: { select: { id: true, name: true } },
+      project_links: { include: { project: { select: { id: true, title: true } } } },
     },
     orderBy: { order: 'asc' },
   })
@@ -32,38 +54,24 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
+  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { project_id, module_id, title, description, mandays, planned_start, planned_end, developer_ids = [] } = body
+  const { title, description, mandays, developer_ids = [] } = body
 
-  if (!project_id || !title || !planned_start || !planned_end) {
-    return NextResponse.json({ error: 'project_id, title, planned_start, planned_end are required' }, { status: 400 })
+  if (!title) {
+    return NextResponse.json({ error: 'title is required' }, { status: 400 })
   }
 
-  // Members can only create features in projects they're assigned to
-  if (user.role !== 'manager') {
-    const assigned = await prisma.projectAssignee.findFirst({
-      where: { project_id: Number(project_id), user_id: Number(user.id) },
-    })
-    if (!assigned) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  const maxOrderResult = await prisma.feature.aggregate({
-    where: { project_id: Number(project_id) },
-    _max: { order: true },
-  })
+  const maxOrderResult = await prisma.feature.aggregate({ _max: { order: true } })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
   const feature = await prisma.$transaction(async (tx) => {
     const created = await tx.feature.create({
       data: {
-        project_id: Number(project_id),
-        module_id: module_id ? Number(module_id) : null,
         title,
         description: description || null,
         mandays: Number(mandays) || 0,
-        planned_start: new Date(planned_start),
-        planned_end: new Date(planned_end),
         order: nextOrder,
         created_by_id: Number(user.id),
       },
@@ -71,10 +79,7 @@ export async function POST(req: NextRequest) {
 
     if (developer_ids.length > 0) {
       await tx.featureDeveloper.createMany({
-        data: developer_ids.map((uid: number) => ({
-          feature_id: created.id,
-          user_id: Number(uid),
-        })),
+        data: developer_ids.map((uid: number) => ({ feature_id: created.id, user_id: Number(uid) })),
       })
     }
 
@@ -97,7 +102,7 @@ export async function POST(req: NextRequest) {
       action: 'CREATE',
       target_type: 'Feature',
       target_id: feature.id,
-      metadata: { title: feature.title, project_id: feature.project_id },
+      metadata: { title: feature.title },
     },
   })
 

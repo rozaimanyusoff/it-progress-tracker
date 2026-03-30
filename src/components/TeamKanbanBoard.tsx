@@ -10,7 +10,8 @@ interface Task {
   time_started_at: string | null
   time_spent_seconds: number
   assignee: { id: number; name: string } | null
-  feature: {
+  context: {
+    type: 'feature' | 'deliverable'
     id: number
     title: string
     module: { id: number; title: string } | null
@@ -356,11 +357,16 @@ export default function TeamKanbanBoard() {
                   >
                     <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
 
-                    {task.feature.module && (
-                      <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.feature.module.title}</p>
+                    {task.context.module && (
+                      <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.context.module.title}</p>
                     )}
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 truncate">{task.feature.title}</p>
-                    <p className="text-xs text-slate-400 truncate">{task.feature.project.title}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable' ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                        {task.context.type === 'deliverable' ? 'Deliv' : 'Feat'}
+                      </span>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 truncate">{task.context.title}</p>
+                    </div>
+                    <p className="text-xs text-slate-400 truncate">{task.context.project.title}</p>
 
                     {/* Timer */}
                     {(() => {
@@ -392,12 +398,14 @@ export default function TeamKanbanBoard() {
                       ) : (
                         <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
                       )}
-                      <button
-                        onClick={() => setActiveTaskId(task.id)}
-                        className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 shrink-0"
-                      >
-                        Update
-                      </button>
+                      {task.status === 'InReview' && (
+                        <button
+                          onClick={() => setActiveTaskId(task.id)}
+                          className="text-xs px-2 py-0.5 rounded border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 shrink-0 font-medium"
+                        >
+                          Review
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -419,9 +427,9 @@ export default function TeamKanbanBoard() {
         <TaskUpdateModal
           taskId={activeTask.id}
           taskTitle={activeTask.title}
-          moduleTitle={activeTask.feature.module?.title ?? null}
-          featureTitle={activeTask.feature.title}
-          projectTitle={activeTask.feature.project.title}
+          moduleTitle={activeTask.context.module?.title ?? null}
+          featureTitle={activeTask.context.title}
+          projectTitle={activeTask.context.project.title}
           currentStatus={activeTask.status}
           onClose={() => setActiveTaskId(null)}
           onStatusChange={handleStatusChange}

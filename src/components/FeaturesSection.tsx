@@ -6,7 +6,6 @@ import FeatureTaskList from './FeatureTaskList'
 
 interface Developer { user: { id: number; name: string } }
 interface Member { id: number; name: string }
-
 interface Task { status: string }
 
 interface Feature {
@@ -15,14 +14,20 @@ interface Feature {
   description?: string | null
   mandays: number
   status: string
-  planned_start: string
-  planned_end: string
   actual_start?: string | null
   actual_end?: string | null
   module_id?: number | null
   created_by: { id: number; name: string }
   developers: Developer[]
   tasks: Task[]
+}
+
+interface CatalogFeature {
+  id: number
+  title: string
+  description?: string | null
+  mandays: number
+  status: string
 }
 
 interface Module {
@@ -59,7 +64,7 @@ function taskProgress(tasks: Task[]) {
 
 function FeatureCard({
   feature, userRole, members, expandedId, setExpandedId,
-  onEdit, onDelete,
+  onEdit, onUnlink,
 }: {
   feature: Feature
   userRole: string
@@ -67,7 +72,7 @@ function FeatureCard({
   expandedId: number | null
   setExpandedId: (id: number | null) => void
   onEdit: (f: Feature) => void
-  onDelete: (id: number, title: string) => void
+  onUnlink: (id: number, title: string) => void
 }) {
   const { done, total, pct } = taskProgress(feature.tasks)
   const isExpanded = expandedId === feature.id
@@ -87,9 +92,8 @@ function FeatureCard({
             {feature.description && (
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{feature.description}</p>
             )}
-            <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-slate-400">
-              <span>Plan: {fmt(feature.planned_start)} → {fmt(feature.planned_end)}</span>
-              <span>Actual: {feature.actual_start ? `${fmt(feature.actual_start)} → ${feature.actual_end ? fmt(feature.actual_end) : 'ongoing'}` : 'Not started'}</span>
+            <div className="mt-1 text-xs text-slate-400">
+              Actual: {feature.actual_start ? `${fmt(feature.actual_start)} → ${feature.actual_end ? fmt(feature.actual_end) : 'ongoing'}` : 'Not started'}
             </div>
             {feature.developers.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
@@ -111,7 +115,7 @@ function FeatureCard({
             {userRole === 'manager' && (
               <>
                 <button onClick={() => onEdit(feature)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
-                <button onClick={() => onDelete(feature.id, feature.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Delete</button>
+                <button onClick={() => onUnlink(feature.id, feature.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Unlink</button>
               </>
             )}
             <button
@@ -140,10 +144,15 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [expandedModules, setExpandedModules] = useState<Set<number>>(new Set())
 
-  // Add Feature modal
-  const [showAddFeature, setShowAddFeature] = useState(false)
-  const [addFeatureModuleId, setAddFeatureModuleId] = useState<number | null>(null)
+  // Edit Feature modal
   const [editingFeature, setEditingFeature] = useState<Feature | null>(null)
+
+  // Link Feature modal
+  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [catalog, setCatalog] = useState<CatalogFeature[]>([])
+  const [selectedFeatureId, setSelectedFeatureId] = useState('')
+  const [linkModuleId, setLinkModuleId] = useState('')
+  const [linking, setLinking] = useState(false)
 
   // Add/Edit Module modal
   const [showModuleModal, setShowModuleModal] = useState(false)
@@ -164,18 +173,42 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
     ])
     const modData = await modRes.json()
     const featData = await featRes.json()
-    // modData from GET /api/modules includes features too, but we use separate features list for flexibility
     setModules(modData.map((m: any) => ({ id: m.id, title: m.title, description: m.description, order: m.order })))
     setFeatures(featData)
-    // Auto-expand all modules
     setExpandedModules(new Set(modData.map((m: any) => m.id)))
     setLoading(false)
   }
 
-  async function deleteFeature(id: number, title: string) {
-    if (!confirm(`Delete feature "${title}" and all its tasks?`)) return
-    const res = await fetch(`/api/features/${id}`, { method: 'DELETE' })
-    if (res.ok) setFeatures(prev => prev.filter(f => f.id !== id))
+  async function openLinkModal() {
+    const all = await fetch('/api/features').then(r => r.json())
+    const linkedIds = new Set(features.map(f => f.id))
+    setCatalog(all.filter((f: CatalogFeature) => !linkedIds.has(f.id)))
+    setSelectedFeatureId('')
+    setLinkModuleId('')
+    setShowLinkModal(true)
+  }
+
+  async function handleLink() {
+    if (!selectedFeatureId) return
+    setLinking(true)
+    await fetch(`/api/projects/${projectId}/features`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature_id: Number(selectedFeatureId), module_id: linkModuleId ? Number(linkModuleId) : null }),
+    })
+    setLinking(false)
+    setShowLinkModal(false)
+    fetchAll()
+  }
+
+  async function unlinkFeature(id: number, title: string) {
+    if (!confirm(`Unlink feature "${title}" from this project?`)) return
+    await fetch(`/api/projects/${projectId}/features`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature_id: id }),
+    })
+    setFeatures(prev => prev.filter(f => f.id !== id))
   }
 
   async function saveModule() {
@@ -254,8 +287,8 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
             <button onClick={openAddModule} className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg border border-slate-200 dark:border-navy-600">
               + Module
             </button>
-            <button onClick={() => { setAddFeatureModuleId(null); setShowAddFeature(true) }} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
-              + Feature
+            <button onClick={openLinkModal} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
+              + Link Feature
             </button>
           </div>
         )}
@@ -265,7 +298,6 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
         <p className="text-sm text-slate-500 py-4 text-center">Loading...</p>
       ) : (
         <div className="space-y-4">
-          {/* Modules */}
           {modules.map(mod => {
             const modFeatures = features.filter(f => f.module_id === mod.id)
             const isOpen = expandedModules.has(mod.id)
@@ -274,7 +306,6 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
 
             return (
               <div key={mod.id} className="border border-blue-200 dark:border-blue-900/50 rounded-xl overflow-hidden">
-                {/* Module header */}
                 <div className="flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-900/20">
                   <button onClick={() => toggleModule(mod.id)} className="flex items-center gap-2 flex-1 text-left">
                     <span className="text-xs text-blue-400">{isOpen ? '▼' : '▶'}</span>
@@ -284,10 +315,6 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
                   </button>
                   {userRole === 'manager' && (
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => { setAddFeatureModuleId(mod.id); setShowAddFeature(true) }}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded"
-                      >+ Feature</button>
                       <button onClick={() => openEditModule(mod)} className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300">Edit</button>
                       <button onClick={() => deleteModule(mod.id, mod.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 text-red-500">Delete</button>
                     </div>
@@ -308,7 +335,7 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
                           expandedId={expandedId}
                           setExpandedId={setExpandedId}
                           onEdit={setEditingFeature}
-                          onDelete={deleteFeature}
+                          onUnlink={unlinkFeature}
                         />
                       ))
                     )}
@@ -318,7 +345,6 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
             )
           })}
 
-          {/* Ungrouped features */}
           {ungroupedFeatures.length > 0 && (
             <div className="border border-slate-200 dark:border-navy-700 rounded-xl overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 dark:bg-navy-900/50">
@@ -334,7 +360,7 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
                     expandedId={expandedId}
                     setExpandedId={setExpandedId}
                     onEdit={setEditingFeature}
-                    onDelete={deleteFeature}
+                    onUnlink={unlinkFeature}
                   />
                 ))}
               </div>
@@ -343,21 +369,59 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
 
           {modules.length === 0 && ungroupedFeatures.length === 0 && (
             <p className="text-sm text-slate-400 py-4 text-center">
-              No modules or features yet.{userRole === 'manager' ? ' Add a module or feature above.' : ''}
+              No features linked yet.{userRole === 'manager' ? ' Use "+ Link Feature" to attach features from the catalog.' : ''}
             </p>
           )}
         </div>
       )}
 
-      {/* Add/Edit Feature Modal */}
-      {(showAddFeature || editingFeature) && (
+      {/* Edit Feature Modal */}
+      {editingFeature && (
         <AddFeatureModal
-          projectId={projectId}
-          moduleId={showAddFeature ? addFeatureModuleId : (editingFeature?.module_id ?? null)}
-          onClose={() => { setShowAddFeature(false); setEditingFeature(null) }}
-          onCreated={() => { fetchAll(); setShowAddFeature(false); setEditingFeature(null) }}
+          onClose={() => setEditingFeature(null)}
+          onCreated={() => { fetchAll(); setEditingFeature(null) }}
           editFeature={editingFeature}
         />
+      )}
+
+      {/* Link Feature Modal */}
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Link Feature</h2>
+              <button onClick={() => setShowLinkModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Feature *</label>
+                {catalog.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic">All features are already linked, or no features exist in the catalog.</p>
+                ) : (
+                  <select className={inputClass} value={selectedFeatureId} onChange={e => setSelectedFeatureId(e.target.value)}>
+                    <option value="">Select a feature...</option>
+                    {catalog.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}
+                  </select>
+                )}
+              </div>
+              {modules.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assign to Module (optional)</label>
+                  <select className={inputClass} value={linkModuleId} onChange={e => setLinkModuleId(e.target.value)}>
+                    <option value="">Ungrouped</option>
+                    {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button onClick={() => setShowLinkModal(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50">Cancel</button>
+              <button onClick={handleLink} disabled={linking || !selectedFeatureId} className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
+                {linking ? 'Linking...' : 'Link Feature'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add/Edit Module Modal */}

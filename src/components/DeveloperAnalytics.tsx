@@ -25,7 +25,6 @@ interface DeveloperStat {
   tasksAssigned: number
   tasksDone: number
   tasksInProgress: number
-  tasksDelayed: number
   estimatedMandays: number
   totalSpentDays: number
   weeklyTasksTrend: { week: string; count: number }[]
@@ -235,9 +234,6 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
                   <span className="text-green-600 dark:text-green-400 font-medium">{dev.tasksDone}✓</span>
                   <span className="text-slate-400">/</span>
                   <span className="text-slate-600 dark:text-slate-300">{dev.tasksAssigned}</span>
-                  {dev.tasksDelayed > 0 && (
-                    <span className="text-red-500 font-medium">⚠{dev.tasksDelayed}</span>
-                  )}
                 </div>
               </div>
             )
@@ -250,7 +246,7 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 dark:border-navy-700 text-left">
-              {['Developer', 'Assigned', 'Done', 'In Progress', 'Delayed', 'Est. Mandays', 'Time Spent'].map((h) => (
+              {['Developer', 'Assigned', 'Done', 'In Progress', 'Est. Mandays', 'Time Spent'].map((h) => (
                 <th key={h} className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">
                   {h}
                 </th>
@@ -274,13 +270,6 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
                   <span className={`font-medium ${dev.tasksInProgress > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400'}`}>
                     {dev.tasksInProgress}
                   </span>
-                </td>
-                <td className="px-3 py-3">
-                  {dev.tasksDelayed > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">⚠ {dev.tasksDelayed}</span>
-                  ) : (
-                    <span className="text-slate-400">0</span>
-                  )}
                 </td>
                 <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
                   {dev.estimatedMandays > 0 ? `${dev.estimatedMandays} md` : <span className="text-slate-400">—</span>}

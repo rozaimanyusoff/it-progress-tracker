@@ -17,7 +17,8 @@ interface Developer {
 }
 
 interface Props {
-  featureId: number
+  featureId?: number
+  deliverableId?: number
   userRole: string
   developers: Developer[]
 }
@@ -36,7 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
   Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
 }
 
-export default function FeatureTaskList({ featureId, userRole, developers }: Props) {
+export default function FeatureTaskList({ featureId, deliverableId, userRole, developers }: Props) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddTask, setShowAddTask] = useState(false)
@@ -46,11 +47,12 @@ export default function FeatureTaskList({ featureId, userRole, developers }: Pro
 
   useEffect(() => {
     fetchTasks()
-  }, [featureId])
+  }, [featureId, deliverableId])
 
   async function fetchTasks() {
     setLoading(true)
-    const res = await fetch(`/api/tasks?feature_id=${featureId}`)
+    const param = featureId ? `feature_id=${featureId}` : `deliverable_id=${deliverableId}`
+    const res = await fetch(`/api/tasks?${param}`)
     const data = await res.json()
     setTasks(data)
     setLoading(false)
@@ -98,7 +100,7 @@ export default function FeatureTaskList({ featureId, userRole, developers }: Pro
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        feature_id: featureId,
+        ...(featureId ? { feature_id: featureId } : { deliverable_id: deliverableId }),
         title: newTaskTitle,
         assigned_to: newTaskAssignee ? Number(newTaskAssignee) : null,
       }),

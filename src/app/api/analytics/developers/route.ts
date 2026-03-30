@@ -12,11 +12,11 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get('project_id')
 
   const taskWhere = projectId
-    ? { feature: { project_id: Number(projectId) } }
+    ? { feature: { project_links: { some: { project_id: Number(projectId) } } } }
     : {}
 
   const featureAssignWhere = projectId
-    ? { feature: { project_id: Number(projectId) } }
+    ? { feature: { project_links: { some: { project_id: Number(projectId) } } } }
     : {}
 
   // Members can only see their own analytics
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
           actual_end: true,
           created_at: true,
           feature: {
-            select: { planned_end: true, mandays: true },
+            select: { mandays: true },
           },
         },
       },
@@ -73,12 +73,6 @@ export async function GET(req: NextRequest) {
     const tasksInProgress = tasks.filter(
       (t) => t.status === 'InProgress' || t.status === 'InReview'
     ).length
-
-    const tasksDelayed = tasks.filter((t) => {
-      const plannedEnd = new Date(t.feature.planned_end)
-      if (t.actual_end) return t.actual_end > plannedEnd
-      return today > plannedEnd
-    }).length
 
     const estimatedMandays = u.feature_assignments.reduce(
       (sum, fa) => sum + fa.feature.mandays,
@@ -122,7 +116,6 @@ export async function GET(req: NextRequest) {
       tasksAssigned: tasks.length,
       tasksDone,
       tasksInProgress,
-      tasksDelayed,
       estimatedMandays,
       totalSpentDays: Math.round(totalSpentDays * 10) / 10,
       weeklyTasksTrend,

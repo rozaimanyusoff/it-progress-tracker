@@ -13,8 +13,8 @@ type Project = {
 }
 type Feature = {
   id: number; title: string; description: string | null; mandays: number
-  planned_start: string; planned_end: string; status: string
-  module: { id: number; title: string } | null
+  status: string
+  project_links?: { project: { id: number; title: string } }[]
 }
 
 const TABS = ['Projects', 'New Project', 'Features'] as const
@@ -160,7 +160,7 @@ function NewProjectTab({
   const [members, setMembers] = useState<any[]>([])
   const [form, setForm] = useState({
     title: '', description: '', assignee_ids: [] as number[],
-    start_date: '', deadline: '', status: 'Pending',
+    start_date: '', deadline: '', status: 'Pending', category: 'NonClaimable',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -190,7 +190,7 @@ function NewProjectTab({
     setSaving(false)
     if (res.ok) {
       showToast('success', 'Project created')
-      setForm({ title: '', description: '', assignee_ids: [], start_date: '', deadline: '', status: 'Pending' })
+      setForm({ title: '', description: '', assignee_ids: [], start_date: '', deadline: '', status: 'Pending', category: 'NonClaimable' })
       onCreated()
     } else {
       const data = await res.json()
@@ -199,7 +199,7 @@ function NewProjectTab({
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-6">
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
@@ -246,14 +246,23 @@ function NewProjectTab({
               <input type="date" required value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} className={inputClass} />
             </div>
           </div>
-          <div>
-            <label className={labelClass}>Initial Status</label>
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputClass}>
-              <option value="Pending">Pending</option>
-              <option value="InProgress">In Progress</option>
-              <option value="Done">Done</option>
-              <option value="OnHold">On Hold</option>
-            </select>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Initial Status</label>
+              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputClass}>
+                <option value="Pending">Pending</option>
+                <option value="InProgress">In Progress</option>
+                <option value="Done">Done</option>
+                <option value="OnHold">On Hold</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Project Category</label>
+              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className={inputClass}>
+                <option value="Claimable">Claimable / External</option>
+                <option value="NonClaimable">Non-claimable / Internal</option>
+              </select>
+            </div>
           </div>
           <button type="submit" disabled={saving} className="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">
             {saving ? 'Creating...' : 'Create Project'}
@@ -266,55 +275,35 @@ function NewProjectTab({
 
 // ── Features Tab ──────────────────────────────────────────────────
 function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [projects, setProjects] = useState<{ id: number; title: string }[]>([])
   const [features, setFeatures] = useState<Feature[]>([])
-  const [projectId, setProjectId] = useState('')
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', mandays: '1', planned_start: '', planned_end: '' })
+  const [form, setForm] = useState({ title: '', description: '', mandays: '1' })
 
   useEffect(() => {
-    fetch('/api/projects').then(r => r.json()).then((data: any[]) =>
-      setProjects(data.map(p => ({ id: p.id, title: p.title })))
-    )
+    setLoading(true)
+    fetch('/api/features').then(r => r.json()).then(data => { setFeatures(Array.isArray(data) ? data : []); setLoading(false) })
   }, [])
 
-  useEffect(() => {
-    if (!projectId) { setFeatures([]); return }
-    setLoading(true)
-    fetch(`/api/features?project_id=${projectId}`).then(r => r.json()).then(data => { setFeatures(data); setLoading(false) })
-  }, [projectId])
-
-  function calcMandays(start: string, end: string) {
-    if (!start || !end) return form.mandays
-    const s = new Date(start), e = new Date(end)
-    if (e < s) return '1'
-    let days = 0; const cur = new Date(s)
-    while (cur <= e) { const d = cur.getDay(); if (d !== 0 && d !== 6) days++; cur.setDate(cur.getDate() + 1) }
-    return String(Math.max(1, days))
-  }
-
   async function handleAdd(e: React.FormEvent) {
-    e.preventDefault(); if (!projectId) return
+    e.preventDefault()
     setSaving(true)
     const res = await fetch('/api/features', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: Number(projectId), title: form.title,
-        description: form.description || null, mandays: Number(form.mandays),
-        planned_start: form.planned_start, planned_end: form.planned_end,
+        title: form.title, description: form.description || null, mandays: Number(form.mandays),
       }),
     })
     setSaving(false)
     if (res.ok) {
-      const fresh = await fetch(`/api/features?project_id=${projectId}`).then(r => r.json())
-      setFeatures(fresh)
-      setForm({ title: '', description: '', mandays: '1', planned_start: '', planned_end: '' })
+      const fresh = await fetch('/api/features').then(r => r.json())
+      setFeatures(Array.isArray(fresh) ? fresh : [])
+      setForm({ title: '', description: '', mandays: '1' })
       setShowForm(false)
-      showToast('success', 'Feature added')
+      showToast('success', 'Feature created')
     } else {
-      showToast('error', (await res.json()).error || 'Failed to add feature')
+      showToast('error', (await res.json()).error || 'Failed to create feature')
     }
   }
 
@@ -328,19 +317,12 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <select value={projectId} onChange={e => setProjectId(e.target.value)}
-          className="text-sm bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Select project...</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-        </select>
-        {projectId && (
-          <button onClick={() => setShowForm(v => !v)} className="btn-primary px-4 py-1.5 rounded-lg text-sm font-semibold">
-            + Add Feature
-          </button>
-        )}
+        <button onClick={() => setShowForm(v => !v)} className="btn-primary px-4 py-1.5 rounded-lg text-sm font-semibold">
+          + New Feature
+        </button>
       </div>
 
-      {showForm && projectId && (
+      {showForm && (
         <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-5 mb-5">
           <h3 className="font-semibold text-slate-800 dark:text-white mb-4 text-sm">New Feature</h3>
           <form onSubmit={handleAdd} className="space-y-3">
@@ -352,21 +334,9 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
               <label className={labelClass}>Description</label>
               <textarea className={`${inputClass} resize-none`} rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={labelClass}>Start *</label>
-                <input type="date" required className={inputClass} value={form.planned_start}
-                  onChange={e => setForm(f => ({ ...f, planned_start: e.target.value, mandays: calcMandays(e.target.value, f.planned_end) }))} />
-              </div>
-              <div>
-                <label className={labelClass}>End *</label>
-                <input type="date" required className={inputClass} value={form.planned_end}
-                  onChange={e => setForm(f => ({ ...f, planned_end: e.target.value, mandays: calcMandays(f.planned_start, e.target.value) }))} />
-              </div>
-              <div>
-                <label className={labelClass}>Mandays</label>
-                <input type="number" min="1" className={inputClass} value={form.mandays} onChange={e => setForm(f => ({ ...f, mandays: e.target.value }))} />
-              </div>
+            <div>
+              <label className={labelClass}>Estimated Mandays</label>
+              <input type="number" min="1" className={inputClass} value={form.mandays} onChange={e => setForm(f => ({ ...f, mandays: e.target.value }))} />
             </div>
             <div className="flex gap-3 pt-1">
               <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
@@ -380,17 +350,15 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
         </div>
       )}
 
-      {!projectId && <p className="text-slate-400 text-sm py-8 text-center">Select a project to view features.</p>}
-      {projectId && loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
-      {projectId && !loading && features.length === 0 && <p className="text-slate-400 text-sm py-8 text-center">No features yet.</p>}
+      {loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
+      {!loading && features.length === 0 && <p className="text-slate-400 text-sm py-8 text-center">No features yet.</p>}
       {!loading && features.length > 0 && (
         <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
                 <th className="text-left px-5 py-3 font-medium">Feature</th>
-                <th className="text-left px-5 py-3 font-medium">Module</th>
-                <th className="text-left px-5 py-3 font-medium">Period</th>
+                <th className="text-left px-5 py-3 font-medium">Linked Projects</th>
                 <th className="text-left px-5 py-3 font-medium">Mandays</th>
                 <th className="text-left px-5 py-3 font-medium">Status</th>
               </tr>
@@ -402,9 +370,10 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
                     <p className="font-medium text-slate-900 dark:text-white">{f.title}</p>
                     {f.description && <p className="text-xs text-slate-400 truncate max-w-xs">{f.description}</p>}
                   </td>
-                  <td className="px-5 py-3 text-slate-500 dark:text-slate-400 text-xs">{f.module?.title ?? '—'}</td>
-                  <td className="px-5 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
-                    {new Date(f.planned_start).toLocaleDateString()} → {new Date(f.planned_end).toLocaleDateString()}
+                  <td className="px-5 py-3 text-xs text-slate-500 dark:text-slate-400">
+                    {f.project_links && f.project_links.length > 0
+                      ? f.project_links.map(l => l.project.title).join(', ')
+                      : <span className="italic text-slate-300 dark:text-slate-600">Unlinked</span>}
                   </td>
                   <td className="px-5 py-3 text-slate-600 dark:text-slate-300 text-xs">{f.mandays}d</td>
                   <td className="px-5 py-3">

@@ -29,29 +29,65 @@ model User {
 }
 
 model Project {
-  id          Int               @id @default(autoincrement())
-  title       String
-  description String?
-  start_date  DateTime
-  deadline    DateTime
-  status      ProjectStatus     @default(Pending)
-  created_at  DateTime          @default(now())
-  updates     ProjectUpdate[]
-  issues      Issue[]
-  features    Feature[]
-  modules     Module[]
-  assignees   ProjectAssignee[]
+  id            Int               @id @default(autoincrement())
+  title         String
+  description   String?
+  start_date    DateTime
+  deadline      DateTime
+  status        ProjectStatus     @default(Pending)
+  category      ProjectCategory   @default(NonClaimable)
+  created_at    DateTime          @default(now())
+  updates       ProjectUpdate[]
+  issues        Issue[]
+  modules       Module[]
+  assignees     ProjectAssignee[]
+  feature_links ProjectFeature[]
+  deliverables  Deliverable[]
 }
 
 model Module {
-  id          Int       @id @default(autoincrement())
+  id            Int              @id @default(autoincrement())
+  project_id    Int
+  title         String
+  description   String?
+  start_date    DateTime?
+  end_date      DateTime?
+  order         Int              @default(0)
+  created_at    DateTime         @default(now())
+  project       Project          @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  feature_links ProjectFeature[]
+  deliverables  Deliverable[]
+}
+
+model ProjectFeature {
   project_id  Int
-  title       String
-  description String?
-  order       Int       @default(0)
-  created_at  DateTime  @default(now())
-  project     Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  features    Feature[]
+  feature_id  Int
+  module_id   Int?
+  assigned_at DateTime @default(now())
+  project     Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  feature     Feature  @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  module      Module?  @relation(fields: [module_id], references: [id], onDelete: SetNull)
+
+  @@id([project_id, feature_id])
+}
+
+model Deliverable {
+  id             Int           @id @default(autoincrement())
+  project_id     Int
+  module_id      Int?
+  title          String
+  description    String?
+  status         FeatureStatus @default(Pending)
+  mandays        Int           @default(0)
+  planned_start  DateTime?
+  planned_end    DateTime?
+  actual_start   DateTime?
+  actual_end     DateTime?
+  order          Int           @default(0)
+  created_at     DateTime      @default(now())
+  project      Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  module       Module?       @relation(fields: [module_id], references: [id], onDelete: SetNull)
+  tasks        Task[]
 }
 
 model ProjectAssignee {
@@ -114,6 +150,11 @@ enum ProjectStatus {
   OnHold
 }
 
+enum ProjectCategory {
+  Claimable
+  NonClaimable
+}
+
 enum UpdateStatus {
   InProgress
   Done
@@ -143,24 +184,19 @@ enum TaskStatus {
 
 model Feature {
   id             Int               @id @default(autoincrement())
-  project_id     Int
-  module_id      Int?
   title          String
   description    String?
   mandays        Int               @default(0)
   status         FeatureStatus     @default(Pending)
-  planned_start  DateTime
-  planned_end    DateTime
   actual_start   DateTime?
   actual_end     DateTime?
   order          Int               @default(0)
   created_at     DateTime          @default(now())
   created_by_id  Int
-  project        Project           @relation(fields: [project_id], references: [id])
-  module         Module?           @relation(fields: [module_id], references: [id], onDelete: SetNull)
   created_by     User              @relation("FeatureCreator", fields: [created_by_id], references: [id])
   developers     FeatureDeveloper[]
   tasks          Task[]
+  project_links  ProjectFeature[]
 }
 
 model FeatureDeveloper {
@@ -174,22 +210,24 @@ model FeatureDeveloper {
 }
 
 model Task {
-  id            Int          @id @default(autoincrement())
-  feature_id    Int
-  title         String
-  description   String?
-  status        TaskStatus   @default(Todo)
-  assigned_to   Int?
-  order         Int          @default(0)
-  is_predefined Boolean      @default(false)
+  id                 Int           @id @default(autoincrement())
+  feature_id         Int?
+  deliverable_id     Int?
+  title              String
+  description        String?
+  status             TaskStatus    @default(Todo)
+  assigned_to        Int?
+  order              Int           @default(0)
+  is_predefined      Boolean       @default(false)
   actual_start       DateTime?
   actual_end         DateTime?
   time_started_at    DateTime?
-  time_spent_seconds Int       @default(0)
-  created_at         DateTime  @default(now())
-  feature       Feature      @relation(fields: [feature_id], references: [id], onDelete: Cascade)
-  assignee      User?        @relation("TaskAssignee", fields: [assigned_to], references: [id])
-  task_updates  TaskUpdate[]
+  time_spent_seconds Int           @default(0)
+  created_at         DateTime      @default(now())
+  feature            Feature?      @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  deliverable        Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: Cascade)
+  assignee           User?         @relation("TaskAssignee", fields: [assigned_to], references: [id])
+  task_updates       TaskUpdate[]
 }
 
 model AppSetting {

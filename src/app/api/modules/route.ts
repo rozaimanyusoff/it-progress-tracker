@@ -13,19 +13,6 @@ export async function GET(req: NextRequest) {
 
   const modules = await prisma.module.findMany({
     where: { project_id: Number(projectId) },
-    include: {
-      features: {
-        include: {
-          developers: { include: { user: { select: { id: true, name: true } } } },
-          tasks: {
-            include: { assignee: { select: { id: true, name: true } } },
-            orderBy: { order: 'asc' },
-          },
-          created_by: { select: { id: true, name: true } },
-        },
-        orderBy: { order: 'asc' },
-      },
-    },
     orderBy: { order: 'asc' },
   })
 
@@ -39,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { project_id, title, description } = body
+  const { project_id, title, description, start_date, end_date } = body
   if (!project_id || !title) return NextResponse.json({ error: 'project_id and title required' }, { status: 400 })
 
   const maxOrder = await prisma.module.aggregate({
@@ -52,9 +39,10 @@ export async function POST(req: NextRequest) {
       project_id: Number(project_id),
       title,
       description: description || null,
+      start_date: start_date ? new Date(start_date) : null,
+      end_date: end_date ? new Date(end_date) : null,
       order: (maxOrder._max.order ?? 0) + 1,
     },
-    include: { features: true },
   })
 
   return NextResponse.json(module, { status: 201 })

@@ -11,17 +11,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const module = await prisma.module.update({
+  const { title, description, mandays, status, module_id, planned_start, planned_end } = body
+
+  const updated = await prisma.deliverable.update({
     where: { id: Number(id) },
     data: {
-      title: body.title,
-      description: body.description ?? null,
-      start_date: body.start_date ? new Date(body.start_date) : null,
-      end_date: body.end_date ? new Date(body.end_date) : null,
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description: description || null }),
+      ...(mandays !== undefined && { mandays: Number(mandays) }),
+      ...(status !== undefined && { status }),
+      ...(module_id !== undefined && { module_id: module_id ? Number(module_id) : null }),
+      ...(planned_start !== undefined && { planned_start: planned_start ? new Date(planned_start) : null }),
+      ...(planned_end !== undefined && { planned_end: planned_end ? new Date(planned_end) : null }),
     },
   })
 
-  return NextResponse.json(module)
+  return NextResponse.json(updated)
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -31,13 +36,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const user = session.user as any
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // Unlink features from module in ProjectFeature (set module_id = null)
-  await prisma.projectFeature.updateMany({
-    where: { module_id: Number(id) },
-    data: { module_id: null },
-  })
+  await prisma.deliverable.delete({ where: { id: Number(id) } })
 
-  await prisma.module.delete({ where: { id: Number(id) } })
-
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ ok: true })
 }

@@ -24,31 +24,35 @@ export async function GET(req: NextRequest) {
 
   const modules = await prisma.module.findMany({
     where: { project_id: Number(projectId) },
+    orderBy: { order: 'asc' },
+  })
+
+  // Get all features linked to this project via ProjectFeature, grouped by module
+  const links = await prisma.projectFeature.findMany({
+    where: { project_id: Number(projectId) },
     include: {
-      features: {
+      feature: {
         include: {
           tasks: {
             include: { assignee: { select: { id: true, name: true } } },
             orderBy: { order: 'asc' },
           },
         },
-        orderBy: { order: 'asc' },
       },
     },
-    orderBy: { order: 'asc' },
+    orderBy: { feature: { order: 'asc' } },
   })
 
-  // Also get ungrouped features (no module_id)
-  const ungrouped = await prisma.feature.findMany({
-    where: { project_id: Number(projectId), module_id: null },
-    include: {
-      tasks: {
-        include: { assignee: { select: { id: true, name: true } } },
-        orderBy: { order: 'asc' },
-      },
-    },
-    orderBy: { order: 'asc' },
-  })
+  const modulesWithFeatures = modules.map(m => ({
+    ...m,
+    features: links
+      .filter(l => l.module_id === m.id)
+      .map(l => l.feature),
+  }))
 
-  return NextResponse.json({ modules, ungrouped })
+  const ungrouped = links
+    .filter(l => l.module_id === null)
+    .map(l => l.feature)
+
+  return NextResponse.json({ modules: modulesWithFeatures, ungrouped })
 }

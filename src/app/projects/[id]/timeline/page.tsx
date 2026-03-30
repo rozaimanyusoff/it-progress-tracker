@@ -20,32 +20,36 @@ export default async function TimelinePage({ params }: { params: Promise<{ id: s
 
   if (!project) notFound()
 
-  const features = await prisma.feature.findMany({
-    where: { project_id: projectId },
-    include: {
-      tasks: {
-        include: { assignee: { select: { id: true, name: true } } },
-        orderBy: { order: 'asc' },
+  const [projectModules, deliverables] = await Promise.all([
+    prisma.module.findMany({
+      where: { project_id: projectId },
+      orderBy: { order: 'asc' },
+    }),
+    prisma.deliverable.findMany({
+      where: { project_id: projectId },
+      include: {
+        tasks: {
+          include: { assignee: { select: { id: true, name: true } } },
+          orderBy: { order: 'asc' },
+        },
       },
-    },
-    orderBy: { order: 'asc' },
-  })
+      orderBy: { order: 'asc' },
+    }),
+  ])
 
-  const today = new Date()
+  const ganttModules = projectModules.map(m => ({ id: m.id, title: m.title }))
 
-  const enrichedFeatures = features.map((f) => ({
-    id: f.id,
-    title: f.title,
-    status: f.status,
-    mandays: f.mandays,
-    planned_start: f.planned_start.toISOString(),
-    planned_end: f.planned_end.toISOString(),
-    actual_start: f.actual_start?.toISOString() ?? null,
-    actual_end: f.actual_end?.toISOString() ?? null,
-    isDelayed: f.actual_end
-      ? f.actual_end > f.planned_end
-      : today > f.planned_end,
-    tasks: f.tasks.map((t) => ({
+  const ganttDeliverables = deliverables.map(d => ({
+    id: d.id,
+    title: d.title,
+    status: d.status,
+    mandays: d.mandays,
+    planned_start: d.planned_start?.toISOString() ?? null,
+    planned_end: d.planned_end?.toISOString() ?? null,
+    actual_start: d.actual_start?.toISOString() ?? null,
+    actual_end: d.actual_end?.toISOString() ?? null,
+    module_id: d.module_id ?? null,
+    tasks: d.tasks.map(t => ({
       id: t.id,
       title: t.title,
       status: t.status,
@@ -75,7 +79,7 @@ export default async function TimelinePage({ params }: { params: Promise<{ id: s
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">{project.title}</h1>
       </div>
 
-      <GanttChart project={serializedProject} features={enrichedFeatures} />
+      <GanttChart project={serializedProject} deliverables={ganttDeliverables} modules={ganttModules} />
     </AppLayout>
   )
 }
