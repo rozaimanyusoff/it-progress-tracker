@@ -40,7 +40,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     }),
   ])
 
-  const ganttModules = projectModules.map(m => ({ id: m.id, title: m.title }))
+  const ganttModules = projectModules.map(m => ({
+    id: m.id,
+    title: m.title,
+    start_date: m.start_date?.toISOString() ?? null,
+    end_date: m.end_date?.toISOString() ?? null,
+  }))
 
   const ganttDeliverables = deliverables.map(d => ({
     id: d.id,
@@ -63,14 +68,28 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     })),
   }))
 
-  const latestProgress = project.updates[0]?.progress_pct ?? 0
+  // Compute progress & status from tasks when deliverables exist; else fall back to manual update
+  const allTasks = deliverables.flatMap(d => d.tasks)
+  const computedProgress = allTasks.length > 0
+    ? Math.round(allTasks.filter(t => t.status === 'Done').length / allTasks.length * 100)
+    : (project.updates[0]?.progress_pct ?? 0)
+
+  const latestProgress = computedProgress
+
+  const computedStatus = (() => {
+    if (deliverables.length === 0) return project.status
+    if (deliverables.every(d => d.status === 'Done')) return 'Done'
+    if (deliverables.some(d => d.status === 'InProgress' || d.status === 'OnHold')) return 'InProgress'
+    if (deliverables.some(d => d.status === 'Done')) return 'InProgress' // partial
+    return 'Pending'
+  })()
 
   const statusLabel: Record<string, string> = { InProgress: 'In Progress', OnHold: 'On Hold', Done: 'Done', Pending: 'Pending' }
   const statusColors: Record<string, string> = {
-    Done:       'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700',
+    Done: 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700',
     InProgress: 'text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700',
-    OnHold:     'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700',
-    Pending:    'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600',
+    OnHold: 'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700',
+    Pending: 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600',
   }
 
   // Circle progress SVG values
@@ -126,8 +145,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 >
                   View Timeline
                 </Link>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusColors[project.status] || statusColors.Pending}`}>
-                  {statusLabel[project.status] || project.status}
+                <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusColors[computedStatus] || statusColors.Pending}`}>
+                  {statusLabel[computedStatus] || computedStatus}
                 </span>
               </div>
             </div>

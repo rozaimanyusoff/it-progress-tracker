@@ -23,8 +23,8 @@ interface Task {
 
 interface Project { id: number; title: string }
 interface Feature { id: number; title: string }
-interface Module  { id: number; title: string; features: Feature[] }
-interface Member  { id: number; name: string }
+interface Module { id: number; title: string; features: Feature[] }
+interface Member { id: number; name: string }
 
 type BoardState = Record<string, Task[]>
 
@@ -38,17 +38,17 @@ function AddTaskModal({
   onClose: () => void
   onAdded: (task: Task) => void
 }) {
-  const [modules, setModules]     = useState<Module[]>([])
-  const [features, setFeatures]   = useState<Feature[]>([])
-  const [members, setMembers]     = useState<Member[]>([])
+  const [modules, setModules] = useState<Module[]>([])
+  const [features, setFeatures] = useState<Feature[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [projectId, setProjectId] = useState('')
-  const [moduleId, setModuleId]   = useState('')
+  const [moduleId, setModuleId] = useState('')
   const [featureId, setFeatureId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
-  const [title, setTitle]         = useState('')
+  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
 
@@ -172,10 +172,10 @@ function AddTaskModal({
 }
 
 const COLUMNS: { id: string; label: string; color: string }[] = [
-  { id: 'Todo',       label: 'To Do',       color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
+  { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
   { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300' },
-  { id: 'InReview',   label: 'To Review',   color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
-  { id: 'Done',       label: 'Done',        color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
+  { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
+  { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
 ]
 
 function reviewCardStyle(task: { status: string; review_count: number }): string {
@@ -224,15 +224,16 @@ function AssigneeAvatar({ name }: { name: string }) {
 export default function TeamKanbanBoard() {
   const { data: session } = useSession()
   const isManager = (session?.user as any)?.role === 'manager'
-  const [board, setBoard]     = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
+  const currentUserId = Number((session?.user as any)?.id)
+  const [board, setBoard] = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)
-  const [, setTick]           = useState(0)
+  const [, setTick] = useState(0)
 
   // Filter state
-  const [projects, setProjects]     = useState<Project[]>([])
-  const [features, setFeatures]     = useState<Feature[]>([])
-  const [projectId, setProjectId]   = useState('')
-  const [featureId, setFeatureId]   = useState('')
+  const [projects, setProjects] = useState<Project[]>([])
+  const [features, setFeatures] = useState<Feature[]>([])
+  const [projectId, setProjectId] = useState('')
+  const [featureId, setFeatureId] = useState('')
 
   // Modal
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
@@ -277,6 +278,18 @@ export default function TeamKanbanBoard() {
 
   function handleTaskAdded(task: Task) {
     setBoard(prev => ({ ...prev, Todo: [...prev.Todo, task] }))
+  }
+
+  async function handleDeleteTask(taskId: number, taskTitle: string) {
+    if (!confirm(`Delete "${taskTitle}"?`)) return
+    const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setBoard(prev => {
+        const next: BoardState = {}
+        for (const col of COLUMNS) next[col.id] = prev[col.id].filter(t => t.id !== taskId)
+        return next
+      })
+    }
   }
 
   function handleStatusChange(taskId: number, newStatus: string) {
@@ -400,6 +413,7 @@ export default function TeamKanbanBoard() {
                     <li>✓ Submit progress notes &amp; attachments</li>
                     <li>✓ Submit for Review (note + attachment required)</li>
                     <li>✓ Move tasks with ← → arrows</li>
+                    <li>✓ Delete own To Do tasks (custom only)</li>
                     <li>✗ Cannot move directly to To Review</li>
                     <li>✗ Cannot update tasks in To Review</li>
                   </ul>
@@ -407,10 +421,13 @@ export default function TeamKanbanBoard() {
                 <div>
                   <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Manager</p>
                   <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                    <li>✓ Add notes to To Do &amp; In Progress tasks</li>
+                    <li>✓ Delete any To Do task (custom only)</li>
                     <li>✓ Approve or reject tasks in To Review</li>
                     <li>✓ View update history on any task</li>
                     <li>✓ Attach evidence &amp; log findings on reject</li>
                     <li>✗ Cannot submit progress as developer</li>
+                    <li>✗ Cannot submit task for review</li>
                   </ul>
                 </div>
               </div>
@@ -506,22 +523,36 @@ export default function TeamKanbanBoard() {
                       ) : (
                         <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
                       )}
-                      {task.status === 'InReview' && (
-                        <button
-                          onClick={() => setActiveTaskId(task.id)}
-                          className="text-xs px-2 py-0.5 rounded border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 shrink-0 font-medium"
-                        >
-                          Review
-                        </button>
-                      )}
-                      {isManager && task.status !== 'InReview' && (
-                        <button
-                          onClick={() => setActiveTaskId(task.id)}
-                          className="text-xs px-2 py-0.5 rounded border border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700 shrink-0"
-                        >
-                          View
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {task.status === 'Todo' && (isManager || task.assignee?.id === currentUserId) && (
+                          <button
+                            onClick={() => handleDeleteTask(task.id, task.title)}
+                            className="text-xs px-1.5 py-0.5 rounded border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            title="Delete task"
+                          >
+                            🗑
+                          </button>
+                        )}
+                        {task.status === 'InReview' && (
+                          <button
+                            onClick={() => setActiveTaskId(task.id)}
+                            className="text-xs px-2 py-0.5 rounded border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-medium"
+                          >
+                            Review
+                          </button>
+                        )}
+                        {isManager && task.status !== 'InReview' && (
+                          <button
+                            onClick={() => setActiveTaskId(task.id)}
+                            className={`text-xs px-2 py-0.5 rounded border ${task.status === 'Todo' || task.status === 'InProgress'
+                              ? 'border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium'
+                              : 'border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'
+                              }`}
+                          >
+                            {task.status === 'Todo' || task.status === 'InProgress' ? 'Update' : 'View'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

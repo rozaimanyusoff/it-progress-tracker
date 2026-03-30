@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 
 interface Task {
   id: number
@@ -38,6 +39,8 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function FeatureTaskList({ featureId, deliverableId, userRole, developers }: Props) {
+  const { data: session } = useSession()
+  const currentUserId = Number((session?.user as any)?.id)
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddTask, setShowAddTask] = useState(false)
@@ -143,14 +146,20 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
             <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Task</th>
             <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</th>
             <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Status</th>
-            {userRole === 'manager' && <th className="px-3 py-2 w-8"></th>}
+            <th className="px-3 py-2 w-8"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
           {tasks.map((task) => (
-            <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-navy-700/30">
+            <tr key={task.id} className={`${task.status === 'Done'
+              ? 'bg-green-50 dark:bg-green-900/10'
+              : 'hover:bg-slate-50 dark:hover:bg-navy-700/30'
+              }`}>
               <td className="px-3 py-2 text-slate-400">{task.order}</td>
-              <td className="px-3 py-2 text-slate-800 dark:text-slate-200">
+              <td className={`px-3 py-2 ${task.status === 'Done'
+                ? 'text-green-700 dark:text-green-400 line-through decoration-green-400/60'
+                : 'text-slate-800 dark:text-slate-200'
+                }`}>
                 {editingTaskId === task.id ? (
                   <input
                     className={`${inputClass} w-full`}
@@ -201,19 +210,19 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
                   </span>
                 )}
               </td>
-              {userRole === 'manager' && (
+              {userRole === 'manager' ? (
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1.5">
                     {editingTaskId === task.id ? (
                       <>
-                        <button onClick={() => saveTaskTitle(task.id)} className="text-green-500 hover:text-green-700 text-xs" title="Save">✓</button>
-                        <button onClick={() => setEditingTaskId(null)} className="text-slate-400 hover:text-slate-600 text-xs" title="Cancel">✕</button>
+                        <button onClick={() => saveTaskTitle(task.id)} className="text-green-500 hover:text-green-700 text-base leading-none" title="Save">✓</button>
+                        <button onClick={() => setEditingTaskId(null)} className="text-slate-400 hover:text-slate-600 text-base leading-none" title="Cancel">✕</button>
                       </>
                     ) : (
                       <>
                         <button
                           onClick={() => { setEditingTaskId(task.id); setEditingTitle(task.title) }}
-                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-base leading-none"
                           title="Edit task"
                         >
                           ✎
@@ -221,7 +230,7 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
                         {!task.is_predefined && (
                           <button
                             onClick={() => deleteTask(task.id)}
-                            className="text-red-400 hover:text-red-600 text-xs"
+                            className="text-red-400 hover:text-red-600 text-base leading-none"
                             title="Delete task"
                           >
                             ✕
@@ -230,6 +239,18 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
                       </>
                     )}
                   </div>
+                </td>
+              ) : (
+                <td className="px-3 py-2">
+                  {!task.is_predefined && task.status === 'Todo' && task.assigned_to === currentUserId && (
+                    <button
+                      onClick={() => deleteTask(task.id)}
+                      className="text-red-400 hover:text-red-600 text-base leading-none"
+                      title="Delete task"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </td>
               )}
             </tr>

@@ -3,6 +3,29 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+async function recalculateDeliverableDates(deliverableId: number) {
+  const allTasks = await prisma.task.findMany({ where: { deliverable_id: deliverableId } })
+  if (allTasks.length === 0) return
+
+  const starts = allTasks.map((t) => t.actual_start).filter(Boolean) as Date[]
+  const newActualStart = starts.length > 0 ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null
+
+  const allDone = allTasks.every((t) => t.status === 'Done')
+  const anyActive = allTasks.some((t) => t.status === 'InProgress' || t.status === 'InReview')
+  const ends = allTasks.map((t) => t.actual_end).filter(Boolean) as Date[]
+  const newActualEnd =
+    allDone && ends.length === allTasks.length
+      ? new Date(Math.max(...ends.map((d) => d.getTime())))
+      : null
+
+  const newStatus = allDone ? 'Done' : anyActive ? 'InProgress' : 'Pending'
+
+  await prisma.deliverable.update({
+    where: { id: deliverableId },
+    data: { actual_start: newActualStart, actual_end: newActualEnd, status: newStatus },
+  })
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -59,7 +82,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       include: { user: { select: { id: true, name: true, role: true } } },
     })
 
+    // Roll up deliverable status/dates after review
+    if (task.deliverable_id != null) await recalculateDeliverableDates(task.deliverable_id)
+
     return NextResponse.json({ update, newStatus })
+  }
+
+  // ── Manager comment on Todo / InProgress tasks ───────────────────
+  if (userRole === 'manager' && !review_action && (task.status === 'Todo' || task.status === 'InProgress')) {
+    const update = await prisma.taskUpdate.create({
+      data: { task_id: taskId, user_id: userId, notes, media_urls },
+      include: { user: { select: { id: true, name: true, role: true } } },
+    })
+    return NextResponse.json({ update, newStatus: task.status })
   }
 
   // ── Developer update ──────────────────────────────────────────────
@@ -102,6 +137,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     await prisma.task.update({ where: { id: taskId }, data: taskData })
+
+    // Roll up deliverable status/dates after status change
+    if (task.deliverable_id != null) await recalculateDeliverableDates(task.deliverable_id)
   }
 
   return NextResponse.json({ update, newStatus })

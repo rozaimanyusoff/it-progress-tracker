@@ -28,6 +28,8 @@ interface GanttDeliverable {
 interface GanttModule {
   id: number
   title: string
+  start_date?: string | null
+  end_date?: string | null
 }
 
 interface GanttProject {
@@ -96,10 +98,58 @@ function computeRange(deliverables: GanttDeliverable[], projectStart: string, pr
   }
 }
 
-function generateTicks(rangeStart: Date, rangeEnd: Date, totalDays: number) {
+type ViewMode = 'day' | 'week' | 'month'
+
+function getViewRange(
+  viewMode: ViewMode,
+  deliverables: GanttDeliverable[],
+  projectStart: string,
+  projectDeadline: string
+): { rangeStart: Date; rangeEnd: Date; totalDays: number } {
+  if (viewMode === 'month') {
+    const start = new Date(projectStart)
+    start.setDate(1)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(projectDeadline)
+    end.setMonth(end.getMonth() + 1, 1)
+    end.setHours(0, 0, 0, 0)
+    return { rangeStart: start, rangeEnd: end, totalDays: (end.getTime() - start.getTime()) / MS_PER_DAY }
+  }
+  if (viewMode === 'day') {
+    const today = new Date()
+    const start = new Date(today)
+    start.setDate(today.getDate() - 7)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(today)
+    end.setDate(today.getDate() + 14)
+    end.setHours(0, 0, 0, 0)
+    return { rangeStart: start, rangeEnd: end, totalDays: (end.getTime() - start.getTime()) / MS_PER_DAY }
+  }
+  // 'week' — auto range from data
+  return computeRange(deliverables, projectStart, projectDeadline)
+}
+
+function generateTicks(rangeStart: Date, rangeEnd: Date, totalDays: number, viewMode: ViewMode) {
   const ticks: { date: Date; left: number; label: string | null }[] = []
-  const useWeeks = totalDays >= 30
-  if (useWeeks) {
+  if (viewMode === 'month') {
+    const current = new Date(rangeStart)
+    current.setDate(1)
+    current.setHours(0, 0, 0, 0)
+    while (current <= rangeEnd) {
+      ticks.push({ date: new Date(current), left: dateToPercent(current, rangeStart, totalDays), label: current.toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }) })
+      current.setMonth(current.getMonth() + 1)
+    }
+  } else if (viewMode === 'day' || totalDays < 30) {
+    const current = new Date(rangeStart)
+    current.setDate(current.getDate() + 1)
+    current.setHours(0, 0, 0, 0)
+    let i = 0
+    while (current <= rangeEnd) {
+      ticks.push({ date: new Date(current), left: dateToPercent(current, rangeStart, totalDays), label: i % 2 === 0 ? current.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' }) : null })
+      current.setDate(current.getDate() + 1); i++
+    }
+  } else {
+    // week
     const current = new Date(rangeStart)
     const day = current.getDay()
     current.setDate(current.getDate() + (day === 1 ? 0 : day === 0 ? 1 : 8 - day))
@@ -108,24 +158,15 @@ function generateTicks(rangeStart: Date, rangeEnd: Date, totalDays: number) {
       ticks.push({ date: new Date(current), left: dateToPercent(current, rangeStart, totalDays), label: current.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' }) })
       current.setDate(current.getDate() + 7)
     }
-  } else {
-    const current = new Date(rangeStart)
-    current.setDate(current.getDate() + 1)
-    current.setHours(0, 0, 0, 0)
-    let i = 0
-    while (current <= rangeEnd) {
-      ticks.push({ date: new Date(current), left: dateToPercent(current, rangeStart, totalDays), label: i % 7 === 0 ? current.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' }) : null })
-      current.setDate(current.getDate() + 1); i++
-    }
   }
   return ticks
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  Pending:    'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
   InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  Done:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  OnHold:     'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+  Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  OnHold: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
 }
 
 function DeliverableRow({
@@ -240,6 +281,7 @@ function DeliverableRow({
 
 export default function GanttChart({ project, deliverables, modules, embedded }: Props) {
   const [collapsedModules, setCollapsedModules] = useState<Set<number>>(new Set())
+  const [viewMode, setViewMode] = useState<ViewMode>('week')
 
   function toggleModule(id: number) {
     setCollapsedModules(prev => {
@@ -260,8 +302,8 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
     )
   }
 
-  const { rangeStart, rangeEnd, totalDays } = computeRange(deliverables, project.start_date, project.deadline)
-  const ticks = generateTicks(rangeStart, rangeEnd, totalDays)
+  const { rangeStart, rangeEnd, totalDays } = getViewRange(viewMode, deliverables, project.start_date, project.deadline)
+  const ticks = generateTicks(rangeStart, rangeEnd, totalDays, viewMode)
   const today = new Date()
   const todayLeft = dateToPercent(today, rangeStart, totalDays)
   const deadlineLeft = dateToPercent(deadline, rangeStart, totalDays)
@@ -287,13 +329,28 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
       {/* Legend */}
       <div className="flex items-center gap-5 px-5 py-3 border-b border-slate-200 dark:border-navy-700 flex-wrap">
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Actual Work Timeline</span>
+        {/* View mode toggle */}
+        <div className="flex items-center rounded-lg border border-slate-200 dark:border-navy-600 overflow-hidden text-xs">
+          {(['day', 'week', 'month'] as ViewMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`px-3 py-1 capitalize transition-colors ${viewMode === mode
+                ? 'bg-blue-600 text-white font-semibold'
+                : 'bg-white dark:bg-navy-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'
+                }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-4 ml-auto flex-wrap">
           {[
             { color: 'bg-slate-300 dark:bg-slate-600', label: 'Planned' },
-            { color: 'bg-green-500',   label: 'Done (On Time)' },
-            { color: 'bg-red-500',     label: 'Done (Late)' },
+            { color: 'bg-green-500', label: 'Done (On Time)' },
+            { color: 'bg-red-500', label: 'Done (Late)' },
             { color: 'bg-emerald-400', label: 'In Progress' },
-            { color: 'bg-pink-400',    label: 'In Progress (Past Deadline)' },
+            { color: 'bg-pink-400', label: 'In Progress (Past Deadline)' },
           ].map(item => (
             <span key={item.label} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <span className={`inline-block w-4 h-3 rounded-sm ${item.color}`} />
@@ -347,18 +404,42 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
                       <p className="text-xs text-blue-400">{modDeliverables.length} deliverable{modDeliverables.length !== 1 ? 's' : ''} · {doneTasks}/{totalModTasks} tasks done</p>
                     </div>
                   </div>
-                  {/* Module span bar */}
+                  {/* Module span bar: planned (from module dates) + actual (from deliverable span) */}
                   <div className="flex-1 relative" style={{ height: 44 }}>
                     {(() => {
-                      const starts = modDeliverables.map(d => d.actual_start).filter(Boolean).map(s => new Date(s!).getTime())
-                      const ends = modDeliverables.map(d => d.actual_end).filter(Boolean).map(e => new Date(e!).getTime())
-                      if (starts.length === 0) return <div className="absolute inset-0 flex items-center pl-3"><span className="text-xs text-slate-300 dark:text-slate-600 italic">Not started</span></div>
-                      const spanStart = new Date(Math.min(...starts))
-                      const spanEnd = ends.length > 0 ? new Date(Math.max(...ends)) : today
-                      const s = barStyle(spanStart, spanEnd, rangeStart, totalDays)
-                      return s ? (
-                        <div className="absolute bg-blue-300/60 dark:bg-blue-700/40 rounded-sm" style={{ ...s, top: 16, height: 10 }} title={`${spanStart.toLocaleDateString()} → ${spanEnd.toLocaleDateString()}`} />
-                      ) : null
+                      // Planned bar — from module's own start_date / end_date
+                      const plannedS = mod.start_date ? barStyle(new Date(mod.start_date), mod.end_date ? new Date(mod.end_date) : null, rangeStart, totalDays) : null
+
+                      // Actual bar — span across deliverables actual dates
+                      const actualStarts = modDeliverables.map(d => d.actual_start).filter(Boolean).map(s => new Date(s!).getTime())
+                      const actualEnds = modDeliverables.map(d => d.actual_end).filter(Boolean).map(e => new Date(e!).getTime())
+                      const allDelivDone = modDeliverables.every(d => d.status === 'Done')
+                      const actualSpanStart = actualStarts.length > 0 ? new Date(Math.min(...actualStarts)) : null
+                      const actualSpanEnd = actualEnds.length > 0 && allDelivDone ? new Date(Math.max(...actualEnds)) : null
+                      const actualS = actualSpanStart ? barStyle(actualSpanStart, actualSpanEnd, rangeStart, totalDays, today) : null
+                      const actualColor = allDelivDone
+                        ? (actualSpanEnd && deadline && actualSpanEnd <= deadline ? 'bg-green-500' : 'bg-red-500')
+                        : 'bg-blue-400'
+
+                      if (!plannedS && !actualS) return <div className="absolute inset-0 flex items-center pl-3"><span className="text-xs text-slate-300 dark:text-slate-600 italic">Not started</span></div>
+                      return (
+                        <>
+                          {plannedS && (
+                            <div
+                              className="absolute bg-slate-300 dark:bg-slate-600 rounded-sm"
+                              style={{ ...plannedS, top: 9, height: 8 }}
+                              title={`Planned: ${mod.start_date ? new Date(mod.start_date).toLocaleDateString() : '—'} → ${mod.end_date ? new Date(mod.end_date).toLocaleDateString() : '—'}`}
+                            />
+                          )}
+                          {actualS && (
+                            <div
+                              className={`absolute ${actualColor} rounded-sm opacity-70`}
+                              style={{ ...actualS, top: 23, height: 10 }}
+                              title={`Actual: ${actualSpanStart!.toLocaleDateString()} → ${actualSpanEnd ? actualSpanEnd.toLocaleDateString() : 'ongoing'}`}
+                            />
+                          )}
+                        </>
+                      )
                     })()}
                     {todayLeft >= 0 && todayLeft <= 100 && <div className="absolute top-0 bottom-0 w-px bg-blue-500 opacity-40 z-10" style={{ left: `${todayLeft}%` }} />}
                     {deadlineLeft >= 0 && deadlineLeft <= 100 && <div className="absolute top-0 bottom-0 z-10" style={{ left: `${deadlineLeft}%`, width: 1, borderLeft: '1px dashed #94a3b8' }} />}

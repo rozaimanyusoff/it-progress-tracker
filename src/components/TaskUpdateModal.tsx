@@ -247,8 +247,9 @@ export default function TaskUpdateModal({
     }
   }
 
-  // Form is locked when task is in review or done — developer has no more actions
-  const formLocked = status === 'InReview' || status === 'Done' || isManager
+  // Form is locked when task is in review (for developer) or done
+  // Manager can comment on Todo/InProgress; InReview handled by review panel
+  const formLocked = status === 'Done' || status === 'InReview'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -386,11 +387,13 @@ export default function TaskUpdateModal({
 
             {!formLocked && (
               <>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Progress Note</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                  {isManager ? 'Manager Note' : 'Progress Note'}
+                </label>
                 <textarea
                   className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   rows={3}
-                  placeholder={status === 'Todo' ? 'Add a note to start working on this task...' : 'Describe what you\'ve done, blockers, or next steps...'}
+                  placeholder={isManager ? 'Add a note or instruction for the assignee...' : status === 'Todo' ? 'Add a note to start working on this task...' : 'Describe what you\'ve done, blockers, or next steps...'}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
@@ -443,8 +446,8 @@ export default function TaskUpdateModal({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Submit for Review — only from InProgress */}
-                    {status === 'InProgress' && (
+                    {/* Submit for Review — only developer, only from InProgress */}
+                    {status === 'InProgress' && !isManager && (
                       <button
                         onClick={() => handleSubmit(true)}
                         disabled={submitting}
@@ -458,7 +461,7 @@ export default function TaskUpdateModal({
                       disabled={submitting}
                       className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors font-medium"
                     >
-                      {submitting ? 'Saving...' : status === 'Todo' ? 'Start & Save Note' : 'Save Note'}
+                      {submitting ? 'Saving...' : isManager ? 'Save Note' : status === 'Todo' ? 'Start & Save Note' : 'Save Note'}
                     </button>
                   </div>
                 </div>
@@ -480,49 +483,50 @@ export default function TaskUpdateModal({
                 {updates.map((u) => {
                   const isMgrEntry = u.user.role === 'manager'
                   return (
-                  <div key={u.id} className={`flex gap-3 rounded-lg p-2 -mx-2 ${isMgrEntry ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}>
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${isMgrEntry ? 'bg-blue-200 dark:bg-blue-800/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-navy-700 text-slate-600 dark:text-slate-300'}`}>
-                      {u.user.name[0].toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2 flex-wrap">
-                        <span className={`text-sm font-medium ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-white'}`}>{u.user.name}</span>
-                        {isMgrEntry && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 uppercase tracking-wide">Review</span>}
-                        <span className="text-xs text-slate-400">{timeAgo(u.created_at)}</span>
+                    <div key={u.id} className={`flex gap-3 rounded-lg p-2 -mx-2 ${isMgrEntry ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}>
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${isMgrEntry ? 'bg-blue-200 dark:bg-blue-800/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-navy-700 text-slate-600 dark:text-slate-300'}`}>
+                        {u.user.name[0].toUpperCase()}
                       </div>
-                      {u.notes && <p className={`text-sm mt-0.5 whitespace-pre-wrap ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300'}`}>{u.notes}</p>}
-                      {u.media_urls.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {u.media_urls.map((url, i) => {
-                            if (isVideo(url)) return (
-                              <a key={i} href={url} target="_blank" rel="noreferrer" className="relative group block w-20 h-20 shrink-0">
-                                <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
-                                <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 group-hover:bg-black/50 transition-colors">
-                                  <span className="text-white text-xl">▶</span>
-                                </span>
-                              </a>
-                            )
-                            if (isDoc(url)) {
-                              const { icon, ext } = docLabel(url)
-                              return (
-                                <a key={i} href={url} target="_blank" rel="noreferrer"
-                                  className="w-20 h-20 shrink-0 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 hover:bg-slate-100 dark:hover:bg-navy-700 transition-colors">
-                                  <span className="text-2xl">{icon}</span>
-                                  <span className="text-xs text-slate-500 mt-0.5">{ext}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className={`text-sm font-medium ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-white'}`}>{u.user.name}</span>
+                          {isMgrEntry && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 uppercase tracking-wide">Review</span>}
+                          <span className="text-xs text-slate-400">{timeAgo(u.created_at)}</span>
+                        </div>
+                        {u.notes && <p className={`text-sm mt-0.5 whitespace-pre-wrap ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300'}`}>{u.notes}</p>}
+                        {u.media_urls.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {u.media_urls.map((url, i) => {
+                              if (isVideo(url)) return (
+                                <a key={i} href={url} target="_blank" rel="noreferrer" className="relative group block w-20 h-20 shrink-0">
+                                  <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
+                                  <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 group-hover:bg-black/50 transition-colors">
+                                    <span className="text-white text-xl">▶</span>
+                                  </span>
                                 </a>
                               )
-                            }
-                            return (
-                              <a key={i} href={url} target="_blank" rel="noreferrer" className="block w-20 h-20 shrink-0 group">
-                                <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600 group-hover:opacity-90 transition-opacity" />
-                              </a>
-                            )
-                          })}
-                        </div>
-                      )}
+                              if (isDoc(url)) {
+                                const { icon, ext } = docLabel(url)
+                                return (
+                                  <a key={i} href={url} target="_blank" rel="noreferrer"
+                                    className="w-20 h-20 shrink-0 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 hover:bg-slate-100 dark:hover:bg-navy-700 transition-colors">
+                                    <span className="text-2xl">{icon}</span>
+                                    <span className="text-xs text-slate-500 mt-0.5">{ext}</span>
+                                  </a>
+                                )
+                              }
+                              return (
+                                <a key={i} href={url} target="_blank" rel="noreferrer" className="block w-20 h-20 shrink-0 group">
+                                  <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600 group-hover:opacity-90 transition-opacity" />
+                                </a>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )})}
+                  )
+                })}
               </div>
             )}
           </div>

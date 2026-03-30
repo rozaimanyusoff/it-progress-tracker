@@ -47,10 +47,10 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  Pending:    'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
   InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  Done:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  OnHold:     'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+  Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  OnHold: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
 }
 const STATUS_LABELS: Record<string, string> = {
   Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
@@ -112,7 +112,10 @@ function DeliverableCard({
             </div>
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 h-1.5 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                <div
+                  className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                  style={{ width: `${pct}%` }}
+                />
               </div>
               <span className="text-xs text-slate-400 whitespace-nowrap">{done}/{total} tasks</span>
             </div>

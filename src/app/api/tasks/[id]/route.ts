@@ -23,6 +23,29 @@ async function recalculateFeatureDates(featureId: number) {
   })
 }
 
+async function recalculateDeliverableDates(deliverableId: number) {
+  const allTasks = await prisma.task.findMany({ where: { deliverable_id: deliverableId } })
+  if (allTasks.length === 0) return
+
+  const starts = allTasks.map((t) => t.actual_start).filter(Boolean) as Date[]
+  const newActualStart = starts.length > 0 ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null
+
+  const allDone = allTasks.every((t) => t.status === 'Done')
+  const anyActive = allTasks.some((t) => t.status === 'InProgress' || t.status === 'InReview')
+  const ends = allTasks.map((t) => t.actual_end).filter(Boolean) as Date[]
+  const newActualEnd =
+    allDone && ends.length === allTasks.length
+      ? new Date(Math.max(...ends.map((d) => d.getTime())))
+      : null
+
+  const newStatus = allDone ? 'Done' : anyActive ? 'InProgress' : 'Pending'
+
+  await prisma.deliverable.update({
+    where: { id: deliverableId },
+    data: { actual_start: newActualStart, actual_end: newActualEnd, status: newStatus },
+  })
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await getServerSession(authOptions)
@@ -59,7 +82,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.status !== undefined) {
     updateData.status = body.status
     const prevStatus = existing.status
-    const newStatus  = body.status
+    const newStatus = body.status
 
     // ── Time tracking ──────────────────────────────────────────────
     // Entering InProgress: start the timer
@@ -92,9 +115,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     include: { assignee: { select: { id: true, name: true } } },
   })
 
-  // Recalculate feature actual dates after task status change
-  if (body.status !== undefined && task.feature_id != null) {
-    await recalculateFeatureDates(task.feature_id)
+  // Recalculate parent dates after task status change
+  if (body.status !== undefined) {
+    if (task.feature_id != null) await recalculateFeatureDates(task.feature_id)
+    if (task.deliverable_id != null) await recalculateDeliverableDates(task.deliverable_id)
   }
 
   await prisma.auditLog.create({
@@ -118,7 +142,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const taskId = Number(id)
   const existing = await prisma.task.findUnique({ where: { id: taskId } })
@@ -126,6 +149,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   if (existing.is_predefined) {
     return NextResponse.json({ error: 'Predefined SDLC tasks cannot be deleted' }, { status: 400 })
+  }
+
+  if (existing.status !== 'Todo') {
+    return NextResponse.json({ error: 'Only Todo tasks can be deleted' }, { status: 403 })
+  }
+
+  if (user.role !== 'manager' && existing.assigned_to !== Number(user.id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   await prisma.task.delete({ where: { id: taskId } })

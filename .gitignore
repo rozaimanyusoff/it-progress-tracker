@@ -13,6 +13,9 @@ out/
 # prisma generated
 prisma/generated/
 
+# uploads — user-generated files, do not commit
+public/uploads/
+
 # misc
 .DS_Store
 *.pem
