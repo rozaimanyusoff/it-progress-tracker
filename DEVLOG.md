@@ -19,10 +19,10 @@ Format: **terbaru di atas**.
 - **`src/components/ProjectDetailCard.tsx`** (komponen baru) — Client wrapper untuk keseluruhan header kad projek. Burndown chart dipapar sentiasa (tanpa toggle). Butang **↓ Export PPTX** dengan spinner. Papar `Start:` dan `Deadline:` dalam metadata. Lulus `start_date` ke `ProjectActions`.
 - **`src/app/api/projects/[id]/export/route.ts`** (endpoint baru) — GET handler: fetch projek + modul + deliverables (tasks: status, actual_end), panggil `generateProjectPPTX()`, kembalikan `.pptx` binary dengan `Content-Disposition: attachment`.
 - **`src/lib/pptx.ts`** — Tambah `generateProjectPPTX(input)` dengan **4 slaid tema cerah**:
-  - **Slaid 1 – Project Overview**: title, status pill, metadata (assignee, mula, tamat), progress bar, 5 stat cards (Modules, Deliverables, Total/Done/Remaining tasks)
-  - **Slaid 2 – Gantt Chart**: visual timeline dengan planned bar (kelabu + isian biru/hijau mengikut % tasks done), actual bar (warna status), module header rows biru muda, tanda bulan, garis hari ini (amber putus-putus), legend
-  - **Slaid 3 – Modules & Deliverables**: jadual grouped by module, baris berselang-seli putih/slate-50, header biru, kolum Planned/Actual/Tasks
-  - **Slaid 4 – Burndown Chart**: carta garis Ideal (kelabu) + Actual (biru) dengan plot area cerah
+   - **Slaid 1 – Project Overview**: title, status pill, metadata (assignee, mula, tamat), progress bar, 5 stat cards (Modules, Deliverables, Total/Done/Remaining tasks)
+   - **Slaid 2 – Gantt Chart**: visual timeline dengan planned bar (kelabu + isian biru/hijau mengikut % tasks done), actual bar (warna status), module header rows biru muda, tanda bulan, garis hari ini (amber putus-putus), legend
+   - **Slaid 3 – Modules & Deliverables**: jadual grouped by module, baris berselang-seli putih/slate-50, header biru, kolum Planned/Actual/Tasks
+   - **Slaid 4 – Burndown Chart**: carta garis Ideal (kelabu) + Actual (biru) dengan plot area cerah
 
 ### Dikemaskini
 
