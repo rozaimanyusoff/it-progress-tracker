@@ -8,6 +8,7 @@ interface ProjectActionsProps {
     title: string
     description: string | null
     status: string
+    start_date: string
     deadline: string
     assignees: { user: { id: number; name: string } }[]
   }
@@ -25,6 +26,7 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
     title: project.title,
     description: project.description ?? '',
     status: project.status,
+    start_date: project.start_date.slice(0, 10),
     deadline: project.deadline.slice(0, 10),
     assignee_ids: project.assignees.map(a => a.user.id),
   })
@@ -174,6 +176,12 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
                     <option value="Done">Done</option>
                     <option value="OnHold">On Hold</option>
                   </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Start Date</label>
+                  <input type="date" value={editForm.start_date} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} className={inputClass} />
                 </div>
                 <div>
                   <label className={labelClass}>Deadline</label>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import FeatureTaskList from './FeatureTaskList'
 
 interface Task { status: string }
@@ -352,6 +352,18 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     })
   }
 
+  const [showHelp, setShowHelp] = useState(false)
+  const helpRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showHelp) return
+    function handleClick(e: MouseEvent) {
+      if (helpRef.current && !helpRef.current.contains(e.target as Node)) setShowHelp(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showHelp])
+
   const ungrouped = deliverables.filter(d => !d.module_id)
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -360,8 +372,64 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Modules & Deliverables</h2>
-          {!loading && (
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Modules & Deliverables</h2>          {/* Help popover */}
+          <div className="relative" ref={helpRef}>
+            <button
+              onClick={() => setShowHelp(v => !v)}
+              className="w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center border border-blue-400 dark:border-blue-500 text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+              aria-label="Modules and Deliverables help"
+            >
+              ?
+            </button>
+            {showHelp && (
+              <div className="absolute left-0 top-7 z-50 w-80 rounded-xl border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-xl p-4 text-xs text-slate-600 dark:text-slate-300 space-y-3">
+                <div className="absolute -top-2 left-3 w-3 h-3 rotate-45 bg-white dark:bg-navy-800 border-l border-t border-slate-200 dark:border-navy-600" />
+
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What are Modules?</p>
+                  <p className="leading-relaxed">A <strong>Module</strong> is a high-level phase or workstream that groups related deliverables together. Think of it as a chapter — it organises work into logical stages (e.g. &ldquo;Phase 1: Discovery&rdquo;, &ldquo;Backend Setup&rdquo;).</p>
+                  <p className="mt-1 leading-relaxed text-slate-400 dark:text-slate-500 italic">Example: A data migration project may have modules like &ldquo;Source Analysis&rdquo;, &ldquo;ETL Pipeline&rdquo;, and &ldquo;UAT&rdquo;.</p>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What are Deliverables?</p>
+                  <p className="leading-relaxed">A <strong>Deliverable</strong> is a concrete output or milestone under a module. It has planned/actual dates, mandays effort, and a status. Deliverables appear on the Gantt chart.</p>
+                  <p className="mt-1 leading-relaxed text-slate-400 dark:text-slate-500 italic">Example: &ldquo;Prepare backup storage&rdquo;, &ldquo;Setup repository infrastructure&rdquo;.</p>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What are Tasks?</p>
+                  <p className="leading-relaxed">A <strong>Task</strong> is a granular unit of work under a deliverable. Tasks have assignees, actual start/end dates, and drive the progress % on the burndown chart.</p>
+                  <p className="mt-1 leading-relaxed text-slate-400 dark:text-slate-500 italic">Example: &ldquo;Configure S3 bucket&rdquo;, &ldquo;Test restore procedure&rdquo;.</p>
+                </div>
+
+                <div className="border-t border-slate-100 dark:border-navy-700 pt-2">
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">Deliverable vs Task</p>
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead>
+                      <tr className="text-slate-400 dark:text-slate-500">
+                        <th className="text-left pb-1 pr-2">Deliverable</th>
+                        <th className="text-left pb-1">Task</th>
+                      </tr>
+                    </thead>
+                    <tbody className="space-y-1">
+                      <tr><td className="pr-2 py-0.5">Visible on Gantt chart</td><td>Drives burndown chart</td></tr>
+                      <tr><td className="pr-2 py-0.5">Has planned dates &amp; mandays</td><td>Has assignee &amp; actual dates</td></tr>
+                      <tr><td className="pr-2 py-0.5">1 deliverable → many tasks</td><td>Smallest tracked unit</td></tr>
+                      <tr><td className="pr-2 py-0.5">Manager-level tracking</td><td>Developer-level tracking</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <button
+                  onClick={() => setShowHelp(false)}
+                  className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>          {!loading && (
             <div className="flex items-center gap-1.5">
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                 {modules.length} module{modules.length !== 1 ? 's' : ''}

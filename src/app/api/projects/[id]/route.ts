@@ -37,12 +37,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       title: body.title,
       description: body.description,
       status: body.status,
+      start_date: body.start_date ? new Date(body.start_date) : undefined,
       deadline: body.deadline ? new Date(body.deadline) : undefined,
       assignees: assigneeIds.length > 0
         ? {
-            deleteMany: {},
-            create: assigneeIds.map(uid => ({ user_id: uid })),
-          }
+          deleteMany: {},
+          create: assigneeIds.map(uid => ({ user_id: uid })),
+        }
         : undefined,
     },
   })

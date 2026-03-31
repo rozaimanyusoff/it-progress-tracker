@@ -11,6 +11,29 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-31 — Per-project PPTX export: light theme & Gantt chart slide
+
+### Ditambah
+
+- **`src/components/BurndownChart.tsx`** (komponen baru) — Burndown chart client-side menggunakan Recharts `LineChart`. Dua siri: Ideal (dashed kelabu) dan Actual (biru). Garis referens hari ini (amber). Post-loop guarantee memastikan data point hari ini sentiasa ada. Butang `?` biru dengan popover klik-luar-tutup: penerangan, cara baca, contoh, dan amalan terbaik.
+- **`src/components/ProjectDetailCard.tsx`** (komponen baru) — Client wrapper untuk keseluruhan header kad projek. Burndown chart dipapar sentiasa (tanpa toggle). Butang **↓ Export PPTX** dengan spinner. Papar `Start:` dan `Deadline:` dalam metadata. Lulus `start_date` ke `ProjectActions`.
+- **`src/app/api/projects/[id]/export/route.ts`** (endpoint baru) — GET handler: fetch projek + modul + deliverables (tasks: status, actual_end), panggil `generateProjectPPTX()`, kembalikan `.pptx` binary dengan `Content-Disposition: attachment`.
+- **`src/lib/pptx.ts`** — Tambah `generateProjectPPTX(input)` dengan **4 slaid tema cerah**:
+  - **Slaid 1 – Project Overview**: title, status pill, metadata (assignee, mula, tamat), progress bar, 5 stat cards (Modules, Deliverables, Total/Done/Remaining tasks)
+  - **Slaid 2 – Gantt Chart**: visual timeline dengan planned bar (kelabu + isian biru/hijau mengikut % tasks done), actual bar (warna status), module header rows biru muda, tanda bulan, garis hari ini (amber putus-putus), legend
+  - **Slaid 3 – Modules & Deliverables**: jadual grouped by module, baris berselang-seli putih/slate-50, header biru, kolum Planned/Actual/Tasks
+  - **Slaid 4 – Burndown Chart**: carta garis Ideal (kelabu) + Actual (biru) dengan plot area cerah
+
+### Dikemaskini
+
+- **`src/components/ProjectActions.tsx`** — Tambah field `start_date` dalam antara muka, state `editForm`, dan grid edit modal (Status solo, kemudian Start Date + Deadline dalam grid 2 kolum).
+- **`src/app/api/projects/[id]/route.ts`** — PUT handler kini simpan `start_date` dari body.
+- **`src/app/projects/[id]/page.tsx`** — Gantikan JSX header+Gantt inline dengan `<ProjectDetailCard>`. Buang import dan pembolehubah yang tidak digunakan.
+- **`src/components/GanttChart.tsx`** — Planned bar: tooltip native digantikan dengan CSS `group/planned` hover (tiada delay). Hover highlight pada semua bar (planned, actual, task). Label deliverable kini papar planned date range (`01 Jan → 31 Mar`).
+- **`src/components/DeliverableSection.tsx`** — Tambah `useRef`, butang `?` biru, dan popover klik-luar-tutup dengan penerangan Module/Deliverable/Task dan jadual perbandingan.
+
+---
+
 ## 2026-03-31 — Issues: full CRUD, scope context, attachments & live reload
 
 ### Ditambah

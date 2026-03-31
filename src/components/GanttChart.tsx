@@ -214,21 +214,29 @@ function DeliverableRow({
               </span>
               <span className="text-xs text-slate-400">{deliverable.mandays}md</span>
             </div>
+            {(deliverable.planned_start || deliverable.planned_end) && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+                {deliverable.planned_start ? new Date(deliverable.planned_start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—'}
+                {' → '}
+                {deliverable.planned_end ? new Date(deliverable.planned_end).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—'}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex-1 relative" style={{ height: 52 }}>
           {/* Planned bar */}
           {plannedStyle && (
-            <div
-              className="absolute bg-slate-300 dark:bg-slate-600 rounded-sm"
-              style={{ ...plannedStyle, top: 8, height: 8 }}
-              title={`Planned: ${deliverable.planned_start ? new Date(deliverable.planned_start).toLocaleDateString() : '—'} → ${deliverable.planned_end ? new Date(deliverable.planned_end).toLocaleDateString() : '—'}`}
-            />
+            <div className="absolute group/planned cursor-pointer" style={{ ...plannedStyle, top: 4, height: 18 }}>
+              <div className="absolute inset-x-0 bg-slate-300 dark:bg-slate-600 rounded-sm transition-all duration-100 group-hover/planned:bg-slate-400 dark:group-hover/planned:bg-slate-400 group-hover/planned:scale-y-150 origin-center" style={{ top: 4, height: 8 }} />
+              <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-slate-800 dark:bg-navy-900 text-white text-[11px] rounded-md whitespace-nowrap invisible group-hover/planned:visible z-50 shadow-lg">
+                Planned: {deliverable.planned_start ? new Date(deliverable.planned_start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'} → {deliverable.planned_end ? new Date(deliverable.planned_end).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+              </div>
+            </div>
           )}
           {/* Actual bar */}
           {actualStyle && color && (
             <div
-              className={`absolute ${color} rounded-sm flex items-center`}
+              className={`absolute ${color} rounded-sm flex items-center transition-all duration-100 hover:brightness-125 hover:scale-y-125 origin-center cursor-pointer`}
               style={{ ...actualStyle, top: 22, height: 12 }}
               title={`Actual: ${deliverable.actual_start ? new Date(deliverable.actual_start).toLocaleDateString() : 'Not started'} → ${deliverable.actual_end ? new Date(deliverable.actual_end).toLocaleDateString() : 'In progress'}`}
             >
@@ -264,7 +272,7 @@ function DeliverableRow({
             <div className="flex-1 relative" style={{ height: 36 }}>
               {tStyle && tColor && (
                 <div
-                  className={`absolute ${tColor} rounded-sm`}
+                  className={`absolute ${tColor} rounded-sm transition-all duration-100 hover:brightness-125 hover:scale-y-150 origin-center cursor-pointer`}
                   style={{ ...tStyle, top: 14, height: 8 }}
                   title={`${task.actual_start ? new Date(task.actual_start).toLocaleDateString() : 'Not started'} → ${task.actual_end ? new Date(task.actual_end).toLocaleDateString() : task.actual_start ? 'In progress' : '—'}`}
                 />
