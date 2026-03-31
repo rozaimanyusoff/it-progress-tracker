@@ -35,13 +35,15 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData()
   const taskId = formData.get('task_id')
+  const context = formData.get('context') as string | null
   const files = formData.getAll('files') as File[]
 
-  if (!taskId || files.length === 0) {
+  if ((!taskId && !context) || files.length === 0) {
     return NextResponse.json({ error: 'Missing task_id or files' }, { status: 400 })
   }
 
-  const uploadDir = path.join(resolveUploadBase(), 'tasks', String(taskId))
+  const folder = context ?? `tasks/${String(taskId)}`
+  const uploadDir = path.join(resolveUploadBase(), folder)
   await mkdir(uploadDir, { recursive: true })
 
   const urls: string[] = []
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer())
     await writeFile(path.join(uploadDir, filename), buffer)
 
-    urls.push(`${UPLOAD_PUBLIC_URL}/tasks/${taskId}/${filename}`)
+    urls.push(`${UPLOAD_PUBLIC_URL}/${folder}/${filename}`)
   }
 
   return NextResponse.json({ urls })

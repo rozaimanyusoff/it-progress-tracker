@@ -3,6 +3,15 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import AppLayout from '@/components/Layout'
 
+type EditForm = {
+  title: string
+  description: string
+  severity: string
+  moduleId: string
+  deliverableId: string
+  taskId: string
+}
+
 export default function IssuesPage() {
   const { data: session } = useSession()
   const isManager = (session?.user as any)?.role === 'manager'
@@ -11,6 +20,13 @@ export default function IssuesPage() {
   const [members, setMembers] = useState<{ id: number; name: string }[]>([])
   const [filters, setFilters] = useState({ severity: '', resolved: '' })
   const [loading, setLoading] = useState(true)
+
+  // Edit modal
+  const [editingIssue, setEditingIssue] = useState<any | null>(null)
+  const [editForm, setEditForm] = useState<EditForm>({ title: '', description: '', severity: 'medium', moduleId: '', deliverableId: '', taskId: '' })
+  const [editModules, setEditModules] = useState<{ id: number; title: string }[]>([])
+  const [editDeliverables, setEditDeliverables] = useState<{ id: number; title: string; module_id: number | null; tasks: { id: number; title: string }[] }[]>([])
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -45,6 +61,47 @@ export default function IssuesPage() {
       const updated = await res.json()
       setIssues(prev => prev.map(i => i.id === id ? { ...i, assignee: updated.assignee } : i))
     }
+  }
+
+  function openEdit(issue: any) {
+    setEditingIssue(issue)
+    setEditForm({
+      title: issue.title,
+      description: issue.description ?? '',
+      severity: issue.severity,
+      moduleId: issue.deliverable?.module?.id ? String(issue.deliverable.module.id) : '',
+      deliverableId: issue.deliverable?.id ? String(issue.deliverable.id) : '',
+      taskId: issue.task?.id ? String(issue.task.id) : '',
+    })
+    Promise.all([
+      fetch(`/api/modules?project_id=${issue.project_id}`).then(r => r.json()),
+      fetch(`/api/projects/${issue.project_id}/deliverables`).then(r => r.json()),
+    ]).then(([mods, delivs]) => {
+      setEditModules(mods)
+      setEditDeliverables(delivs)
+    })
+  }
+
+  async function submitEdit() {
+    if (!editingIssue) return
+    setSaving(true)
+    const res = await fetch(`/api/issues/${editingIssue.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: editForm.title,
+        description: editForm.description,
+        severity: editForm.severity,
+        deliverable_id: editForm.deliverableId || null,
+        task_id: editForm.taskId || null,
+      }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setIssues(prev => prev.map(i => i.id === editingIssue.id ? { ...i, ...updated } : i))
+    }
+    setSaving(false)
+    setEditingIssue(null)
   }
 
   async function selfAssign(id: number) {
@@ -112,6 +169,31 @@ export default function IssuesPage() {
                 <td className="px-6 py-4">
                   <p className={`font-medium text-sm ${issue.resolved ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white'}`}>{issue.title}</p>
                   {issue.description && <p className="text-slate-500 text-xs mt-0.5">{issue.description}</p>}
+                  {(issue.deliverable || issue.task) && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5">
+                      {issue.deliverable?.module && (
+                        <span className="text-[11px] text-purple-600 dark:text-purple-400">
+                          {issue.deliverable.module.title}
+                        </span>
+                      )}
+                      {issue.deliverable?.module && (issue.deliverable || issue.task) && (
+                        <span className="text-slate-300 dark:text-slate-600 text-[11px]">›</span>
+                      )}
+                      {issue.deliverable && (
+                        <span className="text-[11px] text-blue-600 dark:text-blue-400">
+                          {issue.deliverable.title}
+                        </span>
+                      )}
+                      {issue.task && (
+                        <>
+                          {issue.deliverable && <span className="text-slate-300 dark:text-slate-600 text-[11px]">›</span>}
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {issue.task.title}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-slate-600 dark:text-slate-300 text-sm">{issue.project?.title}</td>
                 <td className="px-6 py-4">
@@ -150,15 +232,88 @@ export default function IssuesPage() {
                   }
                 </td>
                 <td className="px-6 py-4">
-                  <button onClick={() => toggleResolved(issue.id, issue.resolved)} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline">
-                    {issue.resolved ? 'Reopen' : 'Resolve'}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => openEdit(issue)} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 underline">
+                      Edit
+                    </button>
+                    <button onClick={() => toggleResolved(issue.id, issue.resolved)} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline">
+                      {issue.resolved ? 'Reopen' : 'Resolve'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {/* Edit Modal */}
+      {editingIssue && (() => {
+        const filteredDeliverables = editForm.moduleId
+          ? editDeliverables.filter(d => d.module_id === Number(editForm.moduleId))
+          : editDeliverables
+        const filteredTasks = editForm.deliverableId
+          ? editDeliverables.find(d => d.id === Number(editForm.deliverableId))?.tasks ?? []
+          : []
+        const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm'
+        const labelClass = 'block text-sm text-slate-500 dark:text-slate-400 mb-1'
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-md rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">Edit Issue</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">{editingIssue.project?.title}</p>
+              <div className="space-y-3">
+                {/* Scope */}
+                <div className="grid grid-cols-1 gap-3 p-3 rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-700">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Scope <span className="font-normal normal-case text-slate-400">(optional)</span></p>
+                  <div>
+                    <label className={labelClass}>Module</label>
+                    <select value={editForm.moduleId} onChange={e => setEditForm(f => ({ ...f, moduleId: e.target.value, deliverableId: '', taskId: '' }))} className={inputClass}>
+                      <option value="">— All modules —</option>
+                      {editModules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Deliverable</label>
+                    <select value={editForm.deliverableId} onChange={e => setEditForm(f => ({ ...f, deliverableId: e.target.value, taskId: '' }))} className={inputClass} disabled={filteredDeliverables.length === 0}>
+                      <option value="">— All deliverables —</option>
+                      {filteredDeliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Task</label>
+                    <select value={editForm.taskId} onChange={e => setEditForm(f => ({ ...f, taskId: e.target.value }))} className={inputClass} disabled={filteredTasks.length === 0}>
+                      <option value="">— All tasks —</option>
+                      {filteredTasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Title</label>
+                  <input type="text" value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Description</label>
+                  <textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} className={`${inputClass} h-20 resize-none`} />
+                </div>
+                <div>
+                  <label className={labelClass}>Severity</label>
+                  <select value={editForm.severity} onChange={e => setEditForm(f => ({ ...f, severity: e.target.value }))} className={inputClass}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={submitEdit} disabled={saving || !editForm.title.trim()} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium disabled:opacity-50 text-sm">
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button onClick={() => setEditingIssue(null)} className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-2 rounded-lg text-sm">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </AppLayout>
   )
 }

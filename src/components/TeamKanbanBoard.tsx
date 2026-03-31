@@ -181,9 +181,9 @@ const COLUMNS: { id: string; label: string; color: string }[] = [
 function reviewCardStyle(task: { status: string; review_count: number }): string {
   if (task.status === 'Done')
     return 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 border-l-[3px] border-l-green-400'
-  if (task.status === 'InReview')
+  if (task.status === 'InReview' && task.review_count > 0)
     return 'bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-300 dark:border-yellow-700/60 border-l-[3px] border-l-yellow-400'
-  if (task.status !== 'Todo' && task.review_count > 0)
+  if (task.status !== 'Todo' && task.status !== 'InReview' && task.review_count > 0)
     return 'bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/50 border-l-[3px] border-l-orange-400'
   return 'bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700'
 }
@@ -348,94 +348,100 @@ export default function TeamKanbanBoard() {
         )}
 
         <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">{totalTasks} task{totalTasks !== 1 ? 's' : ''}</span>
-        <button
-          onClick={() => setShowLegend(v => !v)}
-          className={`w-6 h-6 rounded-full text-xs font-bold border transition-colors ${showLegend ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-navy-600 text-slate-400 hover:border-blue-400 hover:text-blue-500'}`}
-          title="Show legend"
-        >?</button>
-      </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowLegend(v => !v)}
+            className={`w-6 h-6 rounded-full text-xs font-bold border transition-colors ${showLegend ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-navy-600 text-slate-400 hover:border-blue-400 hover:text-blue-500'}`}
+            title="Show legend"
+          >?</button>
 
-      {/* Legend panel */}
-      {showLegend && (
-        <div className="mb-5 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-4 text-xs text-slate-600 dark:text-slate-300">
-          <p className="font-semibold text-slate-800 dark:text-white mb-3 text-sm">Board Legend</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Legend popover */}
+          {showLegend && (
+            <>
+              {/* Backdrop to close on outside click */}
+              <div className="fixed inset-0 z-40" onClick={() => setShowLegend(false)} />
+              <div className="absolute right-0 top-8 z-50 w-[620px] max-w-[90vw] rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 shadow-xl p-4 text-xs text-slate-600 dark:text-slate-300">
+                <p className="font-semibold text-slate-800 dark:text-white mb-3 text-sm">Board Legend</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-            {/* Card colours */}
-            <div>
-              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Card Colours</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-8 rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shrink-0" />
-                  <span>Normal — not yet reviewed</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-8 rounded border border-orange-200 bg-orange-50 border-l-[3px] border-l-orange-400 shrink-0" />
-                  <span>Reviewed &amp; sent back — fixes required</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-8 rounded border border-yellow-300 bg-yellow-50 border-l-[3px] border-l-yellow-400 shrink-0" />
-                  <span>Awaiting manager review</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-8 rounded border border-green-200 bg-green-50 border-l-[3px] border-l-green-400 shrink-0" />
-                  <span>Approved &amp; done</span>
+                  {/* Card colours */}
+                  <div>
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Card Colours</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-8 rounded border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shrink-0" />
+                        <span>Normal — not yet reviewed</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-8 rounded border border-orange-200 bg-orange-50 border-l-[3px] border-l-orange-400 shrink-0" />
+                        <span>Reviewed &amp; sent back — fixes required</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-8 rounded border border-yellow-300 bg-yellow-50 border-l-[3px] border-l-yellow-400 shrink-0" />
+                        <span>Re-submitted after rejection — awaiting re-review</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-8 rounded border border-green-200 bg-green-50 border-l-[3px] border-l-green-400 shrink-0" />
+                        <span>Approved &amp; done</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Badges */}
+                  <div>
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Badges</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 whitespace-nowrap">↩ 2</span>
+                        <span>Reviewed N times (rejected back)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 border border-orange-200 whitespace-nowrap">↩ 1×</span>
+                        <span>Review count in modal header</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-600 uppercase whitespace-nowrap">REVIEW</span>
+                        <span>Manager review entry in history</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Role permissions */}
+                  <div>
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Permissions</p>
+                    <div className="space-y-2">
+                      <div>
+                        <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Developer</p>
+                        <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                          <li>✓ Submit progress notes &amp; attachments</li>
+                          <li>✓ Submit for Review (note + attachment required)</li>
+                          <li>✓ Move tasks with ← → arrows</li>
+                          <li>✓ Delete own To Do tasks (custom only)</li>
+                          <li>✗ Cannot skip directly from To Do to To Review</li>
+                          <li>✗ Cannot update tasks in To Review</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Manager</p>
+                        <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
+                          <li>✓ Add notes to To Do &amp; In Progress tasks</li>
+                          <li>✓ Delete any To Do task (custom only)</li>
+                          <li>✓ Approve or reject tasks in To Review</li>
+                          <li>✓ View update history on any task</li>
+                          <li>✓ Attach evidence &amp; log findings on reject</li>
+                          <li>✗ Cannot submit progress as developer</li>
+                          <li>✗ Cannot submit task for review</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
-            </div>
-
-            {/* Badges */}
-            <div>
-              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Badges</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 whitespace-nowrap">↩ 2</span>
-                  <span>Reviewed N times (rejected back)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 border border-orange-200 whitespace-nowrap">↩ 1×</span>
-                  <span>Review count in modal header</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-600 uppercase whitespace-nowrap">REVIEW</span>
-                  <span>Manager review entry in history</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Role permissions */}
-            <div>
-              <p className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-[10px] mb-2">Permissions</p>
-              <div className="space-y-2">
-                <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Developer</p>
-                  <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
-                    <li>✓ Submit progress notes &amp; attachments</li>
-                    <li>✓ Submit for Review (note + attachment required)</li>
-                    <li>✓ Move tasks with ← → arrows</li>
-                    <li>✓ Delete own To Do tasks (custom only)</li>
-                    <li>✗ Cannot move directly to To Review</li>
-                    <li>✗ Cannot update tasks in To Review</li>
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Manager</p>
-                  <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
-                    <li>✓ Add notes to To Do &amp; In Progress tasks</li>
-                    <li>✓ Delete any To Do task (custom only)</li>
-                    <li>✓ Approve or reject tasks in To Review</li>
-                    <li>✓ View update history on any task</li>
-                    <li>✓ Attach evidence &amp; log findings on reject</li>
-                    <li>✗ Cannot submit progress as developer</li>
-                    <li>✗ Cannot submit task for review</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-          </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-48 text-slate-400">Loading...</div>

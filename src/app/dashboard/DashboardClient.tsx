@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import DeveloperAnalytics from '@/components/DeveloperAnalytics'
 
@@ -53,93 +53,7 @@ function CircleProgress({ value }: { value: number }) {
 export default function DashboardClient({ projects, session }: { projects: Project[]; session: any }) {
   const isManager = session.user.role === 'manager'
 
-  // Shared
-  const [showIssueModal, setShowIssueModal] = useState(false)
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [localProjects, setLocalProjects] = useState(projects)
-
-  // Progress update (member)
-  const [showUpdateModal, setShowUpdateModal] = useState(false)
-  const [updateForm, setUpdateForm] = useState({ progress_pct: '', status: 'InProgress', notes: '' })
-
-  // Edit project (manager)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [editForm, setEditForm] = useState({ title: '', description: '', status: '', deadline: '', assignee_ids: [] as number[] })
-  const [members, setMembers] = useState<{ id: number; name: string }[]>([])
-
-  const [issueForm, setIssueForm] = useState({ title: '', description: '', severity: 'medium' })
-
-  useEffect(() => {
-    if (isManager) {
-      fetch('/api/users').then(r => r.json()).then(setMembers)
-    }
-  }, [isManager])
-
-  function openEdit(project: Project) {
-    setSelectedProject(project)
-    setEditForm({
-      title: project.title,
-      description: project.description ?? '',
-      status: project.status,
-      deadline: project.deadline.slice(0, 10),
-      assignee_ids: project.assignees.map(a => a.user.id),
-    })
-    setShowEditModal(true)
-  }
-
-  function openUpdate(project: Project) {
-    const progress = project.updates[0]?.progress_pct ?? 0
-    setSelectedProject(project)
-    setUpdateForm({ progress_pct: String(progress), status: project.status, notes: '' })
-    setShowUpdateModal(true)
-  }
-
-  async function submitEdit() {
-    if (!selectedProject) return
-    setSaving(true)
-    const res = await fetch(`/api/projects/${selectedProject.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editForm),
-    })
-    if (res.ok) {
-      const updated = await res.json()
-      setLocalProjects(prev => prev.map(p =>
-        p.id === selectedProject.id
-          ? { ...p, title: updated.title, description: updated.description, status: updated.status, deadline: updated.deadline, assignees: members.filter(m => editForm.assignee_ids.includes(m.id)).map(m => ({ user: { id: m.id, name: m.name } })) }
-          : p
-      ))
-    }
-    setSaving(false)
-    setShowEditModal(false)
-  }
-
-  async function submitUpdate() {
-    if (!selectedProject) return
-    setSaving(true)
-    await fetch('/api/updates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: selectedProject.id, ...updateForm }),
-    })
-    setSaving(false)
-    setShowUpdateModal(false)
-    window.location.reload()
-  }
-
-  async function submitIssue() {
-    if (!selectedProject) return
-    setSaving(true)
-    await fetch('/api/issues', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: selectedProject.id, ...issueForm }),
-    })
-    setSaving(false)
-    setShowIssueModal(false)
-    window.location.reload()
-  }
+  const [localProjects] = useState(projects)
 
   const stats = {
     total: localProjects.length,
@@ -147,9 +61,6 @@ export default function DashboardClient({ projects, session }: { projects: Proje
     done: localProjects.filter(p => p.status === 'Done').length,
     issues: localProjects.reduce((s, p) => s + p._count.issues, 0),
   }
-
-  const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
-  const labelClass = 'block text-sm text-slate-500 dark:text-slate-400 mb-1'
 
   return (
     <div>
@@ -226,27 +137,6 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                     >
                       View
                     </Link>
-                    {isManager ? (
-                      <button
-                        onClick={() => openEdit(project)}
-                        className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-300 text-xs rounded-lg border border-slate-200 dark:border-navy-600 transition-colors whitespace-nowrap"
-                      >
-                        Edit
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => openUpdate(project)}
-                        className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-300 text-xs rounded-lg border border-slate-200 dark:border-navy-600 transition-colors whitespace-nowrap"
-                      >
-                        Update
-                      </button>
-                    )}
-                    <button
-                      onClick={() => { setSelectedProject(project); setShowIssueModal(true) }}
-                      className="px-3 py-1.5 bg-red-50 dark:bg-red-900/50 hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400 text-xs rounded-lg border border-red-200 dark:border-red-800 transition-colors whitespace-nowrap"
-                    >
-                      + Issue
-                    </button>
                   </div>
                 </div>
               </div>
@@ -257,137 +147,6 @@ export default function DashboardClient({ projects, session }: { projects: Proje
 
       {/* Developer Analytics */}
       <DeveloperAnalytics />
-
-      {/* Edit Project Modal (manager) */}
-      {showEditModal && selectedProject && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Edit Project</h3>
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass}>Title</label>
-                <input type="text" value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Description</label>
-                <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className={`${inputClass} h-20 resize-none`} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelClass}>Status</label>
-                  <select value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })} className={inputClass}>
-                    <option value="Pending">Pending</option>
-                    <option value="InProgress">In Progress</option>
-                    <option value="Done">Done</option>
-                    <option value="OnHold">On Hold</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Deadline</label>
-                  <input type="date" value={editForm.deadline} onChange={e => setEditForm({ ...editForm, deadline: e.target.value })} className={inputClass} />
-                </div>
-              </div>
-              <div>
-                <label className={labelClass}>Assignees</label>
-                <div className="rounded-lg border border-slate-300 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 divide-y divide-slate-200 dark:divide-navy-700 max-h-40 overflow-y-auto">
-                  {members.map(m => (
-                    <label key={m.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-navy-800 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={editForm.assignee_ids.includes(m.id)}
-                        onChange={() => setEditForm(prev => ({
-                          ...prev,
-                          assignee_ids: prev.assignee_ids.includes(m.id)
-                            ? prev.assignee_ids.filter(x => x !== m.id)
-                            : [...prev.assignee_ids, m.id],
-                        }))}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-slate-800 dark:text-slate-200">{m.name}</span>
-                    </label>
-                  ))}
-                </div>
-                {editForm.assignee_ids.length > 0 && (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{editForm.assignee_ids.length} member(s) selected</p>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={submitEdit} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button onClick={() => setShowEditModal(false)} className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-2 rounded-lg">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Update Progress Modal (member) */}
-      {showUpdateModal && selectedProject && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Update Progress — {selectedProject.title}</h3>
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass}>Progress %</label>
-                <input type="number" min={0} max={100} value={updateForm.progress_pct} onChange={e => setUpdateForm({ ...updateForm, progress_pct: e.target.value })} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Status</label>
-                <select value={updateForm.status} onChange={e => setUpdateForm({ ...updateForm, status: e.target.value })} className={inputClass}>
-                  <option value="InProgress">In Progress</option>
-                  <option value="Done">Done</option>
-                  <option value="OnHold">On Hold</option>
-                  <option value="Pending">Pending</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Notes</label>
-                <textarea value={updateForm.notes} onChange={e => setUpdateForm({ ...updateForm, notes: e.target.value })} className={`${inputClass} h-24 resize-none`} />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={submitUpdate} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Update'}
-              </button>
-              <button onClick={() => setShowUpdateModal(false)} className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-2 rounded-lg">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Issue Modal */}
-      {showIssueModal && selectedProject && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Report Issue — {selectedProject.title}</h3>
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass}>Title</label>
-                <input type="text" value={issueForm.title} onChange={e => setIssueForm({ ...issueForm, title: e.target.value })} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Description</label>
-                <textarea value={issueForm.description} onChange={e => setIssueForm({ ...issueForm, description: e.target.value })} className={`${inputClass} h-20 resize-none`} />
-              </div>
-              <div>
-                <label className={labelClass}>Severity</label>
-                <select value={issueForm.severity} onChange={e => setIssueForm({ ...issueForm, severity: e.target.value })} className={inputClass}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={submitIssue} disabled={saving} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium disabled:opacity-50">
-                {saving ? 'Saving...' : 'Report Issue'}
-              </button>
-              <button onClick={() => setShowIssueModal(false)} className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-2 rounded-lg">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

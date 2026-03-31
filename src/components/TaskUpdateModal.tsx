@@ -332,7 +332,12 @@ export default function TaskUpdateModal({
                     <div className="flex flex-wrap gap-2 mt-2">
                       {reviewPreviews.map((url, i) => (
                         <div key={i} className="relative group w-16 h-16 shrink-0">
-                          {isVideo(reviewFiles[i]?.name ?? '') ? (
+                          {reviewFiles[i]?.name.toLowerCase().endsWith('.pdf') ? (
+                            <div className="w-16 h-16 flex flex-col items-center justify-center rounded border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 gap-0.5">
+                              <span className="text-xl">📄</span>
+                              <span className="text-[9px] font-semibold text-yellow-700 dark:text-yellow-400 uppercase">PDF</span>
+                            </div>
+                          ) : isVideo(reviewFiles[i]?.name ?? '') ? (
                             <video src={url} className="w-16 h-16 object-cover rounded border border-yellow-200 dark:border-yellow-800" muted />
                           ) : (
                             <img src={url} alt="" className="w-16 h-16 object-cover rounded border border-yellow-200 dark:border-yellow-800" />
@@ -403,25 +408,34 @@ export default function TaskUpdateModal({
                   <div className="mt-2">
                     <p className="text-xs text-slate-400 mb-1.5">{previews.length} file{previews.length > 1 ? 's' : ''} attached</p>
                     <div className="flex flex-wrap gap-2">
-                      {previews.map((url, i) => (
-                        <div key={i} className="relative group w-20 h-20 shrink-0">
-                          {isVideo(files[i]?.name ?? '') ? (
-                            <>
-                              <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
-                              <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 pointer-events-none">
-                                <span className="text-white text-lg">▶</span>
-                              </span>
-                            </>
-                          ) : (
-                            <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
-                          )}
-                          <button
-                            onClick={() => removeFile(i)}
-                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                          >×</button>
-                          <p className="text-xs text-slate-400 truncate w-20 mt-0.5 text-center">{files[i]?.name}</p>
-                        </div>
-                      ))}
+                      {previews.map((url, i) => {
+                        const name = files[i]?.name ?? ''
+                        const isPdf = name.toLowerCase().endsWith('.pdf')
+                        return (
+                          <div key={i} className="relative group w-20 shrink-0">
+                            {isPdf ? (
+                              <div className="w-20 h-20 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 gap-1">
+                                <span className="text-2xl">📄</span>
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase">PDF</span>
+                              </div>
+                            ) : isVideo(name) ? (
+                              <>
+                                <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
+                                <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 pointer-events-none">
+                                  <span className="text-white text-lg">▶</span>
+                                </span>
+                              </>
+                            ) : (
+                              <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
+                            )}
+                            <button
+                              onClick={() => removeFile(i)}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >×</button>
+                            <p className="text-xs text-slate-400 truncate w-20 mt-0.5 text-center">{name}</p>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -439,7 +453,7 @@ export default function TaskUpdateModal({
                       ref={fileInputRef}
                       type="file"
                       multiple
-                      accept="image/*,video/*"
+                      accept="image/*,video/*,application/pdf"
                       className="hidden"
                       onChange={(e) => handleFiles(e.target.files)}
                     />

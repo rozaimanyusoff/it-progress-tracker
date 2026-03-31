@@ -21,6 +21,14 @@ export async function GET(req: NextRequest) {
       project: true,
       user: { select: { id: true, name: true } },
       assignee: { select: { id: true, name: true } },
+      deliverable: {
+        select: {
+          id: true,
+          title: true,
+          module: { select: { id: true, title: true } },
+        },
+      },
+      task: { select: { id: true, title: true } },
     },
     orderBy: { created_at: 'desc' },
   })
@@ -41,6 +49,9 @@ export async function POST(req: NextRequest) {
       title: body.title,
       description: body.description,
       severity: body.severity || 'medium',
+      media_urls: Array.isArray(body.media_urls) ? body.media_urls : [],
+      ...(body.deliverable_id && { deliverable_id: Number(body.deliverable_id) }),
+      ...(body.task_id && { task_id: Number(body.task_id) }),
     },
   })
 

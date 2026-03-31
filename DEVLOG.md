@@ -11,6 +11,28 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-03-31 — Issues: full CRUD, scope context, attachments & live reload
+
+### Ditambah
+
+- **`prisma/schema.prisma`** — Model `Issue` kini ada `media_urls String[]`, `deliverable_id Int?`, dan `task_id Int?` dengan relasi ke `Deliverable` dan `Task`; back-relations `issues Issue[]` ditambah pada kedua-dua model. Dua migration dijalankan: `add_media_urls_to_issue` dan `add_deliverable_task_to_issue`.
+- **`src/components/ProjectActions.tsx`** (komponen baru) — Butang **Edit** (manager) dan **+ Issue** (semua pengguna) dipindah dari dashboard ke halaman project details. Form issue ada cascading scope selectors (Module → Deliverable → Task) dan sokongan lampiran (gambar, video, PDF). Selepas submit, dispatch `CustomEvent('issue-created')` supaya seksyen issue reload tanpa perlu refresh manual.
+- **`src/components/ProjectIssueSection.tsx`** (komponen baru) — Seksyen kad isu di bawah halaman project details. Papar severity dot, tajuk, deskripsi, scope context (modul › deliverable › task), assignee sebelum (task atau deliverable), thumbnail lampiran, dan toggle Resolve/Reopen. Ada filter tab: Open / Resolved / All. Listen `CustomEvent('issue-created')` untuk auto-reload.
+- **`src/app/api/projects/[id]/issues/route.ts`** (endpoint baru) — GET endpoint mengembalikan isu projek dengan include penuh: user, assignee, deliverable (+ module + tasks + assignee), task (+ assignee).
+- **`src/app/api/upload/route.ts`** — Sokong param `context` (selain `task_id`) untuk tentukan folder upload; isu guna `context=issues` → simpan dalam folder `issues/`.
+- **`src/components/TaskUpdateModal.tsx`** — Input fail kini accept `image/*, video/*, application/pdf`; preview tambah ikon 📄 untuk PDF dalam modal developer (In Progress) dan manager (To Review).
+
+### Dikemaskini
+
+- **`src/app/api/issues/route.ts`** — GET kini include `deliverable` (+ module) dan `task` untuk papar scope context dalam halaman Issues global.
+- **`src/app/api/issues/[id]/route.ts`** — PUT kini sokong kemaskini `title`, `description`, `severity`, `deliverable_id`, `task_id` selain `resolved` dan `assignee_id`.
+- **`src/app/issues/page.tsx`** — Setiap baris isu kini papar scope chain `Module › Deliverable › Task` dalam teks kecil berwarna. Tambah butang **Edit** yang buka modal dengan cascading scope selectors dan field title/description/severity.
+- **`src/app/projects/[id]/page.tsx`** — Import `ProjectActions` dan `ProjectIssueSection`; seksyen isu diletakkan di bawah Modules & Deliverables.
+- **`src/app/dashboard/DashboardClient.tsx`** — Buang semua modal Edit/Issue dari dashboard; senarai projek kini hanya papar butang "View".
+- **`src/components/KanbanBoard.tsx`** & **`TeamKanbanBoard.tsx`** — Legend ditukar dari inline panel ke popover (backdrop `fixed inset-0 z-40` + panel `absolute z-50`). Warna kad `reviewCardStyle` diperbetulkan: kuning hanya bila `status === 'InReview' && review_count > 0`; oren hanya bila `status !== 'InReview' && review_count > 0`.
+
+---
+
 ## 2026-03-31 — Allow developer & manager to delete To Do tasks
 
 **Motivasi:** Developer perlu boleh padam task To Do mereka sendiri tanpa bergantung kepada manager. Manager pula perlu boleh padam mana-mana task To Do (custom, bukan SDLC).

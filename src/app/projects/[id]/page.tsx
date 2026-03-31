@@ -5,7 +5,9 @@ import { prisma } from '@/lib/prisma'
 import AppLayout from '@/components/Layout'
 import Link from 'next/link'
 import DeliverableSection from '@/components/DeliverableSection'
+import ProjectIssueSection from '@/components/ProjectIssueSection'
 import GanttChart from '@/components/GanttChart'
+import ProjectActions from '@/components/ProjectActions'
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -139,6 +141,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
+                <ProjectActions
+                  project={{
+                    id: project.id,
+                    title: project.title,
+                    description: project.description,
+                    status: project.status,
+                    deadline: project.deadline.toISOString(),
+                    assignees: project.assignees,
+                  }}
+                  isManager={(session.user as any).role === 'manager'}
+                />
                 <Link
                   href={`/projects/${project.id}/timeline`}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors"
@@ -176,6 +189,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           projectDeadline={project.deadline.toISOString()}
         />
       </div>
+
+      <ProjectIssueSection projectId={project.id} />
     </AppLayout>
   )
 }

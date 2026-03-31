@@ -88,6 +88,7 @@ model Deliverable {
   project      Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
   module       Module?       @relation(fields: [module_id], references: [id], onDelete: SetNull)
   tasks        Task[]
+  issues       Issue[]
 }
 
 model ProjectAssignee {
@@ -113,18 +114,23 @@ model ProjectUpdate {
 }
 
 model Issue {
-  id          Int           @id @default(autoincrement())
-  project_id  Int
-  user_id     Int
-  assignee_id Int?
-  title       String
-  description String?
-  severity    Severity      @default(medium)
-  resolved    Boolean       @default(false)
-  created_at  DateTime      @default(now())
-  project     Project       @relation(fields: [project_id], references: [id])
-  user        User          @relation(fields: [user_id], references: [id])
-  assignee    User?         @relation("IssueAssignee", fields: [assignee_id], references: [id])
+  id             Int           @id @default(autoincrement())
+  project_id     Int
+  user_id        Int
+  assignee_id    Int?
+  deliverable_id Int?
+  task_id        Int?
+  title          String
+  description    String?
+  severity       Severity      @default(medium)
+  resolved       Boolean       @default(false)
+  media_urls     String[]
+  created_at     DateTime      @default(now())
+  project        Project       @relation(fields: [project_id], references: [id])
+  user           User          @relation(fields: [user_id], references: [id])
+  assignee       User?         @relation("IssueAssignee", fields: [assignee_id], references: [id])
+  deliverable    Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: SetNull)
+  task           Task?         @relation(fields: [task_id], references: [id], onDelete: SetNull)
 }
 
 model AuditLog {
@@ -229,6 +235,7 @@ model Task {
   deliverable        Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: Cascade)
   assignee           User?         @relation("TaskAssignee", fields: [assigned_to], references: [id])
   task_updates       TaskUpdate[]
+  issues             Issue[]
 }
 
 
