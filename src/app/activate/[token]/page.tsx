@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { CheckCircle, XCircle } from 'lucide-react'
 
 type State = 'loading' | 'ready' | 'invalid' | 'expired' | 'already_active' | 'success' | 'submitting' | 'error'
 
@@ -71,7 +72,7 @@ export default function ActivatePage() {
     return (
       <div className={centeredScreen}>
         <div className="text-center">
-          <div className="text-4xl mb-4">✓</div>
+          <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-4" />
           <h2 className="text-slate-900 dark:text-white text-xl font-semibold mb-2">Account already activated</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">Your account is already active. You can log in directly.</p>
           <a href="/login" className="text-blue-600 dark:text-blue-400 hover:underline">Go to login</a>
@@ -96,7 +97,7 @@ export default function ActivatePage() {
     return (
       <div className={centeredScreen}>
         <div className="text-center">
-          <div className="text-4xl mb-4">✕</div>
+          <XCircle className="w-10 h-10 text-red-500 mx-auto mb-4" />
           <h2 className="text-slate-900 dark:text-white text-xl font-semibold mb-2">Invalid link</h2>
           <p className="text-slate-500 dark:text-slate-400">This activation link is invalid or has already been used.</p>
         </div>
@@ -108,7 +109,7 @@ export default function ActivatePage() {
     return (
       <div className={centeredScreen}>
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-green-600 flex items-center justify-center text-white text-3xl mx-auto mb-4">✓</div>
+          <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h2 className="text-slate-900 dark:text-white text-xl font-semibold mb-2">Account activated!</h2>
           <p className="text-slate-500 dark:text-slate-400">Redirecting you to login...</p>
         </div>

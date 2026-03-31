@@ -7,6 +7,12 @@ interface ProjectData {
   owner: string
 }
 
+export interface ReportSections {
+  gantt: boolean
+  burndown: boolean
+  issues: boolean
+}
+
 interface IssueData {
   title: string
   project: string
@@ -575,6 +581,492 @@ export async function generateProjectPPTX(input: ProjectExportInput): Promise<Bu
     s4.addText('Not enough task data to render burndown chart.\nAdd tasks with actual dates to see progress.', {
       x: 0.5, y: 3, w: 12.3, h: 1, fontSize: 14, color: MUTED, align: 'center',
     })
+  }
+
+  return await pptx.write({ outputType: 'nodebuffer' }) as unknown as Buffer
+}
+
+// ── Multi-project report PPTX ────────────────────────────────────────────────
+
+interface ReportTaskInput {
+  status: string
+  actual_end: Date | null
+  time_spent_seconds: number
+  assigned_to: number | null
+  assignee: { id: number; name: string } | null
+}
+
+interface ReportProjectInput {
+  project: ProjectExportInput['project']
+  modules: ProjectExportInput['modules']
+  deliverables: (Omit<ProjectExportInput['deliverables'][0], 'tasks'> & { tasks: ReportTaskInput[] })[]
+}
+
+export async function generateReportPPTX(
+  fromMonth: string,
+  toMonth: string,
+  projects: ReportProjectInput[],
+  openIssues: IssueData[],
+  sections: ReportSections,
+): Promise<Buffer> {
+  const pptx = new PptxGenJS()
+  pptx.layout = 'LAYOUT_WIDE'
+
+  // ── Light theme palette ─────────────────────────────────────────────────────
+  const BG = 'FFFFFF'
+  const CARD = 'F8FAFC'
+  const BORDER = 'E2E8F0'
+  const H1 = '0F172A'
+  const BODY = '334155'
+  const MUTED = '94A3B8'
+  const ACCENT = '2563EB'
+  const GREEN = '16A34A'
+  const ORANGE = 'EA580C'
+  const REDC = 'DC2626'
+  const GRAY = '64748B'
+  const AMBER = 'F59E0B'
+  const BLU_LT = 'DBEAFE'
+  const BLU_MD = 'BFDBFE'
+  const MS_D = 86400000
+
+  const periodLabel = fromMonth === toMonth ? fromMonth : `${fromMonth} — ${toMonth}`
+  const exportedAt = new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })
+
+  function rStatColor(s: string) {
+    if (s === 'Done') return GREEN
+    if (s === 'InProgress') return ORANGE
+    if (s === 'OnHold') return REDC
+    return GRAY
+  }
+  function rStatBg(s: string) {
+    if (s === 'Done') return 'DCFCE7'
+    if (s === 'InProgress') return 'FFEDD5'
+    if (s === 'OnHold') return 'FEE2E2'
+    return 'F1F5F9'
+  }
+  function rStatLabel(s: string) {
+    if (s === 'InProgress') return 'In Progress'
+    if (s === 'OnHold') return 'On Hold'
+    return s
+  }
+
+  // ── Slide 1: Cover ──────────────────────────────────────────────────────────
+  const cover = pptx.addSlide()
+  cover.background = { color: CARD }
+  cover.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.28, fill: { color: ACCENT }, line: { color: ACCENT } })
+  cover.addShape(pptx.ShapeType.rect, { x: 0, y: 7.22, w: 13.33, h: 0.28, fill: { color: ACCENT }, line: { color: ACCENT } })
+  cover.addText('IT Section', { x: 1, y: 1.1, w: 11, h: 0.7, fontSize: 22, color: MUTED, align: 'center', bold: false })
+  cover.addText('Progress Report', { x: 1, y: 1.85, w: 11, h: 1.1, fontSize: 46, color: H1, bold: true, align: 'center' })
+  cover.addShape(pptx.ShapeType.line, { x: 3.2, y: 3.1, w: 6.9, h: 0, line: { color: BORDER, width: 2 } })
+  cover.addText(periodLabel, { x: 1, y: 3.28, w: 11, h: 0.62, fontSize: 22, color: ACCENT, align: 'center', bold: true })
+  cover.addText(`${projects.length} project${projects.length !== 1 ? 's' : ''}  ·  Exported ${exportedAt}`, {
+    x: 1, y: 4.05, w: 11, h: 0.4, fontSize: 12, color: MUTED, align: 'center',
+  })
+
+  // ── Slide 2: Projects Summary with donut charts ─────────────────────────────
+  // Projects flow across multiple slides if > 6 per slide
+  const PER_PAGE = 6
+  const projChunks: typeof projects[] = []
+  for (let i = 0; i < projects.length; i += PER_PAGE) projChunks.push(projects.slice(i, i + PER_PAGE))
+
+  for (const chunk of projChunks) {
+    const sumSlide = pptx.addSlide()
+    sumSlide.background = { color: BG }
+    sumSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+    sumSlide.addText('Projects Overview', { x: 0.5, y: 0.15, w: 9, h: 0.52, fontSize: 20, color: H1, bold: true })
+    sumSlide.addText(periodLabel, { x: 0.5, y: 0.68, w: 12.3, h: 0.26, fontSize: 10, color: MUTED })
+
+    // Grid: 3 cols × 2 rows
+    const COLS = 3
+    const CW = 4.22    // cell width
+    const CH = 3.0     // cell height
+    const Y0 = 1.08    // grid top
+
+    chunk.forEach((proj, idx) => {
+      const col = idx % COLS
+      const row = Math.floor(idx / COLS)
+      const cx = 0.15 + col * CW
+      const cy = Y0 + row * CH
+
+      const allT = proj.deliverables.flatMap(d => d.tasks)
+      const doneT = allT.filter(t => t.status === 'Done').length
+      const pct = allT.length ? Math.round(doneT / allT.length * 100) : (proj.project.updates[0]?.progress_pct ?? 0)
+
+      // Card background
+      sumSlide.addShape(pptx.ShapeType.roundRect, {
+        x: cx, y: cy, w: CW - 0.15, h: CH - 0.12,
+        fill: { color: CARD }, line: { color: BORDER }, rectRadius: 0.1,
+      })
+
+      // Doughnut chart (centered in card)
+      const DONUT_W = 1.6
+      const dx = cx + (CW - 0.15) / 2 - DONUT_W / 2
+      const dy = cy + 0.55
+      const statColor = rStatColor(proj.project.status)
+      const remaining = Math.max(0, 100 - pct)
+      sumSlide.addChart('doughnut' as any, [
+        { name: 'Progress', labels: ['Done', 'Remaining'], values: [pct, remaining] },
+      ], {
+        x: dx, y: dy, w: DONUT_W, h: DONUT_W,
+        chartColors: [statColor, BORDER],
+        holeSize: 65,
+        showLegend: false,
+        showLabel: false,
+        showTitle: false,
+        dataLabelFontSize: 1,
+        chartAreaBkgndColor: CARD,
+        plotAreaBkgndColor: CARD,
+      } as any)
+
+      // Percentage text overlaid in donut center
+      sumSlide.addText(`${pct}%`, {
+        x: dx, y: dy + DONUT_W / 2 - 0.22,
+        w: DONUT_W, h: 0.44,
+        fontSize: 16, color: H1, bold: true, align: 'center',
+      })
+
+      // Project title
+      sumSlide.addText(proj.project.title, {
+        x: cx + 0.1, y: cy + 0.1,
+        w: CW - 0.35, h: 0.38,
+        fontSize: 9.5, color: H1, bold: true, align: 'center',
+      })
+
+      // Status badge
+      const sBg = rStatBg(proj.project.status)
+      sumSlide.addShape(pptx.ShapeType.roundRect, {
+        x: cx + (CW - 0.15) / 2 - 0.65, y: cy + CH - 0.68,
+        w: 1.3, h: 0.24, fill: { color: sBg }, line: { color: statColor }, rectRadius: 0.04,
+      })
+      sumSlide.addText(rStatLabel(proj.project.status), {
+        x: cx + (CW - 0.15) / 2 - 0.65, y: cy + CH - 0.68,
+        w: 1.3, h: 0.24, fontSize: 7.5, color: statColor, bold: true, align: 'center',
+      })
+
+      // Task counts row at bottom
+      const tkY = cy + CH - 0.42
+      sumSlide.addText(`${doneT}/${allT.length} tasks`, {
+        x: cx + 0.1, y: tkY, w: CW - 0.35, h: 0.22,
+        fontSize: 8, color: MUTED, align: 'center',
+      })
+    })
+  }
+
+  // ── Slide 3: Developer Analytics (tasks assigned + time spent) ──────────────
+  // Aggregate member stats across all selected projects
+  const memberMap = new Map<number, { name: string; taskCount: number; timeSeconds: number; statusCounts: Record<string, number> }>()
+  for (const { deliverables } of projects) {
+    for (const deliv of deliverables) {
+      for (const task of deliv.tasks) {
+        if (!task.assigned_to || !task.assignee) continue
+        const id = task.assigned_to
+        if (!memberMap.has(id)) {
+          memberMap.set(id, { name: task.assignee.name, taskCount: 0, timeSeconds: 0, statusCounts: {} })
+        }
+        const m = memberMap.get(id)!
+        m.taskCount++
+        m.timeSeconds += task.time_spent_seconds ?? 0
+        m.statusCounts[task.status] = (m.statusCounts[task.status] ?? 0) + 1
+      }
+    }
+  }
+  const members = Array.from(memberMap.values()).sort((a, b) => b.taskCount - a.taskCount)
+
+  if (members.length > 0) {
+    const analyticsSlide = pptx.addSlide()
+    analyticsSlide.background = { color: BG }
+    analyticsSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+    analyticsSlide.addText('Developer Analytics', { x: 0.5, y: 0.15, w: 10, h: 0.52, fontSize: 20, color: H1, bold: true })
+    analyticsSlide.addText(periodLabel, { x: 0.5, y: 0.68, w: 12.3, h: 0.26, fontSize: 10, color: MUTED })
+
+    const names = members.map(m => m.name)
+
+    // Left: Tasks Assigned
+    analyticsSlide.addText('Tasks Assigned', { x: 0.4, y: 1.08, w: 6, h: 0.3, fontSize: 12, color: H1, bold: true })
+    analyticsSlide.addChart('bar' as any, [
+      { name: 'Tasks', labels: names, values: members.map(m => m.taskCount) },
+    ], {
+      x: 0.4, y: 1.45, w: 6.2, h: 5.5,
+      barDir: 'bar',
+      chartColors: [ACCENT],
+      showLegend: false,
+      showTitle: false,
+      showValue: true,
+      dataLabelColor: H1,
+      dataLabelFontSize: 9,
+      catAxisLabelFontSize: 9,
+      catAxisLabelColor: BODY,
+      valAxisLabelFontSize: 8,
+      valAxisLabelColor: MUTED,
+      plotAreaBkgndColor: CARD,
+      chartAreaBkgndColor: BG,
+      valGridLine: { color: BORDER, style: 'solid', pt: 1 } as any,
+    } as any)
+
+    // Right: Time Spent (hours)
+    analyticsSlide.addText('Time Spent (hours)', { x: 6.9, y: 1.08, w: 6, h: 0.3, fontSize: 12, color: H1, bold: true })
+    analyticsSlide.addChart('bar' as any, [
+      { name: 'Hours', labels: names, values: members.map(m => Math.round(m.timeSeconds / 3600 * 10) / 10) },
+    ], {
+      x: 6.9, y: 1.45, w: 6.1, h: 5.5,
+      barDir: 'bar',
+      chartColors: [GREEN],
+      showLegend: false,
+      showTitle: false,
+      showValue: true,
+      dataLabelColor: H1,
+      dataLabelFontSize: 9,
+      catAxisLabelFontSize: 9,
+      catAxisLabelColor: BODY,
+      valAxisLabelFontSize: 8,
+      valAxisLabelColor: MUTED,
+      plotAreaBkgndColor: CARD,
+      chartAreaBkgndColor: BG,
+      valGridLine: { color: BORDER, style: 'solid', pt: 1 } as any,
+    } as any)
+  }
+
+  // ── Slide 4: Team Workload Balance ─────────────────────────────────────────
+  if (members.length > 0) {
+    const wbSlide = pptx.addSlide()
+    wbSlide.background = { color: BG }
+    wbSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+    wbSlide.addText('Team Workload Balance', { x: 0.5, y: 0.15, w: 10, h: 0.52, fontSize: 20, color: H1, bold: true })
+    wbSlide.addText(periodLabel, { x: 0.5, y: 0.68, w: 12.3, h: 0.26, fontSize: 10, color: MUTED })
+
+    const STATUS_COLS = ['Todo', 'InProgress', 'InReview', 'Done']
+    const STATUS_LABELS = ['To Do', 'In Progress', 'In Review', 'Done']
+    const STATUS_COLORS = ['94A3B8', ORANGE, AMBER, GREEN]
+
+    const headerRow = [
+      { text: 'Member', options: { bold: true, color: 'FFFFFF', fill: { color: ACCENT }, fontSize: 10 } },
+      ...STATUS_LABELS.map((l, i) => ({
+        text: l, options: { bold: true, color: 'FFFFFF', fill: { color: STATUS_COLORS[i] }, fontSize: 10 },
+      })),
+      { text: 'Total', options: { bold: true, color: 'FFFFFF', fill: { color: H1 }, fontSize: 10 } },
+    ]
+
+    const tableRows = [headerRow, ...members.slice(0, 16).map((m, idx) => {
+      const rb = idx % 2 === 0 ? BG : CARD
+      const total = m.taskCount
+      return [
+        { text: m.name, options: { color: H1, fill: { color: rb }, fontSize: 9.5, bold: true } },
+        ...STATUS_COLS.map((s, si) => ({
+          text: String(m.statusCounts[s] ?? 0),
+          options: { color: STATUS_COLORS[si], fill: { color: rb }, fontSize: 9.5, align: 'center' as const, bold: (m.statusCounts[s] ?? 0) > 0 },
+        })),
+        { text: String(total), options: { color: BODY, fill: { color: rb }, fontSize: 9.5, align: 'center' as const, bold: true } },
+      ]
+    })]
+
+    wbSlide.addTable(tableRows, {
+      x: 0.5, y: 1.1, w: 12.3,
+      colW: [3.5, 1.9, 2.1, 2.0, 1.8, 1.0],
+      border: { type: 'solid', color: BORDER, pt: 1 },
+    })
+  }
+
+  // ── Per-project slides ──────────────────────────────────────────────────────
+  for (const { project, modules, deliverables } of projects) {
+    const allTasks = deliverables.flatMap(d => d.tasks)
+    const doneCount = allTasks.filter(t => t.status === 'Done').length
+    const pct = allTasks.length ? Math.round(doneCount / allTasks.length * 100) : (project.updates[0]?.progress_pct ?? 0)
+    const assignees = project.assignees.map((a: any) => a.user.name).join(', ') || '—'
+
+    // Project overview
+    const s1 = pptx.addSlide()
+    s1.background = { color: BG }
+    s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+    s1.addText(project.title, { x: 0.5, y: 0.2, w: 10.4, h: 0.62, fontSize: 24, color: H1, bold: true })
+    const sCl = rStatColor(project.status)
+    const sBg = rStatBg(project.status)
+    s1.addShape(pptx.ShapeType.roundRect, { x: 11.2, y: 0.24, w: 1.8, h: 0.32, fill: { color: sBg }, line: { color: sCl }, rectRadius: 0.06 })
+    s1.addText(rStatLabel(project.status), { x: 11.2, y: 0.24, w: 1.8, h: 0.32, fontSize: 9, color: sCl, bold: true, align: 'center', valign: 'middle' })
+    const infoY = 1.1
+    const metas = [
+      { label: 'ASSIGNEES', value: assignees },
+      { label: 'START DATE', value: project.start_date ? new Date(project.start_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
+      { label: 'DEADLINE', value: project.deadline ? new Date(project.deadline).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' },
+      { label: 'EXPORTED', value: exportedAt },
+    ]
+    const mW = 3.08
+    metas.forEach((m, i) => {
+      s1.addText(m.label, { x: 0.5 + i * mW, y: infoY, w: mW - 0.1, h: 0.2, fontSize: 8, color: MUTED, bold: true })
+      s1.addText(m.value, { x: 0.5 + i * mW, y: infoY + 0.24, w: mW - 0.1, h: 0.32, fontSize: 11, color: BODY })
+    })
+    const barY = infoY + 0.74
+    s1.addText('OVERALL PROGRESS', { x: 0.5, y: barY, w: 8, h: 0.2, fontSize: 8, color: MUTED, bold: true })
+    s1.addText(`${pct}%`, { x: 11.9, y: barY, w: 0.9, h: 0.2, fontSize: 10, color: ACCENT, bold: true, align: 'right' })
+    s1.addShape(pptx.ShapeType.rect, { x: 0.5, y: barY + 0.26, w: 12.3, h: 0.28, fill: { color: BORDER }, line: { color: BORDER } })
+    if (pct > 0) s1.addShape(pptx.ShapeType.rect, { x: 0.5, y: barY + 0.26, w: Math.max(0.1, 12.3 * pct / 100), h: 0.28, fill: { color: pct >= 100 ? GREEN : ACCENT }, line: { color: pct >= 100 ? GREEN : ACCENT } })
+    const statsData = [
+      { num: modules.length, label: 'Modules', color: ACCENT },
+      { num: deliverables.length, label: 'Deliverables', color: ACCENT },
+      { num: allTasks.length, label: 'Total Tasks', color: BODY },
+      { num: doneCount, label: 'Completed', color: GREEN },
+      { num: allTasks.length - doneCount, label: 'Remaining', color: ORANGE },
+    ]
+    const stY = barY + 0.82
+    const stW = 2.46
+    statsData.forEach((st, i) => {
+      s1.addShape(pptx.ShapeType.rect, { x: 0.5 + i * stW, y: stY, w: stW - 0.1, h: 1.1, fill: { color: CARD }, line: { color: BORDER } })
+      s1.addText(String(st.num), { x: 0.65 + i * stW, y: stY + 0.12, w: stW - 0.4, h: 0.55, fontSize: 28, color: st.color, bold: true })
+      s1.addText(st.label, { x: 0.65 + i * stW, y: stY + 0.72, w: stW - 0.4, h: 0.28, fontSize: 9, color: MUTED })
+    })
+
+    // Gantt slide
+    if (sections.gantt) {
+      const s2 = pptx.addSlide()
+      s2.background = { color: BG }
+      s2.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+      s2.addText('Gantt Chart', { x: 0.5, y: 0.15, w: 8.5, h: 0.46, fontSize: 18, color: H1, bold: true })
+      s2.addText(project.title, { x: 0.5, y: 0.63, w: 9.5, h: 0.25, fontSize: 9, color: MUTED })
+
+      // Legend
+      s2.addShape(pptx.ShapeType.rect, { x: 9.2, y: 0.22, w: 0.42, h: 0.11, fill: { color: BORDER }, line: { color: MUTED } })
+      s2.addText('Planned', { x: 9.67, y: 0.19, w: 1.0, h: 0.17, fontSize: 7.5, color: GRAY })
+      s2.addShape(pptx.ShapeType.rect, { x: 10.75, y: 0.22, w: 0.42, h: 0.11, fill: { color: ACCENT }, line: { color: ACCENT } })
+      s2.addText('Progress', { x: 11.22, y: 0.19, w: 1.0, h: 0.17, fontSize: 7.5, color: GRAY })
+      s2.addShape(pptx.ShapeType.rect, { x: 12.3, y: 0.22, w: 0.42, h: 0.11, fill: { color: GREEN }, line: { color: GREEN } })
+      s2.addText('Actual', { x: 12.77, y: 0.19, w: 0.5, h: 0.17, fontSize: 7.5, color: GRAY })
+
+      const G_LABEL_W = 2.9; const G_CHART_X = 3.05; const G_CHART_W = 10.1
+      const G_HDR_Y = 0.98; const G_HDR_H = 0.3; const G_ROW_Y0 = G_HDR_Y + G_HDR_H
+      const G_ROW_H = 0.3; const G_MOD_H = 0.26; const G_MAX_Y = 7.3
+
+      const ganttStart = new Date(project.start_date); ganttStart.setHours(0, 0, 0, 0)
+      const ganttEnd = new Date(project.deadline); ganttEnd.setHours(0, 0, 0, 0)
+      const allEndDates: Date[] = [ganttEnd]
+      deliverables.forEach(d => {
+        if (d.actual_end) allEndDates.push(new Date(d.actual_end))
+        if (d.planned_end) allEndDates.push(new Date(d.planned_end))
+      })
+      const effectiveEnd = new Date(Math.max(...allEndDates.map(d => d.getTime())))
+      const totalGanttDays = Math.max(1, (effectiveEnd.getTime() - ganttStart.getTime()) / MS_D)
+      const xDate = (d: Date) => G_CHART_X + Math.max(0, Math.min(1, (d.getTime() - ganttStart.getTime()) / MS_D / totalGanttDays)) * G_CHART_W
+
+      s2.addShape(pptx.ShapeType.rect, { x: 0, y: G_HDR_Y, w: G_CHART_X, h: G_HDR_H, fill: { color: CARD }, line: { color: BORDER } })
+      s2.addText('Module / Deliverable', { x: 0.1, y: G_HDR_Y + 0.06, w: G_LABEL_W, h: G_HDR_H - 0.1, fontSize: 7, color: MUTED, bold: true })
+      s2.addShape(pptx.ShapeType.rect, { x: G_CHART_X, y: G_HDR_Y, w: G_CHART_W, h: G_HDR_H, fill: { color: CARD }, line: { color: BORDER } })
+
+      const today2 = new Date(); today2.setHours(0, 0, 0, 0)
+      const tickCur = new Date(ganttStart); tickCur.setDate(1); tickCur.setHours(0, 0, 0, 0)
+      while (tickCur <= effectiveEnd) {
+        const tx = xDate(tickCur)
+        if (tx >= G_CHART_X && tx <= G_CHART_X + G_CHART_W) {
+          s2.addShape(pptx.ShapeType.line, { x: tx, y: G_HDR_Y, w: 0, h: G_HDR_H, line: { color: BORDER, width: 1 } })
+          s2.addText(tickCur.toLocaleDateString('en-MY', { month: 'short', year: '2-digit' }), { x: tx + 0.04, y: G_HDR_Y + 0.06, w: 1.1, h: 0.18, fontSize: 7, color: BODY })
+        }
+        tickCur.setMonth(tickCur.getMonth() + 1)
+      }
+
+      const drawRow = (d: typeof deliverables[0], rowY: number, alt: boolean) => {
+        const dSC = rStatColor(d.status)
+        s2.addShape(pptx.ShapeType.rect, { x: 0, y: rowY, w: 13.33, h: G_ROW_H, fill: { color: alt ? CARD : BG }, line: { color: BORDER } })
+        s2.addText(d.title, { x: 0.12, y: rowY + 0.02, w: G_LABEL_W - 0.15, h: 0.18, fontSize: 7.5, color: BODY })
+        s2.addText(rStatLabel(d.status), { x: 0.22, y: rowY + 0.19, w: G_LABEL_W - 0.35, h: 0.11, fontSize: 6.5, color: dSC })
+        if (d.planned_start && d.planned_end) {
+          const pS = new Date(d.planned_start); pS.setHours(0, 0, 0, 0)
+          const pE = new Date(d.planned_end); pE.setHours(0, 0, 0, 0)
+          const px2 = xDate(pS); const pw = Math.max(0.05, xDate(pE) - px2)
+          s2.addShape(pptx.ShapeType.rect, { x: px2, y: rowY + 0.04, w: pw, h: 0.1, fill: { color: BORDER }, line: { color: MUTED } })
+          const dT = d.tasks.length; const dD2 = d.tasks.filter(t => t.status === 'Done').length
+          const fpct = dT > 0 ? dD2 / dT : 0
+          if (fpct > 0) s2.addShape(pptx.ShapeType.rect, { x: px2, y: rowY + 0.04, w: Math.max(0.04, pw * fpct), h: 0.1, fill: { color: fpct >= 1 ? GREEN : ACCENT }, line: { color: fpct >= 1 ? GREEN : ACCENT } })
+        }
+        if (d.actual_start) {
+          const aS = new Date(d.actual_start); aS.setHours(0, 0, 0, 0)
+          const aE = d.actual_end ? new Date(d.actual_end) : new Date(today2); aE.setHours(0, 0, 0, 0)
+          const ax = xDate(aS); const aw = Math.max(0.05, xDate(aE) - ax)
+          s2.addShape(pptx.ShapeType.rect, { x: ax, y: rowY + 0.18, w: aw, h: 0.09, fill: { color: dSC }, line: { color: dSC } })
+        }
+      }
+
+      let rowY2 = G_ROW_Y0
+      for (const mod of modules) {
+        const mDelivs = deliverables.filter(d => d.module_id === mod.id)
+        if (!mDelivs.length) continue
+        if (rowY2 + G_MOD_H > G_MAX_Y) break
+        s2.addShape(pptx.ShapeType.rect, { x: 0, y: rowY2, w: 13.33, h: G_MOD_H, fill: { color: BLU_LT }, line: { color: BLU_MD } })
+        s2.addText(mod.title, { x: 0.15, y: rowY2 + 0.03, w: G_LABEL_W, h: G_MOD_H - 0.06, fontSize: 8, color: ACCENT, bold: true })
+        rowY2 += G_MOD_H
+        mDelivs.forEach((d, idx) => { if (rowY2 + G_ROW_H <= G_MAX_Y) { drawRow(d, rowY2, idx % 2 === 1); rowY2 += G_ROW_H } })
+      }
+      const ungrouped = deliverables.filter(d => !d.module_id)
+      if (ungrouped.length && rowY2 + G_MOD_H <= G_MAX_Y) {
+        s2.addShape(pptx.ShapeType.rect, { x: 0, y: rowY2, w: 13.33, h: G_MOD_H, fill: { color: CARD }, line: { color: BORDER } })
+        s2.addText('Ungrouped', { x: 0.15, y: rowY2 + 0.03, w: G_LABEL_W, h: G_MOD_H - 0.06, fontSize: 8, color: MUTED, bold: true })
+        rowY2 += G_MOD_H
+        ungrouped.forEach((d, idx) => { if (rowY2 + G_ROW_H <= G_MAX_Y) { drawRow(d, rowY2, idx % 2 === 1); rowY2 += G_ROW_H } })
+      }
+      if (today2 >= ganttStart && today2 <= effectiveEnd) {
+        const todayX = xDate(today2)
+        const lh = Math.min(rowY2, G_MAX_Y) - G_ROW_Y0
+        if (lh > 0) {
+          s2.addShape(pptx.ShapeType.line, { x: todayX, y: G_ROW_Y0, w: 0, h: lh, line: { color: AMBER, width: 1.5, dashType: 'dash' } })
+          s2.addText('Today', { x: todayX - 0.3, y: G_HDR_Y + 0.07, w: 0.6, h: 0.16, fontSize: 6.5, color: AMBER, align: 'center', bold: true })
+        }
+      }
+    }
+
+    // Burndown slide
+    if (sections.burndown) {
+      const s3 = pptx.addSlide()
+      s3.background = { color: BG }
+      s3.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+      s3.addText('Burndown Chart', { x: 0.5, y: 0.18, w: 10, h: 0.5, fontSize: 18, color: H1, bold: true })
+      s3.addText(`${project.title}  ·  ${doneCount} of ${allTasks.length} tasks completed`, { x: 0.5, y: 0.71, w: 12.3, h: 0.25, fontSize: 10, color: MUTED })
+      const bd = buildBurndown(allTasks, project.start_date, project.deadline)
+      if (bd.labels.length >= 2) {
+        s3.addChart('line' as any, [
+          { name: 'Ideal', labels: bd.labels, values: bd.ideal },
+          { name: 'Actual', labels: bd.labels, values: bd.actual },
+        ], {
+          x: 0.4, y: 1.1, w: 12.5, h: 5.5,
+          chartColors: [MUTED, ACCENT],
+          lineDataSymbol: 'none' as any,
+          showLegend: true, legendPos: 'b', legendFontSize: 10,
+          legendFontColor: BODY,
+          catAxisLabelFontSize: 8, catAxisLabelColor: MUTED,
+          valAxisLabelFontSize: 8, valAxisLabelColor: MUTED,
+          plotAreaBkgndColor: CARD, chartAreaBkgndColor: BG,
+          showTitle: false,
+          valGridLine: { color: BORDER, style: 'solid', pt: 1 } as any,
+        } as any)
+      } else {
+        s3.addText('Not enough task data to render burndown chart.', { x: 0.5, y: 3.5, w: 12.3, h: 0.5, fontSize: 14, color: MUTED, align: 'center' })
+      }
+    }
+
+    // Issues slide (per-project)
+    if (sections.issues) {
+      const projIssues = openIssues.filter(i => i.project === project.title)
+      const issSlide = pptx.addSlide()
+      issSlide.background = { color: BG }
+      issSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.08, fill: { color: ACCENT }, line: { color: ACCENT } })
+      issSlide.addText('Open Issues', { x: 0.5, y: 0.18, w: 10, h: 0.5, fontSize: 18, color: H1, bold: true })
+      issSlide.addText(`${project.title}  ·  ${projIssues.length} unresolved issue${projIssues.length !== 1 ? 's' : ''}`, {
+        x: 0.5, y: 0.71, w: 12.3, h: 0.25, fontSize: 10, color: MUTED,
+      })
+      if (projIssues.length === 0) {
+        issSlide.addText('No open issues — all clear!', { x: 0.5, y: 3.5, w: 12.3, h: 0.5, fontSize: 14, color: GREEN, align: 'center', bold: true })
+      } else {
+        const sevColor = (sev: string) => sev === 'high' ? REDC : sev === 'medium' ? ORANGE : GREEN
+        issSlide.addTable([
+          [
+            { text: 'Issue', options: { bold: true, color: 'FFFFFF', fill: { color: ACCENT }, fontSize: 11 } },
+            { text: 'Severity', options: { bold: true, color: 'FFFFFF', fill: { color: ACCENT }, fontSize: 11 } },
+          ],
+          ...projIssues.slice(0, 18).map((iss, idx) => {
+            const rb = idx % 2 === 0 ? BG : CARD
+            return [
+              { text: iss.title, options: { color: BODY, fontSize: 10, fill: { color: rb } } },
+              { text: iss.severity.toUpperCase(), options: { color: sevColor(iss.severity), fontSize: 10, fill: { color: rb }, bold: true } },
+            ]
+          }),
+        ], { x: 0.5, y: 1.1, w: 12.3, colW: [10.3, 2.0], border: { type: 'solid', color: BORDER, pt: 1 } })
+      }
+    }
   }
 
   return await pptx.write({ outputType: 'nodebuffer' }) as unknown as Buffer

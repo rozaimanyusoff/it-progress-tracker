@@ -11,6 +11,46 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-01 — Report PPTX: Light theme, donut charts, developer analytics & workload table
+
+### Diubah
+
+- **`src/lib/pptx.ts`** — `ReportSections` interface dikurangkan kepada `{ gantt, burndown, issues }` — `teamPerformance` dan `workloadBalance` dibuang (kedua-dua kini dirender secara automatik jika data ahli wujud)
+- **`src/lib/pptx.ts`** — `ReportProjectInput` diperluas: tasks kini ada `time_spent_seconds`, `assigned_to`, dan `assignee { id, name }` untuk kegunaan analitik
+- **`src/lib/pptx.ts`** — `generateReportPPTX()` ditulis semula sepenuhnya dengan susunan slaid baharu dan tema cerah (light theme `FFFFFF`/`F8FAFC`):
+   - **Slaid 1 – Cover**: latar `F8FAFC`, bar biru atas & bawah, tajuk "Progress Report", label tempoh, kiraan projek + tarikh eksport
+   - **Slaid 2 – Projects Overview** (auto-paginate 6 projek/slaid): kad per-projek dalam grid 3 kolum, setiap kad ada **donut chart** (`addChart('doughnut')`) berwarna mengikut status, peratusan di tengah, badge status, dan kiraan tasks
+   - **Slaid 3 – Developer Analytics** (auto-render jika ada data): dua bar chart sebelah-menyebelah — kiri: bilangan tasks assigned per ahli; kanan: jam yang dihabiskan (`time_spent_seconds / 3600`)
+   - **Slaid 4 – Team Workload Balance** (auto-render jika ada data): jadual ahli × status (To Do / In Progress / In Review / Done / Total), warna header mengikut status
+   - **Slaid per-projek**: Overview → Gantt (jika `sections.gantt`) → Burndown (jika `sections.burndown`) → Issues (jika `sections.issues`, ditapis per-projek)
+- **`src/app/api/export/route.ts`** — Task fetch kini include `time_spent_seconds`, `assigned_to`, `assignee { id, name }`; `sections` parsing buang `teamPerformance`/`workloadBalance`
+- **`src/app/export/page.tsx`** — Buang toggle `teamPerformance` dan `workloadBalance` dari senarai `SECTIONS` dan initial state; import `Users`, `Scale` dibuang; seksyen kini hanya: Gantt, Burndown, Issues
+
+---
+
+## 2026-03-31 — Notification emails & Report Builder UI
+
+### Ditambah
+
+- **`src/lib/email.ts`** — 6 fungsi notifikasi e-mel baharu:
+   - `sendTaskStatusEmail` — ahli dimaklumkan apabila status task berubah
+   - `sendTaskAssignedEmail` — ahli dimaklumkan apabila task baharu ditetapkan
+   - `sendTaskDeletedEmail` — ahli dimaklumkan apabila task mereka dipadam
+   - `sendIssueCreatedEmail` — manager dimaklumkan apabila isu baharu dilaporkan
+   - `sendIssueResolvedEmail` — pihak berkaitan diberitahu apabila isu ditutup
+   - `sendExportEmail` — fail PPTX dihantar ke semua pengguna aktif selepas report dijana
+- **`src/app/export/page.tsx`** — Ditulis semula sebagai **Report Builder** UI:
+   - Panel kiri: senarai projek dengan checkbox, progress bar, dan status badge; butang "Select All"/"Deselect All"
+   - Panel kanan: pemilih bulan `from`/`to`, toggle 5 seksyen (Gantt, Burndown, Team Performance, Workload Balance, Issues), kad ringkasan live (projek dipilih, seksyen aktif)
+   - Butang "Generate Report" dengan spinner
+
+### Dikemaskini
+
+- **`src/components/Sidebar.tsx`** — Label "Export" ditukar ke "Report", ikon ditukar ke `BarChart3`
+- **`src/app/api/export/route.ts`** — Parameter POST baharu: `project_ids[]`, `from_month`, `to_month`, `sections{}` menggantikan parameter lama
+
+---
+
 ## 2026-03-31 — Per-project PPTX export: light theme & Gantt chart slide
 
 ### Ditambah

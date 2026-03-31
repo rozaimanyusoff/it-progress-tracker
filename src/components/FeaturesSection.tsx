@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import AddFeatureModal from './AddFeatureModal'
 import FeatureTaskList from './FeatureTaskList'
+import { Pencil, Trash2, X } from 'lucide-react'
 
 interface Developer { user: { id: number; name: string } }
 interface Member { id: number; name: string }
@@ -43,10 +44,10 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  Pending:    'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
   InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  Done:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  OnHold:     'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+  Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  OnHold: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
 }
 const STATUS_LABELS: Record<string, string> = {
   Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
@@ -114,8 +115,12 @@ function FeatureCard({
           <div className="flex items-center gap-1.5 shrink-0">
             {userRole === 'manager' && (
               <>
-                <button onClick={() => onEdit(feature)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
-                <button onClick={() => onUnlink(feature.id, feature.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Unlink</button>
+                <button onClick={() => onEdit(feature)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit feature">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => onUnlink(feature.id, feature.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Unlink feature">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </>
             )}
             <button
@@ -159,6 +164,11 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
   const [editingModule, setEditingModule] = useState<Module | null>(null)
   const [moduleForm, setModuleForm] = useState({ title: '', description: '' })
   const [moduleLoading, setModuleLoading] = useState(false)
+
+  // Delete confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     fetchAll()
@@ -240,13 +250,24 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
     closeModuleModal()
   }
 
-  async function deleteModule(id: number, title: string) {
-    if (!confirm(`Delete module "${title}"? Features will be moved to ungrouped.`)) return
-    const res = await fetch(`/api/modules/${id}`, { method: 'DELETE' })
+  function deleteModule(id: number, title: string) {
+    setDeleteError('')
+    setDeleteConfirm({ id, title })
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    setDeleteError('')
+    const res = await fetch(`/api/modules/${deleteConfirm.id}`, { method: 'DELETE' })
     if (res.ok) {
-      setModules(prev => prev.filter(m => m.id !== id))
-      setFeatures(prev => prev.map(f => f.module_id === id ? { ...f, module_id: null } : f))
+      setModules(prev => prev.filter(m => m.id !== deleteConfirm.id))
+      setDeleteConfirm(null)
+    } else {
+      const data = await res.json().catch(() => ({}))
+      setDeleteError(data.error || 'Delete failed')
     }
+    setDeleting(false)
   }
 
   function openAddModule() {
@@ -315,8 +336,12 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
                   </button>
                   {userRole === 'manager' && (
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => openEditModule(mod)} className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300">Edit</button>
-                      <button onClick={() => deleteModule(mod.id, mod.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 text-red-500">Delete</button>
+                      <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteModule(mod.id, mod.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Delete module">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -390,7 +415,7 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Link Feature</h2>
-              <button onClick={() => setShowLinkModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+              <button onClick={() => setShowLinkModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-4">
               <div>
@@ -424,13 +449,45 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Delete Module</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+              Are you sure you want to delete <strong className="text-slate-800 dark:text-white">{deleteConfirm.title}</strong>?
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+              Module cannot be deleted if it has linked features.
+            </p>
+            {deleteError && <p className="text-sm text-red-500 mb-3">{deleteError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setDeleteConfirm(null); setDeleteError('') }}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add/Edit Module Modal */}
       {showModuleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{editingModule ? 'Edit Module' : 'Add Module'}</h2>
-              <button onClick={closeModuleModal} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+              <button onClick={closeModuleModal} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-4">
               <div>

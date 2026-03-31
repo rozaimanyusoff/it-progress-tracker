@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendProjectDeleted } from '@/lib/email'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -70,11 +71,46 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const projectId = Number(id)
 
-  await prisma.$transaction([
-    prisma.projectUpdate.deleteMany({ where: { project_id: projectId } }),
-    prisma.issue.deleteMany({ where: { project_id: projectId } }),
-    prisma.project.delete({ where: { id: projectId } }),
-  ])
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { title: true } })
+  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Find features linked exclusively to this project (not shared with other projects)
+  const featureLinks = await prisma.projectFeature.findMany({
+    where: { project_id: projectId },
+    select: { feature_id: true },
+  })
+  const allFeatureIds = featureLinks.map(f => f.feature_id)
+
+  const exclusiveFeatureIds: number[] = []
+  for (const featureId of allFeatureIds) {
+    const linkCount = await prisma.projectFeature.count({ where: { feature_id: featureId } })
+    if (linkCount === 1) exclusiveFeatureIds.push(featureId)
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Clean up tasks under exclusive features (not covered by Deliverable cascade)
+    if (exclusiveFeatureIds.length > 0) {
+      const featureTasks = await tx.task.findMany({
+        where: { feature_id: { in: exclusiveFeatureIds }, deliverable_id: null },
+        select: { id: true },
+      })
+      const featureTaskIds = featureTasks.map(t => t.id)
+      if (featureTaskIds.length > 0) {
+        await tx.taskUpdate.deleteMany({ where: { task_id: { in: featureTaskIds } } })
+        await tx.issue.updateMany({ where: { task_id: { in: featureTaskIds } }, data: { task_id: null } })
+        await tx.task.deleteMany({ where: { id: { in: featureTaskIds } } })
+      }
+      await tx.featureDeveloper.deleteMany({ where: { feature_id: { in: exclusiveFeatureIds } } })
+      await tx.feature.deleteMany({ where: { id: { in: exclusiveFeatureIds } } })
+    }
+
+    // Delete project updates and issues (no DB cascade on these relations)
+    await tx.projectUpdate.deleteMany({ where: { project_id: projectId } })
+    await tx.issue.deleteMany({ where: { project_id: projectId } })
+
+    // Delete project — DB cascades: Modules, Deliverables→Tasks→TaskUpdates, ProjectAssignees, ProjectFeature links
+    await tx.project.delete({ where: { id: projectId } })
+  })
 
   await prisma.auditLog.create({
     data: {
@@ -82,9 +118,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       action: 'DELETE',
       target_type: 'Project',
       target_id: projectId,
-      metadata: {},
+      metadata: { title: project.title },
     },
   })
+
+  // Notify other active managers about the project deletion
+  const otherManagers = await prisma.user.findMany({
+    where: { role: 'manager', is_active: true, NOT: { id: Number(user.id) } },
+    select: { email: true },
+  })
+  const managerEmails = otherManagers.map((m) => m.email)
+  if (managerEmails.length > 0) {
+    sendProjectDeleted(managerEmails, project.title, user.name).catch(() => { })
+  }
 
   return NextResponse.json({ success: true })
 }

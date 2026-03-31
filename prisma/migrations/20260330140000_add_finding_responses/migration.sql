@@ -1,5 +1,6 @@
 -- AlterTable
 ALTER TABLE "Issue" ADD COLUMN     "deliverable_id" INTEGER,
+ADD COLUMN     "media_urls" TEXT[],
 ADD COLUMN     "task_id" INTEGER;
 
 -- AddForeignKey

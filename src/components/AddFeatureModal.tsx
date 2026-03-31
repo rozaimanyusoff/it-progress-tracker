@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 
 interface Developer {
   id: number
@@ -99,7 +100,7 @@ export default function AddFeatureModal({ onClose, onCreated, editFeature }: Pro
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             {editFeature ? 'Edit Feature' : 'New Feature'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xl">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="w-4 h-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

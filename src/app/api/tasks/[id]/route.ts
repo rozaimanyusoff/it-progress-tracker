@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import {
+  sendTaskSubmittedForReview,
+  sendTaskRejected,
+  sendTaskApproved,
+  sendTaskAssigned,
+} from '@/lib/email'
 
 async function recalculateFeatureDates(featureId: number) {
   const allTasks = await prisma.task.findMany({ where: { feature_id: featureId } })
@@ -112,7 +118,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const task = await prisma.task.update({
     where: { id: taskId },
     data: updateData,
-    include: { assignee: { select: { id: true, name: true } } },
+    include: { assignee: { select: { id: true, name: true, email: true } } },
   })
 
   // Recalculate parent dates after task status change
@@ -133,6 +139,45 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     },
   })
+
+  // Send notifications based on status transitions and assignment changes
+  if (body.status !== undefined) {
+    const prevStatus = existing.status
+    const newStatus = body.status
+
+    if (user.role === 'member' && prevStatus === 'InProgress' && newStatus === 'InReview') {
+      const managers = await prisma.user.findMany({
+        where: { role: 'manager', is_active: true },
+        select: { email: true },
+      })
+      const managerEmails = managers.map((m) => m.email)
+      if (managerEmails.length > 0) {
+        sendTaskSubmittedForReview(managerEmails, task.title, user.name).catch(() => { })
+      }
+    }
+
+    if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'InProgress') {
+      if (task.assignee?.email) {
+        sendTaskRejected(task.assignee.email, task.assignee.name, task.title).catch(() => { })
+      }
+    }
+
+    if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'Done') {
+      if (task.assignee?.email) {
+        sendTaskApproved(task.assignee.email, task.assignee.name, task.title).catch(() => { })
+      }
+    }
+  }
+
+  if (
+    user.role === 'manager' &&
+    'assigned_to' in body &&
+    body.assigned_to &&
+    body.assigned_to !== existing.assigned_to &&
+    task.assignee?.email
+  ) {
+    sendTaskAssigned(task.assignee.email, task.assignee.name, task.title).catch(() => { })
+  }
 
   return NextResponse.json(task)
 }

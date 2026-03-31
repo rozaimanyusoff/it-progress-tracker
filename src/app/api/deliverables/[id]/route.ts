@@ -36,7 +36,30 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const user = session.user as any
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  await prisma.deliverable.delete({ where: { id: Number(id) } })
+  const deliverableId = Number(id)
+
+  const deliverable = await prisma.deliverable.findUnique({ where: { id: deliverableId }, select: { title: true, project_id: true } })
+  if (!deliverable) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const taskCount = await prisma.task.count({ where: { deliverable_id: deliverableId } })
+  if (taskCount > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete deliverable "${deliverable.title}" — it still has ${taskCount} task(s). Remove all tasks first.` },
+      { status: 409 }
+    )
+  }
+
+  await prisma.deliverable.delete({ where: { id: deliverableId } })
+
+  await prisma.auditLog.create({
+    data: {
+      user_id: Number(user.id),
+      action: 'DELETE',
+      target_type: 'Deliverable',
+      target_id: deliverableId,
+      metadata: { title: deliverable.title, project_id: deliverable.project_id },
+    },
+  })
 
   return NextResponse.json({ ok: true })
 }

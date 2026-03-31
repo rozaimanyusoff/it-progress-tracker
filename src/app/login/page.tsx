@@ -1,14 +1,20 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { ShieldCheck } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [branding, setBranding] = useState<{ brand_name: string; brand_logo_url: string } | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    fetch('/api/settings/branding').then(r => r.json()).then(s => setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url })).catch(() => { })
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -28,12 +34,13 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="bg-white dark:bg-navy-800 rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-navy-700">
           <div className="mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
+            <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 overflow-hidden ${branding?.brand_logo_url ? '' : 'bg-blue-600'}`}>
+              {branding?.brand_logo_url
+                ? <img src={branding.brand_logo_url} alt="logo" className="w-full h-full object-contain" />
+                : <ShieldCheck className="w-8 h-8 text-white" />
+              }
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">IT Progress Tracker</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{branding?.brand_name ?? 'IT Progress Tracker'}</h1>
             <p className="text-slate-500 dark:text-slate-400 mt-1">Sign in to your account</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendTaskAssigned } from '@/lib/email'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -78,6 +79,17 @@ export async function POST(req: NextRequest) {
       metadata: { title: task.title, feature_id: task.feature_id, deliverable_id: task.deliverable_id },
     },
   })
+
+  // Notify the assignee when a manager creates and assigns a task
+  if (user.role === 'manager' && resolvedAssignee) {
+    const assignee = await prisma.user.findUnique({
+      where: { id: resolvedAssignee },
+      select: { email: true, name: true },
+    })
+    if (assignee) {
+      sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
+    }
+  }
 
   return NextResponse.json(task, { status: 201 })
 }

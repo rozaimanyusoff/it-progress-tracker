@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { AlertTriangle } from 'lucide-react'
 
 interface ProjectActionsProps {
   project: {
@@ -31,6 +32,21 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
     assignee_ids: project.assignees.map(a => a.user.id),
   })
   const [members, setMembers] = useState<{ id: number; name: string }[]>([])
+
+  // Delete confirmation
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (res.ok) {
+      router.push('/projects')
+      router.refresh()
+    }
+  }
 
   // Issue modal
   const [showIssue, setShowIssue] = useState(false)
@@ -151,7 +167,69 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
         >
           + Issue
         </button>
+        {isManager && (
+          <button
+            onClick={() => { setDeleteConfirmText(''); setShowDelete(true) }}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+          >
+            Delete
+          </button>
+        )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Delete Project</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 mb-4 text-sm text-red-700 dark:text-red-300">
+              <p className="font-medium mb-1">The following will be permanently deleted:</p>
+              <ul className="list-disc list-inside space-y-0.5 text-red-600 dark:text-red-400">
+                <li>All modules and deliverables</li>
+                <li>All tasks (including tasks assigned to members)</li>
+                <li>All issues and progress updates</li>
+              </ul>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1.5">
+                Type <span className="font-semibold text-slate-800 dark:text-slate-200">{project.title}</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                placeholder={project.title}
+                className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting || deleteConfirmText !== project.title}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg font-medium text-sm transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete Project'}
+              </button>
+              <button
+                onClick={() => setShowDelete(false)}
+                disabled={deleting}
+                className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-2 rounded-lg text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {showEdit && (

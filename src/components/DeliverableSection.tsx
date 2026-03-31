@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import FeatureTaskList from './FeatureTaskList'
+import { Pencil, Trash2, X } from 'lucide-react'
 
 interface Task { status: string }
 
@@ -123,8 +124,12 @@ function DeliverableCard({
           <div className="flex items-center gap-1.5 shrink-0">
             {userRole === 'manager' && (
               <>
-                <button onClick={() => onEdit(deliverable)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
-                <button onClick={() => onDelete(deliverable.id, deliverable.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Delete</button>
+                <button onClick={() => onEdit(deliverable)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit deliverable">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => onDelete(deliverable.id, deliverable.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Delete deliverable">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </>
             )}
             <button
@@ -181,6 +186,11 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   const [editingModule, setEditingModule] = useState<Module | null>(null)
   const [moduleForm, setModuleForm] = useState(BLANK_MODULE_FORM)
   const [moduleSaving, setModuleSaving] = useState(false)
+
+  // Delete confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'module' | 'deliverable'; id: number; title: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     fetchAll()
@@ -275,10 +285,9 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     }
   }
 
-  async function deleteDeliv(id: number, title: string) {
-    if (!confirm(`Delete deliverable "${title}" and all its tasks?`)) return
-    await fetch(`/api/deliverables/${id}`, { method: 'DELETE' })
-    setDeliverables(prev => prev.filter(d => d.id !== id))
+  function deleteDeliv(id: number, title: string) {
+    setDeleteError('')
+    setDeleteConfirm({ type: 'deliverable', id, title })
   }
 
   // ── Module CRUD ───────────────────────────────────────────────
@@ -335,13 +344,31 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     setShowModuleModal(false)
   }
 
-  async function deleteModule(id: number, title: string) {
-    if (!confirm(`Delete module "${title}"? Deliverables will be moved to ungrouped.`)) return
-    const res = await fetch(`/api/modules/${id}`, { method: 'DELETE' })
+  function deleteModule(id: number, title: string) {
+    setDeleteError('')
+    setDeleteConfirm({ type: 'module', id, title })
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    setDeleteError('')
+    const url = deleteConfirm.type === 'module'
+      ? `/api/modules/${deleteConfirm.id}`
+      : `/api/deliverables/${deleteConfirm.id}`
+    const res = await fetch(url, { method: 'DELETE' })
     if (res.ok) {
-      setModules(prev => prev.filter(m => m.id !== id))
-      setDeliverables(prev => prev.map(d => d.module_id === id ? { ...d, module_id: null } : d))
+      if (deleteConfirm.type === 'module') {
+        setModules(prev => prev.filter(m => m.id !== deleteConfirm.id))
+      } else {
+        setDeliverables(prev => prev.filter(d => d.id !== deleteConfirm.id))
+      }
+      setDeleteConfirm(null)
+    } else {
+      const data = await res.json().catch(() => ({}))
+      setDeleteError(data.error || 'Delete failed')
     }
+    setDeleting(false)
   }
 
   function toggleGroup(key: number | 'ungrouped') {
@@ -492,8 +519,12 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                       >
                         + Deliverable
                       </button>
-                      <button onClick={() => openEditModule(mod)} className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300">Edit</button>
-                      <button onClick={() => deleteModule(mod.id, mod.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 text-red-500">Delete</button>
+                      <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteModule(mod.id, mod.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Delete module">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -574,7 +605,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                 {editingDeliv ? 'Edit Deliverable' : 'New Deliverable'}
               </h2>
-              <button onClick={() => setShowDelivModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xl">✕</button>
+              <button onClick={() => setShowDelivModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-4">
               <div>
@@ -680,13 +711,53 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
         </div>
       )}
 
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+              Delete {deleteConfirm.type === 'module' ? 'Module' : 'Deliverable'}
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+              Are you sure you want to delete <strong className="text-slate-800 dark:text-white">{deleteConfirm.title}</strong>?
+            </p>
+            {deleteConfirm.type === 'module' ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+                Module cannot be deleted if it has deliverables or linked features.
+              </p>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+                Deliverable cannot be deleted if it has tasks.
+              </p>
+            )}
+            {deleteError && <p className="text-sm text-red-500 mb-3">{deleteError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setDeleteConfirm(null); setDeleteError('') }}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Module Modal ── */}
       {showModuleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{editingModule ? 'Edit Module' : 'Add Module'}</h2>
-              <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+              <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-4">
               <div>

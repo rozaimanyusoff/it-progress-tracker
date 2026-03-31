@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendIssueAssigned } from '@/lib/email'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       media_urls: Array.isArray(body.media_urls) ? body.media_urls : [],
       ...(body.deliverable_id && { deliverable_id: Number(body.deliverable_id) }),
       ...(body.task_id && { task_id: Number(body.task_id) }),
+      ...(body.assignee_id && { assignee_id: Number(body.assignee_id) }),
     },
   })
 
@@ -64,6 +66,17 @@ export async function POST(req: NextRequest) {
       metadata: { title: issue.title, severity: issue.severity },
     },
   })
+
+  // Notify the assignee when an issue is assigned on creation
+  if (body.assignee_id) {
+    const assignee = await prisma.user.findUnique({
+      where: { id: Number(body.assignee_id) },
+      select: { email: true, name: true },
+    })
+    if (assignee) {
+      sendIssueAssigned(assignee.email, assignee.name, issue.title).catch(() => { })
+    }
+  }
 
   return NextResponse.json(issue, { status: 201 })
 }

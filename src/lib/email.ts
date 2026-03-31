@@ -32,6 +32,149 @@ export async function sendActivationEmail(to: string, name: string, activationUr
   })
 }
 
+export async function sendTaskSubmittedForReview(
+  managerEmails: string[],
+  taskTitle: string,
+  memberName: string,
+) {
+  if (!managerEmails.length) return
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: managerEmails.join(', '),
+    subject: `Task ready for review: ${taskTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#1d4ed8;">Task Submitted for Review</h2>
+        <p><strong>${memberName}</strong> has submitted a task for your review.</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;width:30%;">Task</td><td style="padding:8px;border:1px solid #e5e7eb;">${taskTitle}</td></tr>
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;">Submitted by</td><td style="padding:8px;border:1px solid #e5e7eb;">${memberName}</td></tr>
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;">Status</td><td style="padding:8px;border:1px solid #e5e7eb;">In Progress → <strong style="color:#d97706;">To Review</strong></td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Please log in to IT Tracker to review and approve or reject this task.</p>
+      </div>
+    `,
+  })
+}
+
+export async function sendProjectDeleted(
+  managerEmails: string[],
+  projectTitle: string,
+  deleterName: string,
+) {
+  if (!managerEmails.length) return
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: managerEmails.join(', '),
+    subject: `Project deleted: ${projectTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#dc2626;">Project Deleted</h2>
+        <p>A project has been permanently deleted from IT Tracker.</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;width:30%;">Project</td><td style="padding:8px;border:1px solid #e5e7eb;">${projectTitle}</td></tr>
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;">Deleted by</td><td style="padding:8px;border:1px solid #e5e7eb;">${deleterName}</td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">This action cannot be undone.</p>
+      </div>
+    `,
+  })
+}
+
+export async function sendTaskAssigned(
+  memberEmail: string,
+  memberName: string,
+  taskTitle: string,
+) {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: memberEmail,
+    subject: `You have been assigned a task: ${taskTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#1d4ed8;">New Task Assigned</h2>
+        <p>Hi <strong>${memberName}</strong>,</p>
+        <p>A task has been assigned to you in IT Tracker.</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;width:30%;">Task</td><td style="padding:8px;border:1px solid #e5e7eb;">${taskTitle}</td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Please log in to IT Tracker to view your task details.</p>
+      </div>
+    `,
+  })
+}
+
+export async function sendIssueAssigned(
+  memberEmail: string,
+  memberName: string,
+  issueTitle: string,
+) {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: memberEmail,
+    subject: `You have been assigned an issue: ${issueTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#d97706;">Issue Assigned to You</h2>
+        <p>Hi <strong>${memberName}</strong>,</p>
+        <p>An issue has been assigned to you in IT Tracker.</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;width:30%;">Issue</td><td style="padding:8px;border:1px solid #e5e7eb;">${issueTitle}</td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Please log in to IT Tracker to view the issue details.</p>
+      </div>
+    `,
+  })
+}
+
+export async function sendTaskRejected(
+  memberEmail: string,
+  memberName: string,
+  taskTitle: string,
+) {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: memberEmail,
+    subject: `Task review rejected: ${taskTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#dc2626;">Task Returned for Revision</h2>
+        <p>Hi <strong>${memberName}</strong>,</p>
+        <p>Your task has been reviewed and returned back to <strong>In Progress</strong> for further work.</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;width:30%;">Task</td><td style="padding:8px;border:1px solid #e5e7eb;">${taskTitle}</td></tr>
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;">Status</td><td style="padding:8px;border:1px solid #e5e7eb;">To Review → <strong style="color:#2563eb;">In Progress</strong></td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Please log in to IT Tracker to continue working on this task.</p>
+      </div>
+    `,
+  })
+}
+
+export async function sendTaskApproved(
+  memberEmail: string,
+  memberName: string,
+  taskTitle: string,
+) {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: memberEmail,
+    subject: `Task approved: ${taskTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#16a34a;">Task Approved</h2>
+        <p>Hi <strong>${memberName}</strong>,</p>
+        <p>Great work! Your task has been reviewed and marked as <strong>Done</strong>.</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;width:30%;">Task</td><td style="padding:8px;border:1px solid #e5e7eb;">${taskTitle}</td></tr>
+          <tr><td style="padding:8px;background:#f3f4f6;font-weight:600;">Status</td><td style="padding:8px;border:1px solid #e5e7eb;">To Review → <strong style="color:#16a34a;">Done</strong></td></tr>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Thank you for your contribution to IT Tracker.</p>
+      </div>
+    `,
+  })
+}
+
 export async function sendExportEmail(recipients: string[], month: string, pptxBuffer: Buffer) {
   await transporter.sendMail({
     from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',

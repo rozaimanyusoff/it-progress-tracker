@@ -4,15 +4,16 @@ import { usePathname } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
+import { LayoutDashboard, Kanban, Users, FolderKanban, AlertCircle, Settings, BarChart3, X, Sun, Moon, LogOut, LucideIcon } from 'lucide-react'
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['manager', 'member'], activePrefixes: ['/dashboard'] },
-  { href: '/kanban', label: 'My Kanban', icon: '▦', roles: ['member'] },
-  { href: '/kanban', label: 'Team Kanban', icon: '⊟', roles: ['manager'] },
-  { href: '/projects', label: 'Projects', icon: '◫', roles: ['manager'], activePrefixes: ['/projects'] },
-  { href: '/issues', label: 'Issues', icon: '⚠', roles: ['manager', 'member'] },
-  { href: '/settings', label: 'Settings', icon: '⚙', roles: ['manager'] },
-  { href: '/export', label: 'Export', icon: '↓', roles: ['manager'] },
+const navItems: { href: string; label: string; Icon: LucideIcon; roles: string[]; activePrefixes?: string[] }[] = [
+  { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, roles: ['manager', 'member'], activePrefixes: ['/dashboard'] },
+  { href: '/kanban', label: 'My Kanban', Icon: Kanban, roles: ['member'] },
+  { href: '/kanban', label: 'Team Kanban', Icon: Users, roles: ['manager'] },
+  { href: '/projects', label: 'Projects', Icon: FolderKanban, roles: ['manager'], activePrefixes: ['/projects'] },
+  { href: '/issues', label: 'Issues', Icon: AlertCircle, roles: ['manager', 'member'] },
+  { href: '/settings', label: 'Settings', Icon: Settings, roles: ['manager'] },
+  { href: '/export', label: 'Report', Icon: BarChart3, roles: ['manager'] },
 ]
 
 interface Props {
@@ -33,8 +34,8 @@ export default function Sidebar({ open = false, onClose }: Props) {
 
   useEffect(() => {
     if (!session) return
-    fetch('/api/counts').then(r => r.json()).then(setCounts).catch(() => {})
-    fetch('/api/settings').then(r => r.json()).then(s => setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url })).catch(() => {})
+    fetch('/api/counts').then(r => r.json()).then(setCounts).catch(() => { })
+    fetch('/api/settings').then(r => r.json()).then(s => setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url })).catch(() => { })
   }, [session])
 
   const filtered = navItems.filter(item => item.roles.includes(role))
@@ -51,9 +52,9 @@ export default function Sidebar({ open = false, onClose }: Props) {
     >
       <div className="p-6 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-sm overflow-hidden shrink-0">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm overflow-hidden shrink-0 ${branding?.brand_logo_url ? '' : 'bg-primary'}`}>
             {branding?.brand_logo_url
-              ? <img src={branding.brand_logo_url} alt="logo" className="w-full h-full object-cover" />
+              ? <img src={branding.brand_logo_url} alt="logo" className="w-full h-full object-contain" />
               : (branding?.brand_name ?? 'IT Tracker').slice(0, 2).toUpperCase()
             }
           </div>
@@ -68,9 +69,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
           aria-label="Close menu"
           className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-navy-700 transition-colors"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X className="w-4 h-4" />
         </button>
       </div>
 
@@ -85,13 +84,12 @@ export default function Sidebar({ open = false, onClose }: Props) {
               key={item.href}
               href={item.href}
               onClick={onClose}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? 'nav-active'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-navy-700 hover:text-slate-900 dark:hover:text-white'
-              }`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${active
+                ? 'nav-active'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-navy-700 hover:text-slate-900 dark:hover:text-white'
+                }`}
             >
-              <span className="text-base">{item.icon}</span>
+              <item.Icon className="w-4 h-4 shrink-0" />
               <span className="flex-1">{item.label}</span>
               {counts && item.href === '/kanban' && counts.kanban > 0 && (
                 <span className={`text-[11px] font-semibold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 ${active ? 'bg-white/30 text-white' : 'bg-primary text-white opacity-80'}`}>
@@ -114,7 +112,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className="w-full flex items-center gap-3 px-3 py-2 mb-2 rounded-lg text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-navy-700 hover:text-slate-900 dark:hover:text-white transition-colors"
           >
-            <span className="text-base">{theme === 'dark' ? '☀' : '☾'}</span>
+            {theme === 'dark' ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
             {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
           </button>
         )}
@@ -130,8 +128,9 @@ export default function Sidebar({ open = false, onClose }: Props) {
         </div>
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
-          className="w-full text-left px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-white text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-white text-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
         >
+          <LogOut className="w-4 h-4 shrink-0" />
           Sign out
         </button>
       </div>

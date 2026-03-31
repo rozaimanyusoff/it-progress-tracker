@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
+import { Trash2, X } from 'lucide-react'
 import TaskUpdateModal from './TaskUpdateModal'
 
 interface Task {
@@ -23,13 +24,13 @@ type BoardState = Record<string, Task[]>
 
 interface Project { id: number; title: string }
 interface Feature { id: number; title: string; module_id: number | null }
-interface Module  { id: number; title: string; features: Feature[] }
+interface Module { id: number; title: string; features: Feature[] }
 
 const COLUMNS: { id: string; label: string; color: string }[] = [
-  { id: 'Todo',       label: 'To Do',       color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
+  { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
   { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300' },
-  { id: 'InReview',   label: 'To Review',   color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
-  { id: 'Done',       label: 'Done',        color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
+  { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
+  { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
 ]
 
 function reviewCardStyle(task: { status: string; review_count: number }): string {
@@ -72,23 +73,23 @@ function formatElapsed(seconds: number): string {
 
 // ── Add Task Modal ────────────────────────────────────────────────
 function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (task: Task) => void }) {
-  const [projects, setProjects]   = useState<Project[]>([])
-  const [modules, setModules]     = useState<Module[]>([])
-  const [features, setFeatures]   = useState<Feature[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [modules, setModules] = useState<Module[]>([])
+  const [features, setFeatures] = useState<Feature[]>([])
   const [projectId, setProjectId] = useState('')
-  const [moduleId, setModuleId]   = useState('')
+  const [moduleId, setModuleId] = useState('')
   const [featureId, setFeatureId] = useState('')
-  const [title, setTitle]         = useState('')
+  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   // New feature inline form
-  const [showNewFeature, setShowNewFeature]     = useState(false)
-  const [newFeatTitle, setNewFeatTitle]         = useState('')
-  const [newFeatStart, setNewFeatStart]         = useState('')
-  const [newFeatEnd, setNewFeatEnd]             = useState('')
-  const [newFeatMandays, setNewFeatMandays]     = useState('1')
+  const [showNewFeature, setShowNewFeature] = useState(false)
+  const [newFeatTitle, setNewFeatTitle] = useState('')
+  const [newFeatStart, setNewFeatStart] = useState('')
+  const [newFeatEnd, setNewFeatEnd] = useState('')
+  const [newFeatMandays, setNewFeatMandays] = useState('1')
 
   function calcMandays(start: string, end: string): string {
     if (!start || !end) return newFeatMandays
@@ -113,7 +114,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
     setNewFeatEnd(val)
     setNewFeatMandays(calcMandays(newFeatStart, val))
   }
-  const [creatingFeature, setCreatingFeature]   = useState(false)
+  const [creatingFeature, setCreatingFeature] = useState(false)
 
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then((data: any[]) =>
@@ -199,7 +200,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Add Task to Board</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 leading-none"><X className="w-4 h-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -311,12 +312,14 @@ interface AssignedIssue {
 export default function KanbanBoard() {
   const { data: session } = useSession()
   const isManager = (session?.user as any)?.role === 'manager'
-  const [allTasks, setAllTasks]         = useState<Task[]>([])
+  const [allTasks, setAllTasks] = useState<Task[]>([])
   const [assignedIssues, setAssignedIssues] = useState<AssignedIssue[]>([])
-  const [loading, setLoading]           = useState(true)
+  const [loading, setLoading] = useState(true)
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [, setTick] = useState(0)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Filters
   const [filterProjectId, setFilterProjectId] = useState('')
@@ -423,6 +426,17 @@ export default function KanbanBoard() {
 
   function handleStatusChange(taskId: number, newStatus: string) {
     setAllTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
+  }
+
+  async function confirmDeleteTask() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    const res = await fetch(`/api/tasks/${deleteConfirm.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (res.ok) {
+      setAllTasks(prev => prev.filter(t => t.id !== deleteConfirm.id))
+      setDeleteConfirm(null)
+    }
   }
 
   if (loading) {
@@ -589,9 +603,9 @@ export default function KanbanBoard() {
               {/* Assigned issue cards — To Do column only */}
               {col.id === 'Todo' && assignedIssues.map(issue => {
                 const sevColor: Record<string, string> = {
-                  high:   'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
+                  high: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
                   medium: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300',
-                  low:    'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300',
+                  low: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300',
                 }
                 return (
                   <div key={`issue-${issue.id}`} className="bg-white dark:bg-navy-800 border border-red-200 dark:border-red-800/50 rounded-lg p-3 shadow-sm mb-2">
@@ -673,6 +687,15 @@ export default function KanbanBoard() {
                                 {col.id !== 'Done' && (
                                   <button onClick={() => moveTask(task.id, col.id, 'next')} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 hover:bg-slate-50" title="Move forward">→</button>
                                 )}
+                                {col.id === 'Todo' && !task.is_predefined && (
+                                  <button
+                                    onClick={() => setDeleteConfirm({ id: task.id, title: task.title })}
+                                    className="p-1 rounded border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    title="Delete task"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                               <button
                                 onClick={() => setActiveTaskId(task.id)}
@@ -694,6 +717,33 @@ export default function KanbanBoard() {
       </DragDropContext>
 
       {showAddModal && <AddTaskModal onClose={() => setShowAddModal(false)} onAdded={handleTaskAdded} />}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-sm rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Delete Task</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Delete <span className="font-medium text-slate-700 dark:text-slate-300">"{deleteConfirm.title}"</span>? This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmDeleteTask}
+                disabled={deleting}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTask && (
         <TaskUpdateModal

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import TaskUpdateModal from './TaskUpdateModal'
+import { Trash2, X } from 'lucide-react'
 
 interface Task {
   id: number
@@ -104,7 +105,7 @@ function AddTaskModal({
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Add Task</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 leading-none"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -238,6 +239,8 @@ export default function TeamKanbanBoard() {
   // Modal
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Tick every second for InProgress timers
   useEffect(() => {
@@ -281,14 +284,21 @@ export default function TeamKanbanBoard() {
   }
 
   async function handleDeleteTask(taskId: number, taskTitle: string) {
-    if (!confirm(`Delete "${taskTitle}"?`)) return
-    const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    setDeleteConfirm({ id: taskId, title: taskTitle })
+  }
+
+  async function confirmDeleteTask() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    const res = await fetch(`/api/tasks/${deleteConfirm.id}`, { method: 'DELETE' })
+    setDeleting(false)
     if (res.ok) {
       setBoard(prev => {
         const next: BoardState = {}
-        for (const col of COLUMNS) next[col.id] = prev[col.id].filter(t => t.id !== taskId)
+        for (const col of COLUMNS) next[col.id] = prev[col.id].filter(t => t.id !== deleteConfirm.id)
         return next
       })
+      setDeleteConfirm(null)
     }
   }
 
@@ -533,10 +543,10 @@ export default function TeamKanbanBoard() {
                         {task.status === 'Todo' && (isManager || task.assignee?.id === currentUserId) && (
                           <button
                             onClick={() => handleDeleteTask(task.id, task.title)}
-                            className="text-xs px-1.5 py-0.5 rounded border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            className="p-1 rounded border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                             title="Delete task"
                           >
-                            🗑
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                         {task.status === 'InReview' && (
@@ -574,6 +584,33 @@ export default function TeamKanbanBoard() {
           onClose={() => setShowAddModal(false)}
           onAdded={handleTaskAdded}
         />
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-sm rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Delete Task</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Delete <span className="font-medium text-slate-700 dark:text-slate-300">"{deleteConfirm.title}"</span>? This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmDeleteTask}
+                disabled={deleting}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTask && (

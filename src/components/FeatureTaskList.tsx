@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
+import { Pencil, Trash2, Check, X } from 'lucide-react'
 
 interface Task {
   id: number
@@ -49,6 +50,8 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
   const [addingTask, setAddingTask] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchTasks()
@@ -105,10 +108,19 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
     }
   }
 
-  async function deleteTask(taskId: number) {
-    if (!confirm('Delete this custom task?')) return
-    const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
-    if (res.ok) setTasks((prev) => prev.filter((t) => t.id !== taskId))
+  async function deleteTask(taskId: number, taskTitle: string) {
+    setDeleteConfirm({ id: taskId, title: taskTitle })
+  }
+
+  async function confirmDeleteTask() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    const res = await fetch(`/api/tasks/${deleteConfirm.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (res.ok) {
+      setTasks(prev => prev.filter(t => t.id !== deleteConfirm.id))
+      setDeleteConfirm(null)
+    }
   }
 
   async function addCustomTask() {
@@ -215,25 +227,25 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
                   <div className="flex items-center gap-1.5">
                     {editingTaskId === task.id ? (
                       <>
-                        <button onClick={() => saveTaskTitle(task.id)} className="text-green-500 hover:text-green-700 text-base leading-none" title="Save">✓</button>
-                        <button onClick={() => setEditingTaskId(null)} className="text-slate-400 hover:text-slate-600 text-base leading-none" title="Cancel">✕</button>
+                        <button onClick={() => saveTaskTitle(task.id)} className="p-1 rounded text-green-500 hover:text-green-700" title="Save"><Check className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setEditingTaskId(null)} className="p-1 rounded text-slate-400 hover:text-slate-600" title="Cancel"><X className="w-3.5 h-3.5" /></button>
                       </>
                     ) : (
                       <>
                         <button
                           onClick={() => { setEditingTaskId(task.id); setEditingTitle(task.title) }}
-                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-base leading-none"
+                          className="p-1 rounded text-yellow-500 dark:text-yellow-400 hover:text-yellow-600 dark:hover:text-yellow-300"
                           title="Edit task"
                         >
-                          ✎
+                          <Pencil className="w-3.5 h-3.5" />
                         </button>
                         {!task.is_predefined && (
                           <button
-                            onClick={() => deleteTask(task.id)}
-                            className="text-red-400 hover:text-red-600 text-base leading-none"
+                            onClick={() => deleteTask(task.id, task.title)}
+                            className="p-1 rounded text-red-400 hover:text-red-600 dark:hover:text-red-300"
                             title="Delete task"
                           >
-                            ✕
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </>
@@ -244,11 +256,11 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
                 <td className="px-3 py-2">
                   {!task.is_predefined && task.status === 'Todo' && task.assigned_to === currentUserId && (
                     <button
-                      onClick={() => deleteTask(task.id)}
-                      className="text-red-400 hover:text-red-600 text-base leading-none"
+                      onClick={() => deleteTask(task.id, task.title)}
+                      className="p-1 rounded text-red-400 hover:text-red-600"
                       title="Delete task"
                     >
-                      ✕
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </td>
@@ -301,6 +313,33 @@ export default function FeatureTaskList({ featureId, deliverableId, userRole, de
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-sm rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Delete Task</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Delete <span className="font-medium text-slate-700 dark:text-slate-300">"{deleteConfirm.title}"</span>? This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmDeleteTask}
+                disabled={deleting}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
