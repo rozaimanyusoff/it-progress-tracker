@@ -64,15 +64,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const existing = await prisma.task.findUnique({ where: { id: taskId } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Member can only update status on their own assigned task
+  // Member can only update status and is_blocked on their own assigned task
   if (user.role === 'member') {
     if (existing.assigned_to !== Number(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    const allowedKeys = ['status']
+    const allowedKeys = ['status', 'is_blocked', 'blocked_reason']
     const disallowedKeys = Object.keys(body).filter((k) => !allowedKeys.includes(k))
     if (disallowedKeys.length > 0) {
-      return NextResponse.json({ error: 'Members can only update task status' }, { status: 403 })
+      return NextResponse.json({ error: 'Members can only update task status and blocked state' }, { status: 403 })
     }
   }
 
@@ -83,7 +83,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.description !== undefined) updateData.description = body.description || null
     if ('assigned_to' in body) updateData.assigned_to = body.assigned_to ? Number(body.assigned_to) : null
     if (body.order !== undefined) updateData.order = Number(body.order)
+    if (body.due_date !== undefined) updateData.due_date = body.due_date ? new Date(body.due_date) : null
+    if (body.est_mandays !== undefined) updateData.est_mandays = body.est_mandays != null ? body.est_mandays : null
+    if (body.priority !== undefined) updateData.priority = body.priority
   }
+
+  // is_blocked can be updated by anyone assigned to the task (or manager)
+  if (body.is_blocked !== undefined) updateData.is_blocked = body.is_blocked
+  if (body.blocked_reason !== undefined) updateData.blocked_reason = body.blocked_reason || null
 
   if (body.status !== undefined) {
     updateData.status = body.status
@@ -91,12 +98,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const newStatus = body.status
 
     // ── Time tracking ──────────────────────────────────────────────
-    // Entering InProgress: start the timer
     if (newStatus === 'InProgress' && prevStatus !== 'InProgress') {
       updateData.time_started_at = new Date()
     }
-
-    // Leaving InProgress: accumulate elapsed seconds and clear start
     if (prevStatus === 'InProgress' && newStatus !== 'InProgress' && existing.time_started_at) {
       const elapsed = Math.floor((Date.now() - existing.time_started_at.getTime()) / 1000)
       updateData.time_spent_seconds = (existing.time_spent_seconds ?? 0) + elapsed
@@ -113,6 +117,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (prevStatus === 'Done' && newStatus !== 'Done') {
       updateData.actual_end = null
     }
+
+    // ── Lifecycle timestamps (set once, never overwrite) ───────────
+    if (newStatus === 'InProgress' && !(existing as any).started_at) {
+      updateData.started_at = new Date()
+    }
+    if (newStatus === 'InReview' && !(existing as any).submitted_at) {
+      updateData.submitted_at = new Date()
+    }
+    if (newStatus === 'Done' && !(existing as any).completed_at) {
+      updateData.completed_at = new Date()
+    }
   }
 
   const task = await prisma.task.update({
@@ -125,6 +140,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.status !== undefined) {
     if (task.feature_id != null) await recalculateFeatureDates(task.feature_id)
     if (task.deliverable_id != null) await recalculateDeliverableDates(task.deliverable_id)
+  }
+
+  // ── Auto-log status change to task_history ─────────────────────
+  if (body.status !== undefined && body.status !== existing.status) {
+    await (prisma as any).taskHistory.create({
+      data: {
+        task_id: taskId,
+        changed_by: Number(user.id),
+        from_status: existing.status,
+        to_status: body.status,
+        note: null,
+      },
+    })
   }
 
   await prisma.auditLog.create({

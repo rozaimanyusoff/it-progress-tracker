@@ -11,6 +11,50 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-02 — Task enhancements: due date, est. mandays, priority, blocked flag, task history
+
+### Ditambah
+
+- **`prisma/schema.prisma`** — Field baharu pada model `Task`:
+  - `due_date DATE` — tarikh akhir task; auto-diwarisi dari `deliverable.planned_end` semasa create, boleh ditimpa
+  - `est_mandays DECIMAL(4,1)` — anggaran usaha per task (nullable, step 0.5)
+  - `priority TaskPriority` — enum `low / medium / high / critical`, default `medium`
+  - `is_blocked BOOLEAN` — flag halangan, default `false`
+  - `blocked_reason VARCHAR(500)` — sebab halangan, null jika tidak diblock
+  - `started_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `InProgress` buat pertama kali
+  - `submitted_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `InReview` buat pertama kali
+  - `completed_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `Done` buat pertama kali
+- **`prisma/schema.prisma`** — Model baharu `TaskHistory`: merekod setiap perubahan status task (`task_id`, `changed_by`, `from_status`, `to_status`, `note`, `created_at`)
+- **`prisma/schema.prisma`** — Enum baharu `TaskPriority`
+
+### Dikemaskini
+
+- **`src/app/api/tasks/route.ts`** (POST) — Terima field baharu `due_date`, `est_mandays`, `priority`; auto-inherit `due_date` dari `deliverable.planned_end` jika tidak diisi
+- **`src/app/api/tasks/[id]/route.ts`** (PUT) — Sokong kemaskini `due_date`, `est_mandays`, `priority`, `is_blocked`, `blocked_reason` (manager); `is_blocked`/`blocked_reason` boleh dikemaskini oleh member yang ditugaskan; auto-log perubahan status ke `TaskHistory`; set `started_at / submitted_at / completed_at` sekali sahaja pada transisi status yang berkaitan
+- **`src/app/api/analytics/developers/route.ts`** — Kolum **Est. Mandays** kini menggunakan jumlah `task.est_mandays` per assignee; fallback ke `feature.mandays` jika tiada data task-level
+- **`src/components/FeatureTaskList.tsx`** — Ditulis semula sepenuhnya:
+  - Kolum baharu **Est. md** dalam jadual task
+  - Badge priority berwarna pada setiap baris task (gray=low, blue=medium, amber=high, red=critical)
+  - Paparan `due_date` di bawah nama task — badge merah "Overdue" / amber "Due today" / teks kelabu untuk tarikh akan datang
+  - Butang 🚫 Block/Unblock dengan input sebab halangan inline; baris task diblock ada border kiri merah
+  - Banner amaran mandays: "⚠ Tasks total (X md) exceeds deliverable estimate (Y md)" jika jumlah task melebihi `deliverable.mandays`
+  - Form "+ Add Custom Task" diperluas: tambah due date (pre-filled dari `deliverable.planned_end`), priority, est. mandays; amaran jika due date melebihi tarikh deliverable
+- **`src/components/DeliverableSection.tsx`** — Hantarkan `deliverableMandays` dan `deliverablePlannedEnd` ke `FeatureTaskList`; interface `Task` dikemaskini untuk include `est_mandays`
+- **`src/components/TeamKanbanBoard.tsx`** — AddTaskModal ditulis semula:
+  - Field baharu: Module (conditional — hanya papar jika projek ada modul, dengan amaran "best practice"), Deliverable (gantikan Feature), due date, priority, est. mandays
+  - Auto-fill due date dari `deliverable.planned_end` apabila deliverable dipilih; amaran jika melampaui
+  - Filter prioriti dalam filter bar ("All Priorities / Critical / High / Medium / Low")
+  - Kad Kanban: badge priority (sudut atas kanan), badge "🚫 Blocked" + sebab, due date di bahagian bawah kad (merah/amber/kelabu)
+  - Border kiri merah pada kad yang diblock
+- **`src/components/KanbanBoard.tsx`** — AddTaskModal ditulis semula (sama seperti TeamKanbanBoard — feature digantikan dengan deliverable, tambah due date, priority, est. mandays); kad Kanban dikemaskini dengan badge priority, blocked badge/border, due date
+
+### Pembetulan
+
+- **`.env`** — Betulkan typo `postgress` → `postgres` dalam `DATABASE_URL`
+- **`src/lib/prisma.ts`** — Jalankan `npx prisma generate` selepas schema changes untuk menjana semula Prisma Client (`.prisma/client/default` hilang menyebabkan dev server gagal start)
+
+---
+
 ## 2026-04-01 — Report PPTX: Light theme, donut charts, developer analytics & workload table
 
 ### Diubah

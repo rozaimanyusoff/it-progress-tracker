@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import FeatureTaskList from './FeatureTaskList'
 import { Pencil, Trash2, X } from 'lucide-react'
 
-interface Task { status: string }
+interface Task { status: string; est_mandays?: number | null }
 
 interface Deliverable {
   id: number
@@ -145,6 +145,8 @@ function DeliverableCard({
         <div className="px-4 pb-4 border-t border-slate-100 dark:border-navy-700 pt-3">
           <FeatureTaskList
             deliverableId={deliverable.id}
+            deliverableMandays={deliverable.mandays}
+            deliverablePlannedEnd={deliverable.planned_end ?? null}
             userRole={userRole}
             developers={members.map(m => ({ user: m }))}
           />

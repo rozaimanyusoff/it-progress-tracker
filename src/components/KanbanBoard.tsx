@@ -14,6 +14,11 @@ interface Task {
   time_started_at: string | null
   time_spent_seconds: number
   review_count: number
+  due_date: string | null
+  est_mandays: number | null
+  priority: string
+  is_blocked: boolean
+  blocked_reason: string | null
   project: { id: number; title: string } | null
   module: { id: number; title: string } | null
   feature: { id: number; title: string } | null
@@ -24,7 +29,28 @@ type BoardState = Record<string, Task[]>
 
 interface Project { id: number; title: string }
 interface Feature { id: number; title: string; module_id: number | null }
+interface Deliverable { id: number; title: string; planned_end: string | null }
 interface Module { id: number; title: string; features: Feature[] }
+
+const PRIORITY_BADGE: Record<string, string> = {
+  low: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300',
+  medium: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300',
+  high: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  critical: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+}
+
+function dueDateDisplay(due: string | null, status: string): React.ReactNode {
+  if (!due) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const d = new Date(due); d.setHours(0, 0, 0, 0)
+  const isDone = status === 'Done'
+  const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
+  if (!isDone && d < today)
+    return <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">{dateStr} · Overdue</span>
+  if (!isDone && d.getTime() === today.getTime())
+    return <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">{dateStr} · Due today</span>
+  return <span className="text-[10px] text-slate-400">{dateStr}</span>
+}
 
 const COLUMNS: { id: string; label: string; color: string }[] = [
   { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
@@ -33,7 +59,9 @@ const COLUMNS: { id: string; label: string; color: string }[] = [
   { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
 ]
 
-function reviewCardStyle(task: { status: string; review_count: number }): string {
+function reviewCardStyle(task: { status: string; review_count: number; is_blocked?: boolean }): string {
+  if (task.is_blocked)
+    return 'bg-red-50/50 dark:bg-red-950/10 border border-red-200 dark:border-red-800/40 border-l-[3px] border-l-red-500'
   if (task.status === 'Done')
     return 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 border-l-[3px] border-l-green-400'
   if (task.status === 'InReview' && task.review_count > 0)
@@ -75,46 +103,20 @@ function formatElapsed(seconds: number): string {
 function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (task: Task) => void }) {
   const [projects, setProjects] = useState<Project[]>([])
   const [modules, setModules] = useState<Module[]>([])
-  const [features, setFeatures] = useState<Feature[]>([])
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [projectId, setProjectId] = useState('')
-  const [moduleId, setModuleId] = useState('')
-  const [featureId, setFeatureId] = useState('')
+  const [moduleId, setModuleId] = useState('') // '' = unset, '__none__' = project-level
+  const [deliverableId, setDeliverableId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [priority, setPriority] = useState('medium')
+  const [estMandays, setEstMandays] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // New feature inline form
-  const [showNewFeature, setShowNewFeature] = useState(false)
-  const [newFeatTitle, setNewFeatTitle] = useState('')
-  const [newFeatStart, setNewFeatStart] = useState('')
-  const [newFeatEnd, setNewFeatEnd] = useState('')
-  const [newFeatMandays, setNewFeatMandays] = useState('1')
-
-  function calcMandays(start: string, end: string): string {
-    if (!start || !end) return newFeatMandays
-    const s = new Date(start), e = new Date(end)
-    if (e < s) return '1'
-    let days = 0
-    const cur = new Date(s)
-    while (cur <= e) {
-      const dow = cur.getDay()
-      if (dow !== 0 && dow !== 6) days++
-      cur.setDate(cur.getDate() + 1)
-    }
-    return String(Math.max(1, days))
-  }
-
-  function handleFeatStart(val: string) {
-    setNewFeatStart(val)
-    setNewFeatMandays(calcMandays(val, newFeatEnd))
-  }
-
-  function handleFeatEnd(val: string) {
-    setNewFeatEnd(val)
-    setNewFeatMandays(calcMandays(newFeatStart, val))
-  }
-  const [creatingFeature, setCreatingFeature] = useState(false)
+  const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const hasModules = modules.length > 0
 
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then((data: any[]) =>
@@ -123,66 +125,53 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   }, [])
 
   useEffect(() => {
-    if (!projectId) { setModules([]); setFeatures([]); setModuleId(''); setFeatureId(''); return }
-    Promise.all([
-      fetch(`/api/modules?project_id=${projectId}`).then(r => r.json()),
-      fetch(`/api/features?project_id=${projectId}`).then(r => r.json()),
-    ]).then(([modData, featData]) => {
-      setModules(modData.map((m: any) => ({
-        id: m.id, title: m.title,
-        features: (m.features ?? []).map((f: any) => ({ id: f.id, title: f.title, module_id: m.id })),
-      })))
-      setFeatures(featData.filter((f: any) => !f.module_id).map((f: any) => ({ id: f.id, title: f.title, module_id: null })))
-      setModuleId(''); setFeatureId('')
+    if (!projectId) { setModules([]); setDeliverables([]); setModuleId(''); setDeliverableId(''); return }
+    fetch(`/api/modules?project_id=${projectId}`).then(r => r.json()).then((modData: any[]) => {
+      setModules(modData)
+      setModuleId(''); setDeliverableId('')
     })
   }, [projectId])
 
-  // If project has modules, features must come from selected module (or ungrouped if no modules)
-  const visibleFeatures = modules.length > 0
-    ? (moduleId ? (modules.find(m => m.id === Number(moduleId))?.features ?? []) : [])
-    : features
-
-  async function createFeature() {
-    if (!newFeatTitle.trim() || !projectId || !newFeatStart || !newFeatEnd) return
-    setCreatingFeature(true)
-    const res = await fetch('/api/features', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project_id: Number(projectId),
-        module_id: moduleId ? Number(moduleId) : null,
-        title: newFeatTitle.trim(),
-        mandays: Number(newFeatMandays) || 1,
-        planned_start: newFeatStart,
-        planned_end: newFeatEnd,
-      }),
+  useEffect(() => {
+    setDeliverableId('')
+    if (!projectId) return
+    fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
+      let filtered = data
+      if (moduleId === '__none__') filtered = data.filter((d: any) => !d.module_id)
+      else if (moduleId) filtered = data.filter((d: any) => d.module_id === Number(moduleId))
+      setDeliverables(filtered.map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
     })
-    if (res.ok) {
-      const f = await res.json()
-      const newFeat: Feature = { id: f.id, title: f.title, module_id: f.module_id ?? null }
-      if (moduleId) {
-        setModules(prev => prev.map(m => m.id === Number(moduleId) ? { ...m, features: [...m.features, newFeat] } : m))
-      } else {
-        setFeatures(prev => [...prev, newFeat])
-      }
-      setFeatureId(String(f.id))
-      setShowNewFeature(false)
-      setNewFeatTitle(''); setNewFeatStart(''); setNewFeatEnd(''); setNewFeatMandays('1')
-    }
-    setCreatingFeature(false)
-  }
+  }, [projectId, moduleId])
+
+  useEffect(() => {
+    if (!deliverableId) return
+    const deliv = deliverables.find(d => d.id === Number(deliverableId))
+    if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
+  }, [deliverableId])
+
+  const selectedDeliverable = deliverables.find(d => d.id === Number(deliverableId))
+  const delivPlannedEnd = selectedDeliverable?.planned_end ? new Date(selectedDeliverable.planned_end) : null
+  const dueDateVal = dueDate ? new Date(dueDate) : null
+  const dueDateExceeds = delivPlannedEnd && dueDateVal && dueDateVal > delivPlannedEnd
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (modules.length > 0 && !moduleId) { setError('Please select a module.'); return }
-    if (!featureId) { setError('Please select or create a feature.'); return }
+    if (hasModules && !moduleId) { setError('Please select a module.'); return }
+    if (!deliverableId) { setError('Please select a deliverable.'); return }
     if (!title.trim()) { setError('Task title is required.'); return }
     setSaving(true); setError('')
 
     const res = await fetch('/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feature_id: Number(featureId), title: title.trim(), description: description.trim() || null }),
+      body: JSON.stringify({
+        deliverable_id: Number(deliverableId),
+        title: title.trim(),
+        description: description.trim() || null,
+        due_date: dueDate || null,
+        priority,
+        est_mandays: estMandays ? Number(estMandays) : null,
+      }),
     })
     if (!res.ok) {
       setError((await res.json()).error || 'Failed to create task')
@@ -193,8 +182,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
     onClose()
   }
 
-  const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
@@ -204,7 +191,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Project */}
+          {/* 1. Project */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project *</label>
             <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)}>
@@ -213,73 +200,70 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
             </select>
           </div>
 
-          {/* Module — required when project has modules */}
-          {projectId && modules.length > 0 && (
+          {/* 2. Module — conditional */}
+          {projectId && hasModules && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module *</label>
-              <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setFeatureId('') }}>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module</label>
+              <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setDeliverableId('') }}>
                 <option value="">Select module...</option>
+                <option value="__none__">— No module (project level) —</option>
                 {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
               </select>
-            </div>
-          )}
-
-          {/* Feature */}
-          {projectId && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Feature *</label>
-                <button type="button" onClick={() => setShowNewFeature(!showNewFeature)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                  {showNewFeature ? '— Cancel new feature' : '+ New feature'}
-                </button>
-              </div>
-
-              {!showNewFeature ? (
-                <>
-                  <select className={inputClass} value={featureId} onChange={e => setFeatureId(e.target.value)}>
-                    <option value="">Select feature...</option>
-                    {visibleFeatures.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}
-                  </select>
-                  {visibleFeatures.length === 0 && (
-                    <p className="text-xs text-slate-400 mt-1">No features yet — create one above.</p>
-                  )}
-                </>
-              ) : (
-                <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2 bg-blue-50 dark:bg-blue-900/20">
-                  <input className={inputClass} placeholder="Feature title *" value={newFeatTitle} onChange={e => setNewFeatTitle(e.target.value)} />
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-xs text-slate-500 mb-0.5 block">Start *</label>
-                      <input type="date" className={inputClass} value={newFeatStart} onChange={e => handleFeatStart(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-0.5 block">End *</label>
-                      <input type="date" className={inputClass} value={newFeatEnd} onChange={e => handleFeatEnd(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-0.5 block">Mandays</label>
-                      <input type="number" min="1" className={inputClass} value={newFeatMandays} onChange={e => setNewFeatMandays(e.target.value)} />
-                    </div>
-                  </div>
-                  <button type="button" onClick={createFeature} disabled={creatingFeature || !newFeatTitle.trim() || !newFeatStart || !newFeatEnd}
-                    className="w-full py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium">
-                    {creatingFeature ? 'Creating...' : 'Create & Select Feature'}
-                  </button>
-                </div>
+              {moduleId === '__none__' && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Best practice: assign deliverable to a module. Only select this if deliverable is project-level.
+                </p>
               )}
             </div>
           )}
 
-          {/* Task title */}
+          {/* 3. Deliverable */}
+          {projectId && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
+              <select className={inputClass} value={deliverableId} onChange={e => setDeliverableId(e.target.value)}>
+                <option value="">Select deliverable...</option>
+                {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* 4. Task title */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Title *</label>
             <input className={inputClass} placeholder="e.g. Implement login endpoint" value={title} onChange={e => setTitle(e.target.value)} />
           </div>
 
-          {/* Description */}
+          {/* 5. Description */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description <span className="text-slate-400 font-normal">(optional)</span></label>
             <textarea className={`${inputClass} resize-none`} rows={2} value={description} onChange={e => setDescription(e.target.value)} />
+          </div>
+
+          {/* 6. Due date */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
+            <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />
+            {dueDateExceeds && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Due date exceeds deliverable end date</p>
+            )}
+          </div>
+
+          {/* 7. Priority */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+            <select className={inputClass} value={priority} onChange={e => setPriority(e.target.value)}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+
+          {/* 8. Est. Mandays */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays <span className="text-slate-400 font-normal">(optional)</span></label>
+            <input type="number" min="0.5" step="0.5" className={inputClass} placeholder="e.g. 1.5" value={estMandays} onChange={e => setEstMandays(e.target.value)} />
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -640,15 +624,26 @@ export default function KanbanBoard() {
                           >
                             <div className="flex items-start justify-between gap-1 mb-0.5">
                               <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
-                              {task.review_count > 0 && task.status !== 'Todo' && (
-                                <span
-                                  title={`Reviewed ${task.review_count} time${task.review_count > 1 ? 's' : ''}`}
-                                  className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap"
-                                >
-                                  ↩ {task.review_count}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {task.review_count > 0 && task.status !== 'Todo' && (
+                                  <span
+                                    title={`Reviewed ${task.review_count} time${task.review_count > 1 ? 's' : ''}`}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 whitespace-nowrap"
+                                  >
+                                    ↩ {task.review_count}
+                                  </span>
+                                )}
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}>
+                                  {task.priority}
                                 </span>
-                              )}
+                              </div>
                             </div>
+                            {task.is_blocked && (
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
+                                {task.blocked_reason && <span className="text-[10px] text-red-400 dark:text-red-500 italic truncate">{task.blocked_reason}</span>}
+                              </div>
+                            )}
                             {task.module && (
                               <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.module.title}</p>
                             )}
@@ -679,6 +674,9 @@ export default function KanbanBoard() {
                                 )
                               })()}
                             </div>
+                            {task.due_date && (
+                              <div className="mt-1">{dueDateDisplay(task.due_date, task.status)}</div>
+                            )}
                             <div className="flex items-center justify-between mt-2 gap-1">
                               <div className="flex gap-1">
                                 {col.id !== 'Todo' && (

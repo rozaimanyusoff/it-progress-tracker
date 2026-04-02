@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const user = session.user as any
 
   const body = await req.json()
-  const { feature_id, deliverable_id, title, description, assigned_to } = body
+  const { feature_id, deliverable_id, title, description, assigned_to, due_date, est_mandays, priority } = body
 
   if ((!feature_id && !deliverable_id) || !title) {
     return NextResponse.json({ error: 'feature_id or deliverable_id, and title are required' }, { status: 400 })
@@ -55,6 +55,18 @@ export async function POST(req: NextRequest) {
   })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
+  // Auto-inherit due_date from deliverable.planned_end if not provided
+  let resolvedDueDate: Date | null = null
+  if (due_date) {
+    resolvedDueDate = new Date(due_date)
+  } else if (deliverable_id) {
+    const deliv = await prisma.deliverable.findUnique({
+      where: { id: Number(deliverable_id) },
+      select: { planned_end: true },
+    })
+    resolvedDueDate = deliv?.planned_end ?? null
+  }
+
   const task = await prisma.task.create({
     data: {
       ...(feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }),
@@ -64,6 +76,9 @@ export async function POST(req: NextRequest) {
       order: nextOrder,
       is_predefined: false,
       status: 'Todo',
+      due_date: resolvedDueDate,
+      est_mandays: est_mandays != null ? est_mandays : null,
+      priority: priority || 'medium',
     },
     include: {
       assignee: { select: { id: true, name: true } },

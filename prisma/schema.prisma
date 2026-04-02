@@ -25,6 +25,7 @@ model User {
   created_features         Feature[]          @relation("FeatureCreator")
   assigned_tasks           Task[]             @relation("TaskAssignee")
   task_updates             TaskUpdate[]
+  task_history             TaskHistory[]
 }
 
 model Project {
@@ -187,6 +188,13 @@ enum TaskStatus {
   Done
 }
 
+enum TaskPriority {
+  low
+  medium
+  high
+  critical
+}
+
 model Feature {
   id             Int               @id @default(autoincrement())
   title          String
@@ -230,11 +238,32 @@ model Task {
   time_spent_seconds Int           @default(0)
   review_count       Int           @default(0)
   created_at         DateTime      @default(now())
+  due_date           DateTime?
+  est_mandays        Decimal?      @db.Decimal(4, 1)
+  priority           TaskPriority  @default(medium)
+  is_blocked         Boolean       @default(false)
+  blocked_reason     String?       @db.VarChar(500)
+  started_at         DateTime?
+  submitted_at       DateTime?
+  completed_at       DateTime?
   feature            Feature?      @relation(fields: [feature_id], references: [id], onDelete: Cascade)
   deliverable        Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: Cascade)
   assignee           User?         @relation("TaskAssignee", fields: [assigned_to], references: [id])
   task_updates       TaskUpdate[]
+  task_history       TaskHistory[]
   issues             Issue[]
+}
+
+model TaskHistory {
+  id           Int        @id @default(autoincrement())
+  task_id      Int
+  changed_by   Int
+  from_status  String
+  to_status    String
+  note         String?
+  created_at   DateTime   @default(now())
+  task         Task       @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [changed_by], references: [id])
 }
 
 

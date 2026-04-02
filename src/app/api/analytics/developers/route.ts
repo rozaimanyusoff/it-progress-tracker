@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
           actual_start: true,
           actual_end: true,
           created_at: true,
+          est_mandays: true,
           feature: {
             select: { mandays: true },
           },
@@ -74,10 +75,16 @@ export async function GET(req: NextRequest) {
       (t) => t.status === 'InProgress' || t.status === 'InReview'
     ).length
 
-    const estimatedMandays = u.feature_assignments.reduce(
+    // Sum task-level est_mandays (new granular estimate); fall back to feature-level mandays if no task-level data
+    const taskEstMandays = u.assigned_tasks.reduce(
+      (sum, t) => sum + (t.est_mandays != null ? Number(t.est_mandays) : 0),
+      0
+    )
+    const featureEstMandays = u.feature_assignments.reduce(
       (sum, fa) => sum + fa.feature.mandays,
       0
     )
+    const estimatedMandays = taskEstMandays > 0 ? taskEstMandays : featureEstMandays
 
     const totalSpentDays = tasks
       .filter((t) => t.actual_start && t.actual_end)
