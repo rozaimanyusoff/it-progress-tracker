@@ -11,19 +11,109 @@ Format: **terbaru di atas**.
 
 ---
 
-## 2026-04-02 — Task enhancements: due date, est. mandays, priority, blocked flag, task history
+## 2026-04-03 — Hotfixes: migrate deploy & DeliverableSection parse error
+
+### Diperbaiki
+
+- **`prisma/_prisma_migrations`** — Migrasi `20260330140000_add_finding_responses` ditanda sebagai gagal (P3009) kerana lajur sudah wujud dalam DB hasil `db push` sebelumnya. Diselesaikan dengan `prisma migrate resolve --applied 20260330140000_add_finding_responses`; `prisma migrate deploy` kini berjalan tanpa ralat.
+
+- **`src/components/DeliverableSection.tsx`** — Ralat parsing ECMAScript: baris 7 mengandungi literal `\n` (aksara backslash-n) sebagai ganti baris baharu sebenar. Formatter menukarkan interface `Task` dan pemalar `TASK_PROGRESS_WEIGHT` kepada satu baris dengan `\n` terbenam, menyebabkan Next.js gagal parse. Dipulihkan kepada format berbilang baris yang betul.
+
+---
+
+## 2026-04-03 — Task status enhancements: popup confirmations, actual dates, weighted progress, health status
+
+### Skop
+
+8 peningkatan berkaitan kitaran hayat tugas — dari interaksi UI seperti popup pengesahan status hingga pengiraan otomatik tarikh sebenar projek dan status kesihatan.
+
+### Ditambah
+
+- **`prisma/schema.prisma`** — Perubahan skema:
+   - `TaskStatus` enum: tambah nilai `Blocked`
+   - `HealthStatus` enum baharu: `on_track | at_risk | delayed | overdue`
+   - `Task` model: tambah `status_updated_at DateTime?`, `status_updated_by Int?` (FK→User), relasi `status_updater`
+   - `Project` model: tambah `actual_start DateTime?`, `actual_end DateTime?`, `health_status HealthStatus?`
+   - `Deliverable` model: tambah `is_actual_override Boolean @default(false)`
+   - `TaskHistory` model: tambah `actual_date DateTime?`, `is_auto_log Boolean @default(true)`, `from_status` dijadikan nullable
+   - `User` model: tambah back-relation `status_updated_tasks`
+   - Dijalankan `prisma db push` — migrasi berjaya
+
+- **`src/components/StatusChangeModal.tsx`** (komponen baharu) — Modal popup pengesahan sebelum perubahan status task:
+   - Mengendalikan transisi: `InProgress`, `InReview`, `Done`, `Blocked`, `Unblock`
+   - `InProgress`: date picker (maks=hari ini, min=tarikh_akhir−90 hari) untuk actual_start
+   - `InReview` / `Done`: date picker untuk actual_end
+   - `Blocked`: textarea wajib (maks 500 aksara) untuk sebab
+   - `Unblock`: pengesahan ringkas — kembalikan ke InProgress
+   - Callback: `onConfirm(taskId, newStatus, { actual_date?, blocked_reason? })`
+
+### Diubah
+
+- **`src/app/api/tasks/[id]/route.ts`**:
+   - Tambah `PROGRESS_WEIGHT` — `{ Todo:0, InProgress:50, InReview:80, Done:100, Blocked:0 }`
+   - `recalculateDeliverableDates` dipinda — kini menghormati `is_actual_override` (tidak timpa jika PM override aktif)
+   - Tambah `recalculateProjectDates` — kiraan tarikh sebenar projek dari deliverable
+   - Tambah `computeHealthStatus` — berasaskan halaju (tasks siap/hari berlalu → unjuran siap)
+   - PUT handler:
+      - Status `Blocked` → set `is_blocked=true` secara automatik
+      - Unblock (Blocked→InProgress) → reset `is_blocked=false`, `blocked_reason=null`
+      - Terima `actual_date` dari popup — simpan ke `actual_start`/`actual_end` mengikut transisi
+      - Set `status_updated_at` dan `status_updated_by` setiap perubahan status
+      - `TaskHistory` kini menyimpan `actual_date` dan `is_auto_log: true`
+      - `health_status` projek dikira semula selepas setiap perubahan task
+
+- **`src/components/FeatureTaskList.tsx`**:
+   - Tambah `Blocked` ke `STATUS_OPTIONS` dan `STATUS_COLORS`
+   - `dueDateBadge()` kini tunjuk lencana kuning "Due soon" untuk ≤3 hari (dahulu hanya "Due today")
+   - Dropdown status kini ditunjuk kepada member (task sendiri, tidak termasuk Done)
+   - Perubahan status melalui `pendingStatus` state → buka `StatusChangeModal` dahulu
+   - Blok/Unblok dihalakan melalui modal (textarea inline dibuang)
+   - Header jadual papar `"1/3 tasks · 50%"` dengan peratusan berwajaran
+
+- **`src/components/KanbanBoard.tsx`**:
+   - Import `StatusChangeModal`; tambah state `pendingStatus`
+   - `handleDragEnd` dan `moveTask` — buka popup sebelum simpan untuk status tertentu
+   - Tambah helper `doStatusUpdate` dan `handlePopupConfirm`
+   - Hanya pengurus boleh seret ke lajur Done
+
+- **`src/components/TeamKanbanBoard.tsx`**:
+   - Sama seperti `KanbanBoard.tsx` — popup integration sepenuhnya
+   - Betulkan `handleStatusChange` untuk jaga kunci lajur tidak wujud
+
+- **`src/components/DeliverableSection.tsx`**:
+   - Interface Deliverable: tambah `is_actual_override?`
+   - `taskProgress()` guna `TASK_PROGRESS_WEIGHT` (berwajaran)
+   - Tarikh sebenar dipapar dengan ikon `📌` jika `is_actual_override=true`
+   - Butang Tasks papar `"Tasks (N) · X%"`
+   - Modal edit: bahagian PM Override — input actual start/end + butang "Reset to auto"
+
+- **`src/app/api/deliverables/[id]/route.ts`**:
+   - PUT handler menerima dan menyimpan `actual_start`, `actual_end`, `is_actual_override`
+
+- **`src/app/projects/page.tsx`**:
+   - Tambah `health_status?` ke type `Project`
+   - Kad projek papar lencana kesihatan `🟢 On Track / 🟡 At Risk / 🔴 Delayed / ⚫ Overdue` (disembunyikan untuk projek selesai)
+
+- **`src/components/ProjectDetailCard.tsx`**:
+   - Tambah `health_status?` ke props
+   - Lencana kesihatan dipapar di sebelah lencana status dalam header projek
+
+- **`src/app/projects/[id]/page.tsx`**:
+   - Hantar `health_status` ke `ProjectDetailCard`
+
+---
 
 ### Ditambah
 
 - **`prisma/schema.prisma`** — Field baharu pada model `Task`:
-  - `due_date DATE` — tarikh akhir task; auto-diwarisi dari `deliverable.planned_end` semasa create, boleh ditimpa
-  - `est_mandays DECIMAL(4,1)` — anggaran usaha per task (nullable, step 0.5)
-  - `priority TaskPriority` — enum `low / medium / high / critical`, default `medium`
-  - `is_blocked BOOLEAN` — flag halangan, default `false`
-  - `blocked_reason VARCHAR(500)` — sebab halangan, null jika tidak diblock
-  - `started_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `InProgress` buat pertama kali
-  - `submitted_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `InReview` buat pertama kali
-  - `completed_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `Done` buat pertama kali
+   - `due_date DATE` — tarikh akhir task; auto-diwarisi dari `deliverable.planned_end` semasa create, boleh ditimpa
+   - `est_mandays DECIMAL(4,1)` — anggaran usaha per task (nullable, step 0.5)
+   - `priority TaskPriority` — enum `low / medium / high / critical`, default `medium`
+   - `is_blocked BOOLEAN` — flag halangan, default `false`
+   - `blocked_reason VARCHAR(500)` — sebab halangan, null jika tidak diblock
+   - `started_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `InProgress` buat pertama kali
+   - `submitted_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `InReview` buat pertama kali
+   - `completed_at TIMESTAMP` — ditetapkan sekali sahaja apabila status bertukar ke `Done` buat pertama kali
 - **`prisma/schema.prisma`** — Model baharu `TaskHistory`: merekod setiap perubahan status task (`task_id`, `changed_by`, `from_status`, `to_status`, `note`, `created_at`)
 - **`prisma/schema.prisma`** — Enum baharu `TaskPriority`
 
@@ -33,19 +123,19 @@ Format: **terbaru di atas**.
 - **`src/app/api/tasks/[id]/route.ts`** (PUT) — Sokong kemaskini `due_date`, `est_mandays`, `priority`, `is_blocked`, `blocked_reason` (manager); `is_blocked`/`blocked_reason` boleh dikemaskini oleh member yang ditugaskan; auto-log perubahan status ke `TaskHistory`; set `started_at / submitted_at / completed_at` sekali sahaja pada transisi status yang berkaitan
 - **`src/app/api/analytics/developers/route.ts`** — Kolum **Est. Mandays** kini menggunakan jumlah `task.est_mandays` per assignee; fallback ke `feature.mandays` jika tiada data task-level
 - **`src/components/FeatureTaskList.tsx`** — Ditulis semula sepenuhnya:
-  - Kolum baharu **Est. md** dalam jadual task
-  - Badge priority berwarna pada setiap baris task (gray=low, blue=medium, amber=high, red=critical)
-  - Paparan `due_date` di bawah nama task — badge merah "Overdue" / amber "Due today" / teks kelabu untuk tarikh akan datang
-  - Butang 🚫 Block/Unblock dengan input sebab halangan inline; baris task diblock ada border kiri merah
-  - Banner amaran mandays: "⚠ Tasks total (X md) exceeds deliverable estimate (Y md)" jika jumlah task melebihi `deliverable.mandays`
-  - Form "+ Add Custom Task" diperluas: tambah due date (pre-filled dari `deliverable.planned_end`), priority, est. mandays; amaran jika due date melebihi tarikh deliverable
+   - Kolum baharu **Est. md** dalam jadual task
+   - Badge priority berwarna pada setiap baris task (gray=low, blue=medium, amber=high, red=critical)
+   - Paparan `due_date` di bawah nama task — badge merah "Overdue" / amber "Due today" / teks kelabu untuk tarikh akan datang
+   - Butang 🚫 Block/Unblock dengan input sebab halangan inline; baris task diblock ada border kiri merah
+   - Banner amaran mandays: "⚠ Tasks total (X md) exceeds deliverable estimate (Y md)" jika jumlah task melebihi `deliverable.mandays`
+   - Form "+ Add Custom Task" diperluas: tambah due date (pre-filled dari `deliverable.planned_end`), priority, est. mandays; amaran jika due date melebihi tarikh deliverable
 - **`src/components/DeliverableSection.tsx`** — Hantarkan `deliverableMandays` dan `deliverablePlannedEnd` ke `FeatureTaskList`; interface `Task` dikemaskini untuk include `est_mandays`
 - **`src/components/TeamKanbanBoard.tsx`** — AddTaskModal ditulis semula:
-  - Field baharu: Module (conditional — hanya papar jika projek ada modul, dengan amaran "best practice"), Deliverable (gantikan Feature), due date, priority, est. mandays
-  - Auto-fill due date dari `deliverable.planned_end` apabila deliverable dipilih; amaran jika melampaui
-  - Filter prioriti dalam filter bar ("All Priorities / Critical / High / Medium / Low")
-  - Kad Kanban: badge priority (sudut atas kanan), badge "🚫 Blocked" + sebab, due date di bahagian bawah kad (merah/amber/kelabu)
-  - Border kiri merah pada kad yang diblock
+   - Field baharu: Module (conditional — hanya papar jika projek ada modul, dengan amaran "best practice"), Deliverable (gantikan Feature), due date, priority, est. mandays
+   - Auto-fill due date dari `deliverable.planned_end` apabila deliverable dipilih; amaran jika melampaui
+   - Filter prioriti dalam filter bar ("All Priorities / Critical / High / Medium / Low")
+   - Kad Kanban: badge priority (sudut atas kanan), badge "🚫 Blocked" + sebab, due date di bahagian bawah kad (merah/amber/kelabu)
+   - Border kiri merah pada kad yang diblock
 - **`src/components/KanbanBoard.tsx`** — AddTaskModal ditulis semula (sama seperti TeamKanbanBoard — feature digantikan dengan deliverable, tambah due date, priority, est. mandays); kad Kanban dikemaskini dengan badge priority, blocked badge/border, due date
 
 ### Pembetulan

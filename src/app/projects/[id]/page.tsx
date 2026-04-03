@@ -100,6 +100,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           status: project.status,
           start_date: project.start_date.toISOString(),
           deadline: project.deadline.toISOString(),
+          health_status: project.health_status,
           assignees: project.assignees,
         }}
         isManager={(session.user as any).role === 'manager'}

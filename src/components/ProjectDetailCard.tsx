@@ -42,6 +42,7 @@ interface ProjectDetailCardProps {
       status: string
       start_date: string
       deadline: string
+      health_status?: string | null
       assignees: { user: { id: number; name: string } }[]
    }
    isManager: boolean
@@ -177,6 +178,17 @@ export default function ProjectDetailCard({
                            <>&#8595; Export PPTX</>
                         )}
                      </button>
+                     {project.health_status && computedStatus !== 'Done' && (
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${project.health_status === 'on_track' ? 'bg-green-50 border-green-300 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400' :
+                              project.health_status === 'at_risk' ? 'bg-yellow-50 border-yellow-300 text-yellow-700 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-400' :
+                                 project.health_status === 'delayed' ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400' :
+                                    'bg-neutral-100 border-neutral-400 text-neutral-700 dark:bg-neutral-800 dark:border-neutral-600 dark:text-neutral-300'
+                           }`}>
+                           {project.health_status === 'on_track' ? '🟢 On Track' :
+                              project.health_status === 'at_risk' ? '🟡 At Risk' :
+                                 project.health_status === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
+                        </span>
+                     )}
                      <span
                         className={`px-3 py-1 rounded-full text-sm font-medium border ${STATUS_COLORS[computedStatus] ?? STATUS_COLORS.Pending
                            }`}

@@ -9,6 +9,15 @@ import {
   sendTaskAssigned,
 } from '@/lib/email'
 
+// ── Progress weights ───────────────────────────────────────────────
+const PROGRESS_WEIGHT: Record<string, number> = {
+  Todo: 0, InProgress: 50, InReview: 80, Done: 100, Blocked: 0,
+}
+
+function taskWeightedProgress(status: string): number {
+  return PROGRESS_WEIGHT[status] ?? 0
+}
+
 async function recalculateFeatureDates(featureId: number) {
   const allTasks = await prisma.task.findMany({ where: { feature_id: featureId } })
 
@@ -30,26 +39,94 @@ async function recalculateFeatureDates(featureId: number) {
 }
 
 async function recalculateDeliverableDates(deliverableId: number) {
+  const deliverable = await prisma.deliverable.findUnique({ where: { id: deliverableId } })
+  if (!deliverable) return
   const allTasks = await prisma.task.findMany({ where: { deliverable_id: deliverableId } })
   if (allTasks.length === 0) return
 
-  const starts = allTasks.map((t) => t.actual_start).filter(Boolean) as Date[]
-  const newActualStart = starts.length > 0 ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null
-
   const allDone = allTasks.every((t) => t.status === 'Done')
   const anyActive = allTasks.some((t) => t.status === 'InProgress' || t.status === 'InReview')
-  const ends = allTasks.map((t) => t.actual_end).filter(Boolean) as Date[]
-  const newActualEnd =
-    allDone && ends.length === allTasks.length
-      ? new Date(Math.max(...ends.map((d) => d.getTime())))
-      : null
-
   const newStatus = allDone ? 'Done' : anyActive ? 'InProgress' : 'Pending'
 
-  await prisma.deliverable.update({
-    where: { id: deliverableId },
-    data: { actual_start: newActualStart, actual_end: newActualEnd, status: newStatus },
+  const updateData: any = { status: newStatus }
+
+  // Only auto-derive actual dates when PM has not manually overridden them
+  if (!deliverable.is_actual_override) {
+    const starts = allTasks.map((t) => t.actual_start).filter(Boolean) as Date[]
+    updateData.actual_start = starts.length > 0 ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null
+
+    const ends = allTasks.map((t) => t.actual_end).filter(Boolean) as Date[]
+    updateData.actual_end =
+      allDone && ends.length === allTasks.length
+        ? new Date(Math.max(...ends.map((d) => d.getTime())))
+        : null
+  }
+
+  await prisma.deliverable.update({ where: { id: deliverableId }, data: updateData })
+
+  // Recalculate project dates after deliverable update
+  if (deliverable.project_id) {
+    await recalculateProjectDates(deliverable.project_id)
+  }
+}
+
+async function recalculateProjectDates(projectId: number) {
+  const project = await prisma.project.findUnique({ where: { id: projectId } })
+  if (!project) return
+
+  const deliverables = await prisma.deliverable.findMany({ where: { project_id: projectId } })
+
+  // Actual start = MIN of deliverable actual_starts
+  const delivStarts = deliverables.map((d) => d.actual_start).filter(Boolean) as Date[]
+  const newActualStart = delivStarts.length > 0 ? new Date(Math.min(...delivStarts.map((d) => d.getTime()))) : null
+
+  // Actual end = MAX of deliverable actual_ends, only if ALL done
+  const allDelivDone = deliverables.length > 0 && deliverables.every((d) => d.status === 'Done')
+  const delivEnds = deliverables.map((d) => d.actual_end).filter(Boolean) as Date[]
+  const newActualEnd = allDelivDone && delivEnds.length === deliverables.length
+    ? new Date(Math.max(...delivEnds.map((d) => d.getTime())))
+    : null
+
+  // Health status calculation
+  const healthStatus = await computeHealthStatus(projectId, project, newActualStart)
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { actual_start: newActualStart, actual_end: newActualEnd, health_status: healthStatus },
   })
+}
+
+async function computeHealthStatus(projectId: number, project: any, actualStart: Date | null): Promise<any> {
+  if (project.status === 'Done') return null
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(project.deadline)
+  due.setHours(0, 0, 0, 0)
+
+  if (today > due) return 'overdue'
+
+  const allTasks = await prisma.task.findMany({ where: { deliverable: { project_id: projectId } } })
+  const tasksCompleted = allTasks.filter((t) => t.status === 'Done').length
+  const tasksRemaining = allTasks.filter((t) => t.status !== 'Done').length
+
+  if (!actualStart || tasksCompleted === 0) return 'on_track'
+
+  const startTs = new Date(actualStart)
+  startTs.setHours(0, 0, 0, 0)
+  const daysElapsed = Math.max(1, Math.floor((today.getTime() - startTs.getTime()) / 86400000))
+  const velocity = tasksCompleted / daysElapsed
+
+  if (velocity <= 0) return 'on_track'
+
+  const daysToComplete = tasksRemaining / velocity
+  const projectedMs = today.getTime() + daysToComplete * 86400000
+  const projectedCompletion = new Date(projectedMs)
+
+  const dueMs = due.getTime()
+  if (projectedCompletion <= due) return 'on_track'
+  if (projectedMs <= dueMs + 14 * 86400000) return 'at_risk'
+  return 'delayed'
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -64,12 +141,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const existing = await prisma.task.findUnique({ where: { id: taskId } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Member can only update status and is_blocked on their own assigned task
+  // Member can only update status, is_blocked, blocked_reason, actual_date on their own assigned task
   if (user.role === 'member') {
     if (existing.assigned_to !== Number(user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    const allowedKeys = ['status', 'is_blocked', 'blocked_reason']
+    const allowedKeys = ['status', 'is_blocked', 'blocked_reason', 'actual_date']
     const disallowedKeys = Object.keys(body).filter((k) => !allowedKeys.includes(k))
     if (disallowedKeys.length > 0) {
       return NextResponse.json({ error: 'Members can only update task status and blocked state' }, { status: 403 })
@@ -93,9 +170,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.blocked_reason !== undefined) updateData.blocked_reason = body.blocked_reason || null
 
   if (body.status !== undefined) {
-    updateData.status = body.status
     const prevStatus = existing.status
-    const newStatus = body.status
+    const newStatus = body.status as string
+    updateData.status = newStatus
+
+    // ── Blocked status syncs the is_blocked flag ───────────────────
+    if (newStatus === 'Blocked') {
+      updateData.is_blocked = true
+      if (body.blocked_reason !== undefined) updateData.blocked_reason = body.blocked_reason || null
+    }
+    if (prevStatus === 'Blocked' && newStatus !== 'Blocked') {
+      updateData.is_blocked = false
+      updateData.blocked_reason = null
+    }
+
+    // ── status_updated_at / status_updated_by ─────────────────────
+    updateData.status_updated_at = new Date()
+    updateData.status_updated_by = Number(user.id)
 
     // ── Time tracking ──────────────────────────────────────────────
     if (newStatus === 'InProgress' && prevStatus !== 'InProgress') {
@@ -107,11 +198,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updateData.time_started_at = null
     }
 
-    // ── actual_start / actual_end (for feature date roll-up) ───────
+    // ── actual_start / actual_end — use popup date if provided ─────
+    const actualDate = body.actual_date ? new Date(body.actual_date) : null
+
     if (newStatus === 'InProgress' && !existing.actual_start) {
-      updateData.actual_start = new Date()
+      updateData.actual_start = actualDate ?? new Date()
     }
-    if (newStatus === 'Done' && !existing.actual_end) {
+    if ((newStatus === 'InReview' || newStatus === 'Done') && actualDate) {
+      updateData.actual_end = actualDate
+    }
+    if (newStatus === 'Done' && !existing.actual_end && !actualDate) {
       updateData.actual_end = new Date()
     }
     if (prevStatus === 'Done' && newStatus !== 'Done') {
@@ -126,7 +222,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updateData.submitted_at = new Date()
     }
     if (newStatus === 'Done' && !(existing as any).completed_at) {
-      updateData.completed_at = new Date()
+      updateData.completed_at = actualDate ?? new Date()
     }
   }
 
@@ -144,13 +240,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // ── Auto-log status change to task_history ─────────────────────
   if (body.status !== undefined && body.status !== existing.status) {
-    await (prisma as any).taskHistory.create({
+    const actualDate = body.actual_date ? new Date(body.actual_date) : null
+    await prisma.taskHistory.create({
       data: {
         task_id: taskId,
         changed_by: Number(user.id),
         from_status: existing.status,
         to_status: body.status,
+        actual_date: actualDate,
         note: null,
+        is_auto_log: true,
       },
     })
   }

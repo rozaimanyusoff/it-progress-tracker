@@ -6,6 +6,10 @@ import { Pencil, Trash2, X } from 'lucide-react'
 
 interface Task { status: string; est_mandays?: number | null }
 
+const TASK_PROGRESS_WEIGHT: Record<string, number> = {
+  Todo: 0, InProgress: 50, InReview: 80, Done: 100, Blocked: 0,
+}
+
 interface Deliverable {
   id: number
   title: string
@@ -16,6 +20,7 @@ interface Deliverable {
   planned_end?: string | null
   actual_start?: string | null
   actual_end?: string | null
+  is_actual_override?: boolean
   module_id?: number | null
   tasks: Task[]
 }
@@ -64,7 +69,10 @@ function fmt(dateStr?: string | null) {
 
 function taskProgress(tasks: Task[]) {
   const done = tasks.filter(t => t.status === 'Done').length
-  return { done, total: tasks.length, pct: tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0 }
+  const pct = tasks.length > 0
+    ? Math.round(tasks.reduce((s, t) => s + (TASK_PROGRESS_WEIGHT[t.status] ?? 0), 0) / tasks.length)
+    : 0
+  return { done, total: tasks.length, pct }
 }
 
 function DeliverableCard({
@@ -107,7 +115,10 @@ function DeliverableCard({
               <span>
                 Actual:{' '}
                 {deliverable.actual_start
-                  ? <span className="text-slate-600 dark:text-slate-300">{fmt(deliverable.actual_start)} → {deliverable.actual_end ? fmt(deliverable.actual_end) : 'ongoing'}</span>
+                  ? <span className="text-slate-600 dark:text-slate-300">
+                    {deliverable.is_actual_override && <span title="Manually set by PM" className="mr-1">📌</span>}
+                    {fmt(deliverable.actual_start)} → {deliverable.actual_end ? fmt(deliverable.actual_end) : 'ongoing'}
+                  </span>
                   : <span className="italic">Not started</span>}
               </span>
             </div>
@@ -136,7 +147,7 @@ function DeliverableCard({
               onClick={() => setExpandedId(isExpanded ? null : deliverable.id)}
               className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300"
             >
-              {isExpanded ? 'Hide Tasks' : `Tasks (${total})`}
+              {isExpanded ? 'Hide Tasks' : `Tasks (${total}) · ${pct}%`}
             </button>
           </div>
         </div>
@@ -156,7 +167,7 @@ function DeliverableCard({
   )
 }
 
-const BLANK_DELIVERABLE_FORM = { title: '', description: '', mandays: '1', status: 'Pending', module_id: '', planned_start: '', planned_end: '' }
+const BLANK_DELIVERABLE_FORM = { title: '', description: '', mandays: '1', status: 'Pending', module_id: '', planned_start: '', planned_end: '', actual_start: '', actual_end: '', is_actual_override: false }
 const BLANK_MODULE_FORM = { title: '', description: '', start_date: '', end_date: '' }
 
 function toInputDate(iso?: string | null) {
@@ -232,6 +243,9 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
       module_id: d.module_id?.toString() ?? '',
       planned_start: toInputDate(d.planned_start),
       planned_end: toInputDate(d.planned_end),
+      actual_start: toInputDate(d.actual_start),
+      actual_end: toInputDate(d.actual_end),
+      is_actual_override: d.is_actual_override ?? false,
     })
     setDelivError('')
     setTitleIsCustom(!delivRecords.some(r => r.title === d.title))
@@ -251,6 +265,21 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     }
     try {
       if (editingDeliv) {
+        const actPayload: any = {}
+        if (delivForm.actual_start) {
+          actPayload.actual_start = delivForm.actual_start
+          actPayload.is_actual_override = true
+        }
+        if (delivForm.actual_end) {
+          actPayload.actual_end = delivForm.actual_end
+          actPayload.is_actual_override = true
+        }
+        if (!delivForm.actual_start && !delivForm.actual_end && editingDeliv.is_actual_override) {
+          // PM cleared the override fields — reset to auto
+          actPayload.actual_start = null
+          actPayload.actual_end = null
+          actPayload.is_actual_override = false
+        }
         const res = await fetch(`/api/deliverables/${editingDeliv.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -261,6 +290,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
             status: delivForm.status,
             module_id: delivForm.module_id ? Number(delivForm.module_id) : null,
             ...datePayload,
+            ...actPayload,
           }),
         })
         if (!res.ok) throw new Error((await res.json()).error)
@@ -675,6 +705,39 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                   />
                 </div>
               </div>
+              {/* PM Actual Date Override — only visible when editing */}
+              {editingDeliv && userRole === 'manager' && (
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50/40 dark:bg-blue-900/10 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Actual Dates (PM Override)</p>
+                    {editingDeliv.is_actual_override && (
+                      <button
+                        type="button"
+                        className="text-xs text-slate-400 hover:text-red-500"
+                        onClick={() => setDelivForm(f => ({ ...f, actual_start: '', actual_end: '' }))}
+                        title="Clear override — revert to auto-calculated dates"
+                      >
+                        Reset to auto
+                      </button>
+                    )}
+                  </div>
+                  {editingDeliv.is_actual_override && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">📌 Dates manually set by PM</p>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">Actual Start</label>
+                      <input type="date" className={inputClass} value={delivForm.actual_start}
+                        onChange={e => setDelivForm(f => ({ ...f, actual_start: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">Actual End</label>
+                      <input type="date" className={inputClass} value={delivForm.actual_end}
+                        onChange={e => setDelivForm(f => ({ ...f, actual_end: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>

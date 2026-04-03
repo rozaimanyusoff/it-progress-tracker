@@ -24,25 +24,29 @@ model User {
   feature_assignments      FeatureDeveloper[]
   created_features         Feature[]          @relation("FeatureCreator")
   assigned_tasks           Task[]             @relation("TaskAssignee")
+  status_updated_tasks     Task[]             @relation("TaskStatusUpdater")
   task_updates             TaskUpdate[]
   task_history             TaskHistory[]
 }
 
 model Project {
-  id            Int               @id @default(autoincrement())
-  title         String
-  description   String?
-  start_date    DateTime
-  deadline      DateTime
-  status        ProjectStatus     @default(Pending)
-  category      ProjectCategory   @default(NonClaimable)
-  created_at    DateTime          @default(now())
-  updates       ProjectUpdate[]
-  issues        Issue[]
-  modules       Module[]
-  assignees     ProjectAssignee[]
-  feature_links ProjectFeature[]
-  deliverables  Deliverable[]
+  id                Int               @id @default(autoincrement())
+  title             String
+  description       String?
+  start_date        DateTime
+  deadline          DateTime
+  status            ProjectStatus     @default(Pending)
+  category          ProjectCategory   @default(NonClaimable)
+  actual_start      DateTime?
+  actual_end        DateTime?
+  health_status     HealthStatus?
+  created_at        DateTime          @default(now())
+  updates           ProjectUpdate[]
+  issues            Issue[]
+  modules           Module[]
+  assignees         ProjectAssignee[]
+  feature_links     ProjectFeature[]
+  deliverables      Deliverable[]
 }
 
 model Module {
@@ -72,19 +76,20 @@ model ProjectFeature {
 }
 
 model Deliverable {
-  id             Int           @id @default(autoincrement())
-  project_id     Int
-  module_id      Int?
-  title          String
-  description    String?
-  status         FeatureStatus @default(Pending)
-  mandays        Int           @default(0)
-  planned_start  DateTime?
-  planned_end    DateTime?
-  actual_start   DateTime?
-  actual_end     DateTime?
-  order          Int           @default(0)
-  created_at     DateTime      @default(now())
+  id                  Int           @id @default(autoincrement())
+  project_id          Int
+  module_id           Int?
+  title               String
+  description         String?
+  status              FeatureStatus @default(Pending)
+  mandays             Int           @default(0)
+  planned_start       DateTime?
+  planned_end         DateTime?
+  actual_start        DateTime?
+  actual_end          DateTime?
+  is_actual_override  Boolean       @default(false)
+  order               Int           @default(0)
+  created_at          DateTime      @default(now())
   project      Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
   module       Module?       @relation(fields: [module_id], references: [id], onDelete: SetNull)
   tasks        Task[]
@@ -186,6 +191,14 @@ enum TaskStatus {
   InProgress
   InReview
   Done
+  Blocked
+}
+
+enum HealthStatus {
+  on_track
+  at_risk
+  delayed
+  overdue
 }
 
 enum TaskPriority {
@@ -246,9 +259,12 @@ model Task {
   started_at         DateTime?
   submitted_at       DateTime?
   completed_at       DateTime?
+  status_updated_at  DateTime?
+  status_updated_by  Int?
   feature            Feature?      @relation(fields: [feature_id], references: [id], onDelete: Cascade)
   deliverable        Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: Cascade)
   assignee           User?         @relation("TaskAssignee", fields: [assigned_to], references: [id])
+  status_updater     User?         @relation("TaskStatusUpdater", fields: [status_updated_by], references: [id])
   task_updates       TaskUpdate[]
   task_history       TaskHistory[]
   issues             Issue[]
@@ -258,9 +274,11 @@ model TaskHistory {
   id           Int        @id @default(autoincrement())
   task_id      Int
   changed_by   Int
-  from_status  String
+  from_status  String?
   to_status    String
+  actual_date  DateTime?
   note         String?
+  is_auto_log  Boolean    @default(true)
   created_at   DateTime   @default(now())
   task         Task       @relation(fields: [task_id], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [changed_by], references: [id])

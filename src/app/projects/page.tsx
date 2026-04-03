@@ -8,6 +8,7 @@ import AppLayout from '@/components/Layout'
 type Project = {
   id: number; title: string; description: string | null; status: string
   start_date: string; deadline: string
+  health_status?: string | null
   assignees: { user: { id: number; name: string; email: string } }[]
   _count: { issues: number }
 }
@@ -36,10 +37,10 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
 
 // ── Status helpers ─────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
-  Pending:    'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
   InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  Done:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  OnHold:     'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300',
+  Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  OnHold: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300',
 }
 const STATUS_LABEL: Record<string, string> = {
   Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
@@ -95,9 +96,22 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
             >
               <div className="flex items-start justify-between gap-2 mb-3">
                 <h3 className="font-semibold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">{p.title}</h3>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 ${STATUS_COLOR[p.status] ?? STATUS_COLOR.Pending}`}>
-                  {STATUS_LABEL[p.status] ?? p.status}
-                </span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLOR[p.status] ?? STATUS_COLOR.Pending}`}>
+                    {STATUS_LABEL[p.status] ?? p.status}
+                  </span>
+                  {p.health_status && p.status !== 'Done' && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${p.health_status === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                        p.health_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                          p.health_status === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                            'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
+                      }`}>
+                      {p.health_status === 'on_track' ? '🟢 On Track' :
+                        p.health_status === 'at_risk' ? '🟡 At Risk' :
+                          p.health_status === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {p.description && (
@@ -311,10 +325,10 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
   }
 
   const featureStatusColor: Record<string, string> = {
-    Pending:    'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+    Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
     InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-    Done:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-    OnHold:     'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300',
+    Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    OnHold: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300',
   }
 
   return (
@@ -549,20 +563,19 @@ export default function ProjectsPage() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === tab
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${activeTab === tab
                 ? 'border-primary text-primary'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
+              }`}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      {activeTab === 'Projects'    && <ProjectsTab onNewProject={() => setActiveTab('New Project')} />}
+      {activeTab === 'Projects' && <ProjectsTab onNewProject={() => setActiveTab('New Project')} />}
       {activeTab === 'New Project' && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
-      {activeTab === 'Features'    && <FeaturesTab showToast={showToast} />}
+      {activeTab === 'Features' && <FeaturesTab showToast={showToast} />}
       {activeTab === 'Deliverables' && <DeliverablesTab showToast={showToast} />}
     </AppLayout>
   )
