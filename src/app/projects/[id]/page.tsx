@@ -36,6 +36,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           include: { assignee: { select: { id: true, name: true } } },
           orderBy: { order: 'asc' },
         },
+        _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
       },
       orderBy: { order: 'asc' },
     }),
@@ -58,6 +59,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     actual_start: d.actual_start?.toISOString() ?? null,
     actual_end: d.actual_end?.toISOString() ?? null,
     module_id: d.module_id ?? null,
+    _count: d._count,
     tasks: d.tasks.map(t => ({
       id: t.id,
       title: t.title,

@@ -24,6 +24,7 @@ interface Task {
   module: { id: number; title: string } | null
   feature: { id: number; title: string } | null
   deliverable: { id: number; title: string } | null
+  _count?: { issues: number }
 }
 
 type BoardState = Record<string, Task[]>
@@ -53,11 +54,11 @@ function dueDateDisplay(due: string | null, status: string): React.ReactNode {
   return <span className="text-[10px] text-slate-400">{dateStr}</span>
 }
 
-const COLUMNS: { id: string; label: string; color: string }[] = [
-  { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
-  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300' },
-  { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
-  { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
+const COLUMNS: { id: string; label: string; color: string; description: string }[] = [
+  { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200', description: 'Tasks queued and ready to be picked up. Drag a card to In Progress when work begins.' },
+  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300', description: 'Tasks actively being worked on. Timer runs while a task stays here.' },
+  { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300', description: 'Tasks completed by the assignee and awaiting review or approval before closing.' },
+  { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300', description: 'Tasks that have been reviewed and signed off. Contributes to project progress.' },
 ]
 
 function reviewCardStyle(task: { status: string; review_count: number; is_blocked?: boolean }): string {
@@ -403,10 +404,21 @@ export default function KanbanBoard() {
     await doStatusUpdate(taskId, newStatus, {})
   }
 
+  function toggleBlock(task: Task) {
+    if (task.is_blocked || task.status === 'Blocked') {
+      setPendingStatus({ taskId: task.id, target: 'Unblock' })
+    } else {
+      setPendingStatus({ taskId: task.id, target: 'Blocked' })
+    }
+  }
+
   async function doStatusUpdate(taskId: number, newStatus: string, opts: { actual_date?: string; blocked_reason?: string }) {
     const payload: any = { status: newStatus }
     if (opts.actual_date) payload.actual_date = opts.actual_date
     if (opts.blocked_reason) payload.blocked_reason = opts.blocked_reason
+    if (newStatus === 'Blocked') payload.is_blocked = true
+    const prevTask = allTasks.find(t => t.id === taskId)
+    if (newStatus === 'InProgress' && prevTask?.status === 'Blocked') payload.is_blocked = false
 
     const res = await fetch(`/api/tasks/${taskId}`, {
       method: 'PUT',
@@ -590,21 +602,27 @@ export default function KanbanBoard() {
           <div className="grid grid-cols-4 gap-4 items-start">
             {COLUMNS.map(col => (
               <div key={col.id} className="flex flex-col">
-                <div className={`rounded-lg px-3 py-2 mb-3 flex items-center justify-between ${col.color}`}>
-                  <span className="font-semibold text-sm">{col.label}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium opacity-70">
-                      {board[col.id].length + (col.id === 'Todo' ? assignedIssues.length : 0)}
-                    </span>
-                    {col.id === 'Todo' && (
-                      <button
-                        onClick={() => setShowAddModal(true)}
-                        className="w-5 h-5 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold leading-none"
-                        title="Add task"
-                      >+</button>
-                    )}
+                <div className={`rounded-lg px-3 py-2 mb-1 ${col.color}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-sm">{col.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium opacity-70">
+                        {board[col.id].length + (col.id === 'Todo' ? assignedIssues.length : 0)}
+                      </span>
+                      {col.id === 'Todo' && (
+                        <button
+                          onClick={() => setShowAddModal(true)}
+                          className="w-5 h-5 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold leading-none"
+                          title="Add task"
+                        >+</button>
+                      )}
+                    </div>
                   </div>
+                  <p className="text-[10px] opacity-60 mt-0.5 leading-snug">{col.description}</p>
                 </div>
+                <div className="mb-3" />
 
                 {col.id === 'Todo' && board[col.id].length === 0 && (
                   <button
@@ -656,6 +674,14 @@ export default function KanbanBoard() {
                               <div className="flex items-start justify-between gap-1 mb-0.5">
                                 <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
                                 <div className="flex items-center gap-1 shrink-0">
+                                  {(task._count?.issues ?? 0) > 0 && (
+                                    <span
+                                      title={`${task._count!.issues} open issue${task._count!.issues > 1 ? 's' : ''}`}
+                                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap"
+                                    >
+                                      ⚠ {task._count!.issues}
+                                    </span>
+                                  )}
                                   {task.review_count > 0 && task.status !== 'Todo' && (
                                     <span
                                       title={`Reviewed ${task.review_count} time${task.review_count > 1 ? 's' : ''}`}
@@ -715,8 +741,13 @@ export default function KanbanBoard() {
                                   )}
                                   {col.id !== 'Done' && (
                                     <button onClick={() => moveTask(task.id, col.id, 'next')} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 hover:bg-slate-50" title="Move forward">→</button>
-                                  )}
-                                  {col.id === 'Todo' && !task.is_predefined && (
+                                  )}                                  <button
+                                    onClick={() => toggleBlock(task)}
+                                    className={`p-1 rounded text-xs ${task.is_blocked || task.status === 'Blocked' ? 'text-green-500 hover:text-green-700' : 'text-red-400 hover:text-red-600'}`}
+                                    title={task.is_blocked || task.status === 'Blocked' ? 'Unblock' : 'Block'}
+                                  >
+                                    {task.is_blocked || task.status === 'Blocked' ? '✓' : '🚫'}
+                                  </button>                                  {col.id === 'Todo' && !task.is_predefined && (
                                     <button
                                       onClick={() => setDeleteConfirm({ id: task.id, title: task.title })}
                                       className="p-1 rounded border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"

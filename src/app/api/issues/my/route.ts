@@ -9,9 +9,13 @@ export async function GET(req: NextRequest) {
   const user = session.user as any
 
   const issues = await prisma.issue.findMany({
-    where: { assignee_id: Number(user.id), resolved: false },
-    include: { project: { select: { id: true, title: true } } },
-    orderBy: { created_at: 'desc' },
+    where: { assignee_id: Number(user.id), issue_status: { notIn: ['resolved', 'closed'] } },
+    include: {
+      project: { select: { id: true, title: true } },
+      deliverable: { select: { id: true, title: true } },
+      task: { select: { id: true, title: true } },
+    },
+    orderBy: [{ issue_severity: 'asc' }, { created_at: 'desc' }],
   })
 
   return NextResponse.json(issues)

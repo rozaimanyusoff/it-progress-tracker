@@ -27,6 +27,8 @@ model User {
   status_updated_tasks     Task[]             @relation("TaskStatusUpdater")
   task_updates             TaskUpdate[]
   task_history             TaskHistory[]
+  resolved_issues          Issue[]        @relation("IssueResolver")
+  issue_history            IssueHistory[] @relation("IssueHistoryUser")
 }
 
 model Project {
@@ -119,23 +121,45 @@ model ProjectUpdate {
 }
 
 model Issue {
-  id             Int           @id @default(autoincrement())
-  project_id     Int
-  user_id        Int
-  assignee_id    Int?
-  deliverable_id Int?
-  task_id        Int?
-  title          String
-  description    String?
-  severity       Severity      @default(medium)
-  resolved       Boolean       @default(false)
-  media_urls     String[]
-  created_at     DateTime      @default(now())
-  project        Project       @relation(fields: [project_id], references: [id])
-  user           User          @relation(fields: [user_id], references: [id])
-  assignee       User?         @relation("IssueAssignee", fields: [assignee_id], references: [id])
-  deliverable    Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: SetNull)
-  task           Task?         @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  id              Int           @id @default(autoincrement())
+  project_id      Int
+  user_id         Int
+  assignee_id     Int?
+  resolved_by_id  Int?
+  deliverable_id  Int?
+  task_id         Int?
+  title           String
+  description     String?
+  severity        Severity      @default(medium)
+  resolved        Boolean       @default(false)
+  issue_type      IssueType     @default(bug)
+  issue_severity  IssueSeverity @default(moderate)
+  issue_status    IssueStatus   @default(open)
+  due_date        DateTime?
+  resolution_note String?
+  resolved_at     DateTime?
+  media_urls      String[]
+  created_at      DateTime      @default(now())
+  project         Project       @relation(fields: [project_id], references: [id])
+  user            User          @relation(fields: [user_id], references: [id])
+  assignee        User?         @relation("IssueAssignee", fields: [assignee_id], references: [id])
+  resolved_by     User?         @relation("IssueResolver", fields: [resolved_by_id], references: [id])
+  deliverable     Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: SetNull)
+  task            Task?         @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  history         IssueHistory[]
+}
+
+model IssueHistory {
+  id          Int      @id @default(autoincrement())
+  issue_id    Int
+  changed_by  Int
+  action      String
+  from_value  String?
+  to_value    String?
+  note        String?
+  created_at  DateTime @default(now())
+  issue       Issue    @relation(fields: [issue_id], references: [id], onDelete: Cascade)
+  user        User     @relation("IssueHistoryUser", fields: [changed_by], references: [id])
 }
 
 model AuditLog {
@@ -177,6 +201,26 @@ enum Severity {
   low
   medium
   high
+}
+
+enum IssueSeverity {
+  minor
+  moderate
+  major
+  critical
+}
+
+enum IssueType {
+  bug
+  enhancement
+  clarification
+}
+
+enum IssueStatus {
+  open
+  in_progress
+  resolved
+  closed
 }
 
 enum FeatureStatus {

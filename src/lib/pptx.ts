@@ -17,6 +17,10 @@ interface IssueData {
   title: string
   project: string
   severity: string
+  issue_severity?: string
+  issue_status?: string
+  issue_type?: string
+  due_date?: string | null
 }
 
 const NAVY = '0f1f35'
@@ -40,8 +44,9 @@ function statusLabel(status: string): string {
 }
 
 function severityColor(severity: string): string {
-  if (severity === 'high') return RED
-  if (severity === 'medium') return ORANGE
+  if (severity === 'critical' || severity === 'high') return RED
+  if (severity === 'major' || severity === 'medium') return ORANGE
+  if (severity === 'moderate') return '3b82f6'
   return GREEN
 }
 
@@ -130,7 +135,7 @@ export async function generatePPTX(
       ...issues.slice(0, 15).map(iss => [
         { text: iss.title, options: { color: 'e2e8f0', fontSize: 10, fill: { color: '162d4a' } } },
         { text: iss.project, options: { color: 'e2e8f0', fontSize: 10, fill: { color: '162d4a' } } },
-        { text: iss.severity.toUpperCase(), options: { color: severityColor(iss.severity), fontSize: 10, fill: { color: '162d4a' }, bold: true } },
+        { text: (iss.issue_severity ?? iss.severity).toUpperCase(), options: { color: severityColor(iss.issue_severity ?? iss.severity), fontSize: 10, fill: { color: '162d4a' }, bold: true } },
       ]),
     ], {
       x: 0.5, y: 1.1, w: 12.3, colW: [5.5, 5, 1.8],
@@ -1051,20 +1056,50 @@ export async function generateReportPPTX(
       if (projIssues.length === 0) {
         issSlide.addText('No open issues — all clear!', { x: 0.5, y: 3.5, w: 12.3, h: 0.5, fontSize: 14, color: GREEN, align: 'center', bold: true })
       } else {
-        const sevColor = (sev: string) => sev === 'high' ? REDC : sev === 'medium' ? ORANGE : GREEN
+        const sevColor = (sev: string) => {
+          const s = sev ?? ''
+          if (s === 'critical' || s === 'high') return REDC
+          if (s === 'major' || s === 'medium') return ORANGE
+          if (s === 'moderate') return '3b82f6'
+          return GREEN
+        }
+        // Severity counts
+        const counts = { critical: 0, major: 0, moderate: 0, minor: 0 }
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        let overdueCount = 0
+        for (const iss of projIssues) {
+          const sev = iss.issue_severity ?? iss.severity
+          if (sev === 'critical' || sev === 'high') counts.critical++
+          else if (sev === 'major' || sev === 'medium') counts.major++
+          else if (sev === 'moderate') counts.moderate++
+          else counts.minor++
+          if (iss.due_date && new Date(iss.due_date) < today) overdueCount++
+        }
+        const overdueTxt = overdueCount > 0 ? `  ·  ${overdueCount} overdue` : ''
+        issSlide.addText(`Critical: ${counts.critical}  ·  Major: ${counts.major}  ·  Moderate: ${counts.moderate}  ·  Minor: ${counts.minor}${overdueTxt}`, {
+          x: 0.5, y: 0.97, w: 12.3, h: 0.22, fontSize: 9, color: MUTED,
+        })
+        const sorted = [...projIssues].sort((a, b) => {
+          const order = ['critical', 'major', 'moderate', 'minor']
+          return order.indexOf(a.issue_severity ?? a.severity) - order.indexOf(b.issue_severity ?? b.severity)
+        })
         issSlide.addTable([
           [
             { text: 'Issue', options: { bold: true, color: 'FFFFFF', fill: { color: ACCENT }, fontSize: 11 } },
             { text: 'Severity', options: { bold: true, color: 'FFFFFF', fill: { color: ACCENT }, fontSize: 11 } },
+            { text: 'Due', options: { bold: true, color: 'FFFFFF', fill: { color: ACCENT }, fontSize: 11 } },
           ],
-          ...projIssues.slice(0, 18).map((iss, idx) => {
+          ...sorted.slice(0, 15).map((iss, idx) => {
             const rb = idx % 2 === 0 ? BG : CARD
+            const sev = iss.issue_severity ?? iss.severity
+            const dueStr = iss.due_date ? new Date(iss.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short' }) : '—'
             return [
               { text: iss.title, options: { color: BODY, fontSize: 10, fill: { color: rb } } },
-              { text: iss.severity.toUpperCase(), options: { color: sevColor(iss.severity), fontSize: 10, fill: { color: rb }, bold: true } },
+              { text: sev.toUpperCase(), options: { color: sevColor(sev), fontSize: 10, fill: { color: rb }, bold: true } },
+              { text: dueStr, options: { color: BODY, fontSize: 10, fill: { color: rb } } },
             ]
           }),
-        ], { x: 0.5, y: 1.1, w: 12.3, colW: [10.3, 2.0], border: { type: 'solid', color: BORDER, pt: 1 } })
+        ], { x: 0.5, y: 1.22, w: 12.3, colW: [8.8, 1.8, 1.7], border: { type: 'solid', color: BORDER, pt: 1 } })
       }
     }
   }

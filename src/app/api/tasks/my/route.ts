@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
           project: { select: { id: true, title: true } },
         },
       },
+      _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
     },
     orderBy: [{ status: 'asc' }, { order: 'asc' }],
   })

@@ -23,6 +23,7 @@ interface GanttDeliverable {
   actual_end: string | null
   module_id: number | null
   tasks: GanttTask[]
+  _count?: { issues: number }
 }
 
 interface GanttModule {
@@ -207,7 +208,11 @@ function DeliverableRow({
             {expanded ? '▼' : '▶'}
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{deliverable.title}</p>
+            <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{deliverable.title}{' '}
+              {(deliverable._count?.issues ?? 0) > 0 && (
+                <span title={`${deliverable._count!.issues} open issue${deliverable._count!.issues > 1 ? 's' : ''}`} className="text-amber-500 text-xs">⚠</span>
+              )}
+            </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`inline-block px-1.5 py-px rounded text-xs font-medium ${STATUS_BADGE[deliverable.status]}`}>
                 {deliverable.status === 'InProgress' ? 'In Progress' : deliverable.status}

@@ -13,20 +13,20 @@ export async function GET(req: NextRequest) {
     // Manager: team Todo tasks (non-predefined) · Member: own Todo tasks
     user.role === 'manager'
       ? prisma.task.count({
-          where: {
-            status: 'Todo',
-            is_predefined: false,
-          },
-        })
+        where: {
+          status: 'Todo',
+          is_predefined: false,
+        },
+      })
       : prisma.task.count({ where: { assigned_to: userId, status: 'Todo', is_predefined: false } }),
     // Open issues assigned to user (members only; managers: 0 since issues badge covers it)
     user.role === 'manager'
       ? Promise.resolve(0)
-      : prisma.issue.count({ where: { assignee_id: userId, resolved: false } }),
+      : prisma.issue.count({ where: { assignee_id: userId, issue_status: { notIn: ['resolved', 'closed'] } } }),
     // Managers: all open issues · Members: only issues assigned to them
     user.role === 'manager'
-      ? prisma.issue.count({ where: { resolved: false } })
-      : prisma.issue.count({ where: { assignee_id: userId, resolved: false } }),
+      ? prisma.issue.count({ where: { issue_status: { notIn: ['resolved', 'closed'] } } })
+      : prisma.issue.count({ where: { assignee_id: userId, issue_status: { notIn: ['resolved', 'closed'] } } }),
   ])
 
   return NextResponse.json({

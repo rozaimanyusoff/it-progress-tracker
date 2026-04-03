@@ -19,6 +19,7 @@ interface Task {
   priority: string
   is_blocked: boolean
   blocked_reason: string | null
+  _count?: { issues: number }
 }
 
 interface Developer {
@@ -359,6 +360,11 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                         {task.title}
                         {task.is_predefined && (
                           <span className="text-xs text-slate-400 dark:text-slate-500">SDLC</span>
+                        )}
+                        {(task._count?.issues ?? 0) > 0 && (
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Open issues">
+                            ⚠ {task._count!.issues}
+                          </span>
                         )}
                       </div>
                       {(task.is_blocked || task.status === 'Blocked') && task.blocked_reason && (

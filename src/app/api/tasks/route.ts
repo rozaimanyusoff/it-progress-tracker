@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     where,
     include: {
       assignee: { select: { id: true, name: true } },
+      _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
     },
     orderBy: { order: 'asc' },
   })

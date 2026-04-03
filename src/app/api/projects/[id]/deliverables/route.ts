@@ -14,10 +14,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { project_id: projectId },
     include: {
       tasks: {
-        include: { assignee: { select: { id: true, name: true } } },
+        include: {
+          assignee: { select: { id: true, name: true } },
+          _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
+        },
         orderBy: { order: 'asc' },
       },
       module: { select: { id: true, title: true } },
+      _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
     },
     orderBy: { order: 'asc' },
   })

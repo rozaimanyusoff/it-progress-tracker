@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import FeatureTaskList from './FeatureTaskList'
 import { Pencil, Trash2, X } from 'lucide-react'
 
-interface Task { status: string; est_mandays?: number | null }
+interface Task { status: string; est_mandays?: number | null; _count?: { issues: number } }
 
 const TASK_PROGRESS_WEIGHT: Record<string, number> = {
   Todo: 0, InProgress: 50, InReview: 80, Done: 100, Blocked: 0,
@@ -16,6 +16,7 @@ interface Deliverable {
   description?: string | null
   mandays: number
   status: string
+  order: number
   planned_start?: string | null
   planned_end?: string | null
   actual_start?: string | null
@@ -23,6 +24,7 @@ interface Deliverable {
   is_actual_override?: boolean
   module_id?: number | null
   tasks: Task[]
+  _count?: { issues: number }
 }
 
 interface Module {
@@ -76,7 +78,7 @@ function taskProgress(tasks: Task[]) {
 }
 
 function DeliverableCard({
-  deliverable, userRole, members, expandedId, setExpandedId, onEdit, onDelete,
+  deliverable, userRole, members, expandedId, setExpandedId, onEdit, onDelete, onMoveUp, onMoveDown, canMoveUp, canMoveDown,
 }: {
   deliverable: Deliverable
   userRole: string
@@ -85,9 +87,14 @@ function DeliverableCard({
   setExpandedId: (id: number | null) => void
   onEdit: (d: Deliverable) => void
   onDelete: (id: number, title: string) => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  canMoveUp?: boolean
+  canMoveDown?: boolean
 }) {
   const { done, total, pct } = taskProgress(deliverable.tasks)
   const isExpanded = expandedId === deliverable.id
+  const openIssueCount = (deliverable._count?.issues ?? 0) + deliverable.tasks.reduce((s, t) => s + (t._count?.issues ?? 0), 0)
 
   return (
     <div className="border border-slate-200 dark:border-navy-700 rounded-lg overflow-hidden">
@@ -101,6 +108,11 @@ function DeliverableCard({
                 {STATUS_LABELS[deliverable.status]}
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">{deliverable.mandays} md</span>
+              {openIssueCount > 0 && (
+                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Open issues">
+                  ⚠ {openIssueCount} issue{openIssueCount > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
             {deliverable.description && (
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{deliverable.description}</p>
@@ -135,6 +147,20 @@ function DeliverableCard({
           <div className="flex items-center gap-1.5 shrink-0">
             {userRole === 'manager' && (
               <>
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    onClick={onMoveUp}
+                    disabled={!canMoveUp}
+                    className="p-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-400 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-30 disabled:cursor-not-allowed leading-none text-[10px]"
+                    title="Move up"
+                  >▲</button>
+                  <button
+                    onClick={onMoveDown}
+                    disabled={!canMoveDown}
+                    className="p-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-400 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-30 disabled:cursor-not-allowed leading-none text-[10px]"
+                    title="Move down"
+                  >▼</button>
+                </div>
                 <button onClick={() => onEdit(deliverable)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit deliverable">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
@@ -320,6 +346,34 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   function deleteDeliv(id: number, title: string) {
     setDeleteError('')
     setDeleteConfirm({ type: 'deliverable', id, title })
+  }
+
+  async function moveDeliverable(group: Deliverable[], index: number, direction: 'up' | 'down') {
+    const sorted = [...group].sort((a, b) => a.order - b.order)
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= sorted.length) return
+    const a = sorted[index]
+    const b = sorted[targetIndex]
+    // Swap orders
+    await Promise.all([
+      fetch(`/api/deliverables/${a.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: b.order }),
+      }),
+      fetch(`/api/deliverables/${b.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: a.order }),
+      }),
+    ])
+    setDeliverables(prev =>
+      prev.map(d => {
+        if (d.id === a.id) return { ...d, order: b.order }
+        if (d.id === b.id) return { ...d, order: a.order }
+        return d
+      })
+    )
   }
 
   // ── Module CRUD ───────────────────────────────────────────────
@@ -571,18 +625,25 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                         )}
                       </p>
                     ) : (
-                      modDeliverables.map(d => (
-                        <DeliverableCard
-                          key={d.id}
-                          deliverable={d}
-                          userRole={userRole}
-                          members={members}
-                          expandedId={expandedId}
-                          setExpandedId={setExpandedId}
-                          onEdit={openEditDeliv}
-                          onDelete={deleteDeliv}
-                        />
-                      ))
+                      (() => {
+                        const sortedModDelivs = [...modDeliverables].sort((a, b) => a.order - b.order)
+                        return sortedModDelivs.map((d, idx) => (
+                          <DeliverableCard
+                            key={d.id}
+                            deliverable={d}
+                            userRole={userRole}
+                            members={members}
+                            expandedId={expandedId}
+                            setExpandedId={setExpandedId}
+                            onEdit={openEditDeliv}
+                            onDelete={deleteDeliv}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < sortedModDelivs.length - 1}
+                            onMoveUp={() => moveDeliverable(sortedModDelivs, idx, 'up')}
+                            onMoveDown={() => moveDeliverable(sortedModDelivs, idx, 'down')}
+                          />
+                        ))
+                      })()
                     )}
                   </div>
                 )}
@@ -609,18 +670,25 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                       No deliverables yet.{userRole === 'manager' ? ' Click "+ Add Deliverable" to create one.' : ''}
                     </p>
                   ) : (
-                    ungrouped.map(d => (
-                      <DeliverableCard
-                        key={d.id}
-                        deliverable={d}
-                        userRole={userRole}
-                        members={members}
-                        expandedId={expandedId}
-                        setExpandedId={setExpandedId}
-                        onEdit={openEditDeliv}
-                        onDelete={deleteDeliv}
-                      />
-                    ))
+                    (() => {
+                      const sortedUngrouped = [...ungrouped].sort((a, b) => a.order - b.order)
+                      return sortedUngrouped.map((d, idx) => (
+                        <DeliverableCard
+                          key={d.id}
+                          deliverable={d}
+                          userRole={userRole}
+                          members={members}
+                          expandedId={expandedId}
+                          setExpandedId={setExpandedId}
+                          onEdit={openEditDeliv}
+                          onDelete={deleteDeliv}
+                          canMoveUp={idx > 0}
+                          canMoveDown={idx < sortedUngrouped.length - 1}
+                          onMoveUp={() => moveDeliverable(sortedUngrouped, idx, 'up')}
+                          onMoveDown={() => moveDeliverable(sortedUngrouped, idx, 'down')}
+                        />
+                      ))
+                    })()
                   )}
                 </div>
               )}

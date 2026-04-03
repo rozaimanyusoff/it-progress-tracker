@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
    const buffer = await generateProjectPPTX({ project, modules, deliverables })
 
    const filename = encodeURIComponent(`${project.title}_report.pptx`)
-   return new NextResponse(buffer, {
+   return new NextResponse(buffer as unknown as BodyInit, {
       headers: {
          'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
          'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,

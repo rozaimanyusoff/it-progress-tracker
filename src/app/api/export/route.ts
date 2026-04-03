@@ -64,13 +64,17 @@ export async function POST(req: NextRequest) {
 
   // Fetch open issues for selected projects
   const openIssues = await prisma.issue.findMany({
-    where: { resolved: false, project_id: { in: projectIds } },
+    where: { issue_status: { notIn: ['resolved', 'closed'] }, project_id: { in: projectIds } },
     include: { project: true },
   })
   const issueData = openIssues.map(i => ({
     title: i.title,
     project: i.project.title,
     severity: i.severity,
+    issue_severity: i.issue_severity,
+    issue_status: i.issue_status,
+    issue_type: i.issue_type,
+    due_date: i.due_date?.toISOString() ?? null,
   }))
 
   const buffer = await generateReportPPTX(fromMonth, toMonth, validProjects, issueData, sections)
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
       action: 'EXPORT',
       target_type: 'Report',
       target_id: 0,
-      metadata: { from_month: fromMonth, to_month: toMonth, project_ids: projectIds, sections },
+      metadata: { from_month: fromMonth, to_month: toMonth, project_ids: projectIds, sections: sections as any },
     },
   })
 

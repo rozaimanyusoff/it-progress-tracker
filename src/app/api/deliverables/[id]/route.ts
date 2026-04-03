@@ -11,7 +11,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { title, description, mandays, status, module_id, planned_start, planned_end, actual_start, actual_end, is_actual_override } = body
+  const { title, description, mandays, status, module_id, planned_start, planned_end, actual_start, actual_end, is_actual_override, order } = body
 
   const updated = await prisma.deliverable.update({
     where: { id: Number(id) },
@@ -26,6 +26,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(actual_start !== undefined && { actual_start: actual_start ? new Date(actual_start) : null }),
       ...(actual_end !== undefined && { actual_end: actual_end ? new Date(actual_end) : null }),
       ...(is_actual_override !== undefined && { is_actual_override }),
+      ...(order !== undefined && { order: Number(order) }),
     },
   })
 

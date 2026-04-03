@@ -242,11 +242,11 @@ function AddTaskModal({
   )
 }
 
-const COLUMNS: { id: string; label: string; color: string }[] = [
-  { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200' },
-  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300' },
-  { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300' },
-  { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' },
+const COLUMNS: { id: string; label: string; color: string; description: string }[] = [
+  { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200', description: 'Tasks queued and ready to be picked up. Drag a card to In Progress when work begins.' },
+  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300', description: 'Tasks actively being worked on. Timer runs while a task stays here.' },
+  { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300', description: 'Tasks completed by the assignee and awaiting review or approval before closing.' },
+  { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300', description: 'Tasks that have been reviewed and signed off. Contributes to project progress.' },
 ]
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -614,19 +614,25 @@ export default function TeamKanbanBoard() {
             {COLUMNS.map(col => (
               <div key={col.id} className="flex flex-col">
                 {/* Column header */}
-                <div className={`rounded-lg px-3 py-2 mb-3 flex items-center justify-between ${col.color}`}>
-                  <span className="font-semibold text-sm">{col.label}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium opacity-70">{filteredBoard[col.id].length}</span>
-                    {col.id === 'Todo' && (
-                      <button
-                        onClick={() => setShowAddModal(true)}
-                        className="w-5 h-5 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold leading-none"
-                        title="Add task"
-                      >+</button>
-                    )}
+                <div className={`rounded-lg px-3 py-2 mb-1 ${col.color}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-sm">{col.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium opacity-70">{filteredBoard[col.id].length}</span>
+                      {col.id === 'Todo' && (
+                        <button
+                          onClick={() => setShowAddModal(true)}
+                          className="w-5 h-5 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold leading-none"
+                          title="Add task"
+                        >+</button>
+                      )}
+                    </div>
                   </div>
+                  <p className="text-[10px] opacity-60 mt-0.5 leading-snug">{col.description}</p>
                 </div>
+                <div className="mb-3" />
 
                 {/* Cards */}
                 <div className="flex flex-col gap-2 min-h-32">

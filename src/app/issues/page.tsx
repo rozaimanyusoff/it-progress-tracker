@@ -16,9 +16,9 @@ export default function IssuesPage() {
   const { data: session } = useSession()
   const isManager = (session?.user as any)?.role === 'manager'
 
-  const [issues, setIssues]   = useState<any[]>([])
+  const [issues, setIssues] = useState<any[]>([])
   const [members, setMembers] = useState<{ id: number; name: string }[]>([])
-  const [filters, setFilters] = useState({ severity: '', resolved: '' })
+  const [filters, setFilters] = useState({ issue_severity: '', issue_status: 'open', issue_type: '' })
   const [loading, setLoading] = useState(true)
 
   // Edit modal
@@ -31,8 +31,9 @@ export default function IssuesPage() {
   useEffect(() => {
     setLoading(true)
     const params = new URLSearchParams()
-    if (filters.severity) params.set('severity', filters.severity)
-    if (filters.resolved !== '') params.set('resolved', filters.resolved)
+    if (filters.issue_severity) params.set('issue_severity', filters.issue_severity)
+    if (filters.issue_status) params.set('issue_status', filters.issue_status)
+    if (filters.issue_type) params.set('issue_type', filters.issue_type)
     fetch(`/api/issues?${params}`).then(r => r.json()).then(d => { setIssues(d); setLoading(false) })
   }, [filters])
 
@@ -42,13 +43,18 @@ export default function IssuesPage() {
     }
   }, [isManager])
 
-  async function toggleResolved(id: number, current: boolean) {
-    await fetch(`/api/issues/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resolved: !current }),
-    })
-    setIssues(prev => prev.map(i => i.id === id ? { ...i, resolved: !current } : i))
+  async function advanceStatus(issue: any) {
+    const transitions: Record<string, string> = { open: 'in_progress', in_progress: 'resolved' }
+    const next = transitions[issue.issue_status]
+    if (!next) return
+    if (next === 'resolved') {
+      const note = prompt('Resolution note (min 10 chars):')
+      if (!note || note.trim().length < 10) { alert('Resolution note must be at least 10 characters'); return }
+      await fetch(`/api/issues/${issue.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issue_status: next, resolution_note: note.trim() }) })
+    } else {
+      await fetch(`/api/issues/${issue.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issue_status: next }) })
+    }
+    setIssues(prev => prev.map(i => i.id === issue.id ? { ...i, issue_status: next } : i))
   }
 
   async function assignIssue(id: number, assigneeId: string) {
@@ -92,6 +98,7 @@ export default function IssuesPage() {
         title: editForm.title,
         description: editForm.description,
         severity: editForm.severity,
+        issue_severity: editForm.severity,
         deliverable_id: editForm.deliverableId || null,
         task_id: editForm.taskId || null,
       }),
@@ -118,10 +125,23 @@ export default function IssuesPage() {
   }
 
   const sevColors: Record<string, string> = {
-    high:   'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/50 dark:text-red-400 dark:border-red-700',
+    critical: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/50 dark:text-red-400 dark:border-red-700',
+    major: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/50 dark:text-orange-400 dark:border-orange-700',
+    moderate: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/50 dark:text-blue-400 dark:border-blue-700',
+    minor: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/50 dark:text-green-400 dark:border-green-700',
+    // legacy
+    high: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/50 dark:text-red-400 dark:border-red-700',
     medium: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/50 dark:text-orange-400 dark:border-orange-700',
-    low:    'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/50 dark:text-green-400 dark:border-green-700',
+    low: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/50 dark:text-green-400 dark:border-green-700',
   }
+
+  const statusColors: Record<string, string> = {
+    open: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    in_progress: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    resolved: 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    closed: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
+  }
+  const statusLabel: Record<string, string> = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed' }
 
   const selectClass = 'bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
   const colSpan = 7
@@ -134,17 +154,26 @@ export default function IssuesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-6">
-        <select value={filters.severity} onChange={e => setFilters({ ...filters, severity: e.target.value })} className={selectClass}>
-          <option value="">All Severities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+      <div className="flex gap-3 mb-6 flex-wrap">
+        <select value={filters.issue_status} onChange={e => setFilters({ ...filters, issue_status: e.target.value })} className={selectClass}>
+          <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
         </select>
-        <select value={filters.resolved} onChange={e => setFilters({ ...filters, resolved: e.target.value })} className={selectClass}>
-          <option value="">All Status</option>
-          <option value="false">Open</option>
-          <option value="true">Resolved</option>
+        <select value={filters.issue_severity} onChange={e => setFilters({ ...filters, issue_severity: e.target.value })} className={selectClass}>
+          <option value="">All Severities</option>
+          <option value="critical">Critical</option>
+          <option value="major">Major</option>
+          <option value="moderate">Moderate</option>
+          <option value="minor">Minor</option>
+        </select>
+        <select value={filters.issue_type} onChange={e => setFilters({ ...filters, issue_type: e.target.value })} className={selectClass}>
+          <option value="">All Types</option>
+          <option value="bug">🐛 Bug</option>
+          <option value="enhancement">✨ Enhancement</option>
+          <option value="clarification">❓ Clarification</option>
         </select>
       </div>
 
@@ -154,7 +183,7 @@ export default function IssuesPage() {
             <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700">
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Issue</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Project</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Severity</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Severity / Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Reported by</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Assignee</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
@@ -197,9 +226,16 @@ export default function IssuesPage() {
                 </td>
                 <td className="px-6 py-4 text-slate-600 dark:text-slate-300 text-sm">{issue.project?.title}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${sevColors[issue.severity] || sevColors.medium}`}>
-                    {issue.severity.toUpperCase()}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${sevColors[issue.issue_severity ?? issue.severity] ?? sevColors.moderate}`}>
+                      {(issue.issue_severity ?? issue.severity ?? 'moderate').toUpperCase()}
+                    </span>
+                    {issue.issue_type && (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
+                        {issue.issue_type === 'bug' ? '🐛' : issue.issue_type === 'enhancement' ? '✨' : '❓'} {issue.issue_type}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-sm">{issue.user?.name}</td>
                 <td className="px-6 py-4">
@@ -226,19 +262,20 @@ export default function IssuesPage() {
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  {issue.resolved
-                    ? <span className="text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded-full">Resolved</span>
-                    : <span className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full">Open</span>
-                  }
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[issue.issue_status] ?? statusColors.open}`}>
+                    {statusLabel[issue.issue_status] ?? issue.issue_status ?? 'Open'}
+                  </span>
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <button onClick={() => openEdit(issue)} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 underline">
                       Edit
                     </button>
-                    <button onClick={() => toggleResolved(issue.id, issue.resolved)} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline">
-                      {issue.resolved ? 'Reopen' : 'Resolve'}
-                    </button>
+                    {(issue.issue_status === 'open' || issue.issue_status === 'in_progress') && (
+                      <button onClick={() => advanceStatus(issue)} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline">
+                        {issue.issue_status === 'open' ? 'Start' : 'Resolve'}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

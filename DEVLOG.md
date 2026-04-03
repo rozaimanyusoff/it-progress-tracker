@@ -11,6 +11,93 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-04 — Issues: Sistem penuh dengan workflow status, sejarah, dan indikator merentas paparan
+
+### Skop
+
+Pembangunan semula menyeluruh sistem isu — dari model DB, API workflow status, form baharu, hingga indikator visual pada semua paparan (Kanban, Gantt, Deliverable, task list) dan ringkasan dalam PPTX report.
+
+### Ditambah (DB & Migrasi)
+
+- **`prisma/schema.prisma`** — Enum baharu:
+   - `IssueSeverity`: `minor | moderate | major | critical`
+   - `IssueType`: `bug | enhancement | clarification`
+   - `IssueStatus`: `open | in_progress | resolved | closed`
+- **`prisma/schema.prisma`** — Field baharu pada model `Issue`: `resolved_by_id Int?`, `issue_type IssueType`, `issue_severity IssueSeverity`, `issue_status IssueStatus`, `due_date DateTime?`, `resolution_note String?`, `resolved_at DateTime?`, relasi `resolved_by`, `history IssueHistory[]`
+- **`prisma/schema.prisma`** — Model baharu `IssueHistory`: rekod setiap perubahan isu (`issue_id`, `changed_by`, `action`, `from_value?`, `to_value?`, `note?`, `created_at`)
+- **`prisma/schema.prisma`** — Back-relations `resolved_issues` dan `issue_history` ditambah ke model `User`
+- **`prisma/migrations/20260403175856_extend_issues_add_history`** — Migrasi berjaya diaplikasi
+
+### Ditambah (API)
+
+- **`src/app/api/issues/[id]/history/route.ts`** (endpoint baharu) — `GET` mengembalikan `IssueHistory` bagi satu isu, disertakan dengan `user { id, name }`, diisih kronologi menaik
+
+### Dikemaskini (API)
+
+- **`src/app/api/issues/route.ts`** — Ditulis semula:
+   - `GET`: sokong penapis `issue_type`, `issue_severity`, `issue_status`, `assignee_id`, `deliverable_id` (selain legacy `severity`/`resolved`)
+   - `POST`: auto-isi `project_id` dan `deliverable_id` dari konteks task; auto-kira `due_date` mengikut keterukan (critical=+1h, major=+3h, moderate=+7h, minor=+14h); tulis entri `IssueHistory` pada cipta
+- **`src/app/api/issues/[id]/route.ts`** — Ditulis semula sepenuhnya:
+   - `GET`: paparkan isu tunggal dengan semua relasi
+   - `PUT` dengan workflow status:
+      - `open → in_progress` (semua pengguna)
+      - `in_progress → resolved` (semua pengguna; wajib `resolution_note` ≥10 aksara; set `resolved_at`, `resolved_by_id`)
+      - `resolved → closed` (manager sahaja)
+      - `resolved → open` (reopen; manager sahaja; reset `resolved_at`, `resolved_by_id`, `resolved=false`)
+   - Setiap perubahan (status, assignee, tarikh) menulis entri `IssueHistory`
+- **`src/app/api/issues/my/route.ts`** — Penapis ditukar dari `resolved: false` → `issue_status: { notIn: ['resolved','closed'] }`; include `deliverable` dan `task`; diisih mengikut `issue_severity` kemudian `created_at`
+- **`src/app/api/projects/[id]/issues/route.ts`** — Sokong penapis `issue_type`, `issue_severity`, `issue_status`, `assignee_id`, `deliverable_id`; include `resolved_by`; diisih mengikut keterukan kemudian tarikh
+- **`src/app/api/projects/[id]/deliverables/route.ts`** — Include `_count.issues` (isu terbuka sahaja) pada deliverable dan setiap task
+- **`src/app/api/tasks/route.ts`** — Include `_count.issues` (isu terbuka sahaja) pada setiap task
+- **`src/app/api/tasks/my/route.ts`** — Include `_count.issues` (isu terbuka sahaja) pada setiap task
+- **`src/app/api/counts/route.ts`** — Penapis ditukar dari `resolved: false` → `issue_status: { notIn: ['resolved','closed'] }`
+- **`src/app/api/export/route.ts`** — Penapis ditukar dari `resolved: false` → `issue_status: { notIn: ['resolved','closed'] }`; `issueData` kini hantar `issue_severity`, `issue_status`, `issue_type`, `due_date`
+
+### Ditambah (Komponen)
+
+- **`src/components/IssueFormModal.tsx`** (komponen baharu) — Form lengkap laporkan isu:
+   - Pemilih jenis isu: 🐛 Bug / ✨ Enhancement / ❓ Clarification
+   - Dropdown projek (pre-isi dari konteks), deliverable (opsional), task (opsional)
+   - Auto-isi `due_date` mengikut keterukan (boleh ditukar manual)
+   - Pemilih keterukan: minor / moderate / major / critical
+   - Pemilih assignee (manager sahaja; dimuatkan dari `/api/users`)
+   - Close on backdrop click
+
+### Dikemaskini (Komponen)
+
+- **`src/components/ProjectIssueSection.tsx`** — Ditulis semula sepenuhnya:
+   - Bar penapis: Status, Severity, Type
+   - Butang workflow per-isu bergantung pada peranan: Start / Resolve / Close / Reopen
+   - Modal pengesahan transisi (nota resolusi wajib ≥10 aksara untuk `resolved`; sebab reopen untuk `open`)
+   - Panel sejarah boleh toggle dengan timeline entri `IssueHistory`
+   - Butang `+ Issue` buka `IssueFormModal` dengan `project_id` pre-isi
+   - Badge OVERDUE merah jika isu melebihi `due_date`
+   - Nota resolusi dipapar dalam kotak hijau selepas isu diselesaikan
+- **`src/app/issues/page.tsx`** — Dikemaskini untuk enum baru:
+   - Penapis status: Open / In Progress / Resolved / Closed
+   - Penapis keterukan: critical / major / moderate / minor (gantikan high/medium/low)
+   - Penapis jenis isu (baharu)
+   - Lajur Severity / Type gabungan dengan badge jenis
+   - Lajur Status papar `STATUS_LABEL` berwarna
+   - Butang `Start` / `Resolve` menggantikan butang toggle lama
+- **`src/components/FeatureTaskList.tsx`** — Interface `Task` tambah `_count?: { issues: number }`; badge amber `⚠ N` dipapar pada baris task yang ada isu terbuka
+- **`src/components/DeliverableSection.tsx`** — Interface `Task` dan `Deliverable` tambah `_count?: { issues: number }` dan field `order`; `DeliverableCard` mengira jumlah isu terbuka (deliverable + semua tasks); badge amber `⚠ N issue(s)` dipapar pada header kad deliverable
+- **`src/components/KanbanBoard.tsx`** — Interface `Task` tambah `_count?: { issues: number }`; badge amber `⚠ N` dipapar pada kad Kanban yang ada isu terbuka
+- **`src/components/GanttChart.tsx`** — Interface `GanttDeliverable` tambah `_count?: { issues: number }`; ikon `⚠` dipapar bersebelahan tajuk deliverable jika ada isu terbuka
+- **`src/app/projects/[id]/page.tsx`** — Query Prisma `deliverable.findMany` kini include `_count.issues`; `ganttDeliverables` hantar `_count` ke `GanttChart`
+
+### Dikemaskini (PPTX)
+
+- **`src/lib/pptx.ts`** — Interface `IssueData` kini ada `issue_severity?`, `issue_status?`, `issue_type?`, `due_date?`
+- **`src/lib/pptx.ts`** — `severityColor()` dikemaskini untuk `critical/major/moderate/minor` (dengan sokongan backward-compat `high/medium/low`)
+- **`src/lib/pptx.ts`** — Slaid isu per-projek dalam `generateReportPPTX()`:
+   - Tambah baris ringkasan: `Critical: N · Major: N · Moderate: N · Minor: N · X overdue`
+   - Isu diisih mengikut keterukan sebelum dipapar dalam jadual
+   - Jadual kini ada lajur ketiga **Due** (tarikh akhir)
+   - Warna keterukan mengikut enum baharu
+
+---
+
 ## 2026-04-03 — Hotfixes: migrate deploy & DeliverableSection parse error
 
 ### Diperbaiki
