@@ -11,6 +11,65 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-04 — Profil pengguna, upload avatar, latar belakang halaman login, pembaikan seed DB
+
+### Skop
+
+Penambahan profil pengguna peribadi (boleh diakses semua pengguna), upload gambar avatar, upload latar belakang halaman login dalam tetapan branding, serta pembaikan seed DB untuk Prisma 7.
+
+### Ditambah (DB & Migrasi)
+
+- **`prisma/schema.prisma`** — Field baharu pada model `User`:
+  - `initials String?` — inisial (sehingga 3 aksara) untuk avatar teks
+  - `contact_number String?` — nombor telefon/kenalan
+  - `avatar_url String?` — URL gambar avatar yang diupload
+- **`prisma/migrations/20260404032230_add_user_profile_fields`** — Migrasi `initials` dan `contact_number` berjaya diaplikasi
+- **`prisma/migrations/20260404033221_add_user_avatar_url`** — Migrasi `avatar_url` berjaya diaplikasi
+
+### Ditambah (API)
+
+- **`src/app/api/profile/route.ts`** (endpoint baharu) — Profil pengguna yang sedang log masuk:
+  - `GET`: kembalikan `id, name, email, role, initials, contact_number, avatar_url`
+  - `PATCH`: kemaskini `name`, `initials`, `contact_number`; tukar kata laluan (mengesahkan kata laluan semasa dahulu, min 8 aksara); tulis entri `AuditLog`
+- **`src/app/api/upload/avatar/route.ts`** (endpoint baharu) — Upload gambar avatar pengguna:
+  - Hanya JPEG/PNG/GIF/WebP, max 2MB
+  - Disimpan ke `public/uploads/avatars/avatar-{userId}-{timestamp}.{ext}`
+  - Kemaskini `avatar_url` dalam rekod `User` secara automatik
+- **`src/app/api/upload/brand-bg/route.ts`** (endpoint baharu) — Upload gambar latar belakang halaman login (manager sahaja):
+  - Hanya JPEG/PNG/GIF/WebP, max 5MB
+  - Disimpan ke `public/uploads/brand/login-bg-{timestamp}.{ext}`
+
+### Dikemaskini (API)
+
+- **`src/app/api/settings/route.ts`** — Menambah `login_bg_url` dalam response `GET` dan senarai kunci dibenarkan dalam `POST`
+- **`src/app/api/settings/branding/route.ts`** (endpoint awam) — Kini mengembalikan `login_bg_url` bersama `brand_name` dan `brand_logo_url`
+
+### Ditambah (Halaman & Komponen)
+
+- **`src/app/profile/page.tsx`** (halaman baharu, boleh diakses semua pengguna):
+  - Kandungan dipusatkan (`max-w-md`, `flex-col items-center`)
+  - Kad avatar: klik gambar bulat untuk upload foto; overlay "Change" muncul semasa hover; fail dihantar ke `/api/upload/avatar`; avatar dipapar semula serta-merta
+  - Form maklumat peribadi: Nama Penuh, Inisial, Nombor Kenalan
+  - Form tukar kata laluan: Kata laluan Semasa, Baharu, Pengesahan; butang toggle Show/Hide
+
+### Dikemaskini (Komponen & Halaman)
+
+- **`src/components/Sidebar.tsx`** — Perubahan pada blok pengguna di bawah:
+  - Menu navigasi "My Profile" **dibuang** dari senarai nav
+  - Blok nama/emel pengguna kini boleh diklik (di-wrap dalam `<Link href="/profile">`) — warna nama bertukar biru semasa hover
+  - Avatar bulat papar gambar dari DB jika `avatar_url` ada, jika tidak papar inisial, jika tidak papar huruf pertama nama
+- **`src/app/settings/page.tsx`** (tab Branding) — Tambah bahagian "Login Page Background":
+  - Drop zone serupa dengan upload logo
+  - Preview latar belakang ditampakkan dalam drop zone dengan opacity rendah
+  - Butang "Remove background" untuk mengosongkan semula
+- **`src/app/login/page.tsx`** — Jika `login_bg_url` ada dalam tetapan, ia dipapar sebagai latar belakang penuh (`background-image`, `background-size: cover`) pada halaman log masuk
+
+### Diperbaiki
+
+- **`prisma/seed.ts`** — Adapter `PrismaPg` ditambah pada konstruksi `PrismaClient` supaya serasi dengan Prisma 7 (sebelum ini ralat `Module '"@prisma/client"' has no exported member 'PrismaClient'` berlaku pada server produksi sebelum `npx prisma generate` dijalankan)
+
+---
+
 ## 2026-04-04 — Issues: Sistem penuh dengan workflow status, sejarah, dan indikator merentas paparan
 
 ### Skop
