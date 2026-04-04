@@ -14,7 +14,7 @@ type Feature = {
 }
 type Project = { id: number; title: string }
 type Settings = {
-  brand_name: string; brand_logo_url: string; theme_color: string
+  brand_name: string; brand_logo_url: string; login_bg_url: string; theme_color: string
   smtp_host: string; smtp_port: string; smtp_user: string; smtp_from: string
 }
 
@@ -285,11 +285,14 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
 
 // ── Branding Tab ──────────────────────────────────────────────────
 function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [form, setForm]         = useState({ brand_name: '', brand_logo_url: '', theme_color: 'blue' })
-  const [saving, setSaving]     = useState(false)
+  const [form, setForm]           = useState({ brand_name: '', brand_logo_url: '', login_bg_url: '', theme_color: 'blue' })
+  const [saving, setSaving]       = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [preview, setPreview]   = useState<string | null>(null)
-  const fileInputRef            = useRef<HTMLInputElement>(null)
+  const [uploadingBg, setUploadingBg] = useState(false)
+  const [preview, setPreview]     = useState<string | null>(null)
+  const [bgPreview, setBgPreview] = useState<string | null>(null)
+  const fileInputRef              = useRef<HTMLInputElement>(null)
+  const bgInputRef                = useRef<HTMLInputElement>(null)
 
   const COLORS = ['blue', 'indigo', 'violet', 'emerald', 'rose', 'orange', 'slate']
   const COLOR_PREVIEW: Record<string, string> = {
@@ -299,8 +302,9 @@ function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(s => {
-      setForm({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url, theme_color: s.theme_color })
+      setForm({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url, login_bg_url: s.login_bg_url ?? '', theme_color: s.theme_color })
       if (s.brand_logo_url) setPreview(s.brand_logo_url)
+      if (s.login_bg_url) setBgPreview(s.login_bg_url)
     })
   }, [])
 
@@ -315,9 +319,24 @@ function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
       const { url } = await res.json()
       setForm(f => ({ ...f, brand_logo_url: url }))
     } else {
-      const err = await res.json()
-      showToast('error', err.error ?? 'Upload failed')
+      showToast('error', (await res.json()).error ?? 'Upload failed')
       setPreview(form.brand_logo_url || null)
+    }
+  }
+
+  async function handleBgFile(file: File) {
+    setUploadingBg(true)
+    setBgPreview(URL.createObjectURL(file))
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/upload/brand-bg', { method: 'POST', body: fd })
+    setUploadingBg(false)
+    if (res.ok) {
+      const { url } = await res.json()
+      setForm(f => ({ ...f, login_bg_url: url }))
+    } else {
+      showToast('error', (await res.json()).error ?? 'Upload failed')
+      setBgPreview(form.login_bg_url || null)
     }
   }
 
@@ -339,7 +358,7 @@ function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
       <div>
         <label className={labelClass}>Logo <span className="text-slate-400 font-normal">(JPEG, PNG, WebP, SVG — max 2MB)</span></label>
 
-        {/* Drop zone */}
+        {/* Logo Drop zone */}
         <div
           onClick={() => fileInputRef.current?.click()}
           onDragOver={e => e.preventDefault()}
@@ -374,6 +393,51 @@ function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
         )}
       </div>
 
+      {/* Login page background */}
+      <div>
+        <label className={labelClass}>Login Page Background <span className="text-slate-400 font-normal">(JPEG, PNG, WebP — max 5MB)</span></label>
+        <p className="text-xs text-slate-400 mb-2">Displayed as the full-page background on the sign-in screen.</p>
+
+        <div
+          onClick={() => bgInputRef.current?.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBgFile(f) }}
+          className="mt-1 relative flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 dark:border-navy-600 rounded-xl overflow-hidden cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
+          style={{ minHeight: '120px' }}
+        >
+          {bgPreview && (
+            <img src={bgPreview} alt="background" className="absolute inset-0 w-full h-full object-cover opacity-40 rounded-xl pointer-events-none" />
+          )}
+          <div className="relative z-10 flex flex-col items-center gap-2 py-6">
+            {uploadingBg ? (
+              <p className="text-sm text-slate-500 dark:text-slate-300">Uploading...</p>
+            ) : bgPreview ? (
+              <p className="text-sm text-slate-600 dark:text-white font-medium">Click to replace background</p>
+            ) : (
+              <>
+                <span className="text-2xl text-slate-300">🌅</span>
+                <p className="text-sm text-slate-400">Click or drag & drop to upload background</p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <input
+          ref={bgInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleBgFile(f) }}
+        />
+
+        {bgPreview && (
+          <button type="button" onClick={() => { setBgPreview(null); setForm(f => ({ ...f, login_bg_url: '' })) }}
+            className="mt-2 text-xs text-red-500 hover:text-red-700">
+            Remove background
+          </button>
+        )}
+      </div>
+
       <div>
         <label className={labelClass}>Theme Color</label>
         <div className="flex gap-2 flex-wrap mt-1">
@@ -387,7 +451,7 @@ function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
         <p className="text-xs text-slate-400 mt-2">Selected: <span className="font-medium capitalize">{form.theme_color}</span></p>
       </div>
 
-      <button type="submit" disabled={saving || uploading} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+      <button type="submit" disabled={saving || uploading || uploadingBg} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
         {saving ? 'Saving...' : 'Save Branding'}
       </button>
     </form>

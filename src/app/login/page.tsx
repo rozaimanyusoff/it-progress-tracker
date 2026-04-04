@@ -9,11 +9,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [branding, setBranding] = useState<{ brand_name: string; brand_logo_url: string } | null>(null)
+  const [branding, setBranding] = useState<{ brand_name: string; brand_logo_url: string; login_bg_url: string } | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    fetch('/api/settings/branding').then(r => r.json()).then(s => setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url })).catch(() => { })
+    fetch('/api/settings/branding').then(r => r.json()).then(s => setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url, login_bg_url: s.login_bg_url ?? '' })).catch(() => { })
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -30,7 +30,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-navy-900">
+    <div
+      className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-navy-900"
+      style={branding?.login_bg_url ? { backgroundImage: `url(${branding.login_bg_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+    >
       <div className="w-full max-w-md">
         <div className="bg-white dark:bg-navy-800 rounded-2xl shadow-2xl p-8 border border-slate-200 dark:border-navy-700">
           <div className="mb-8 text-center">

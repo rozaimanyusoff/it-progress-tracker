@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     brand_name: settings.brand_name ?? 'IT Tracker',
     brand_logo_url: settings.brand_logo_url ?? '',
+    login_bg_url: settings.login_bg_url ?? '',
     theme_color: settings.theme_color ?? 'blue',
     smtp_host: settings.smtp_host ?? process.env.SMTP_HOST ?? '',
     smtp_port: settings.smtp_port ?? process.env.SMTP_PORT ?? '587',
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   if ((session.user as any).role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const allowed = ['brand_name', 'brand_logo_url', 'theme_color', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'smtp_pass', 'db_host', 'db_port', 'db_name', 'db_user', 'db_pass']
+  const allowed = ['brand_name', 'brand_logo_url', 'login_bg_url', 'theme_color', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'smtp_pass', 'db_host', 'db_port', 'db_name', 'db_user', 'db_pass']
 
   await Promise.all(
     Object.entries(body)
