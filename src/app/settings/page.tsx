@@ -62,7 +62,7 @@ function EditUserModal({ user, onClose, onSaved, showToast }: {
   useEffect(() => {
     fetch(`/api/admin/users/${user.id}/profile`).then(r => r.json()).then(d => {
       setForm(f => ({ ...f, initials: d.initials ?? '', contact_number: d.contact_number ?? '' }))
-    }).catch(() => {})
+    }).catch(() => { })
   }, [user.id])
 
   async function handleSave(e: React.FormEvent) {
