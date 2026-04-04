@@ -8,6 +8,11 @@ const ALLOWED = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const MAX_SIZE_MB = 5
 const UPLOAD_PUBLIC_URL = process.env.UPLOAD_PUBLIC_URL ?? '/uploads'
 
+function resolveUploadBase(): string {
+   if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR
+   return path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL)
+}
+
 export async function POST(req: NextRequest) {
    const session = await getServerSession(authOptions)
    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -21,7 +26,7 @@ export async function POST(req: NextRequest) {
 
    const ext = file.name.split('.').pop()
    const filename = `login-bg-${Date.now()}.${ext}`
-   const uploadDir = path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL, 'brand')
+   const uploadDir = path.join(resolveUploadBase(), 'brand')
    await mkdir(uploadDir, { recursive: true })
    await writeFile(path.join(uploadDir, filename), Buffer.from(await file.arrayBuffer()))
 

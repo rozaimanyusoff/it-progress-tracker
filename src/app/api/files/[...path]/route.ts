@@ -8,8 +8,8 @@ const UPLOAD_PUBLIC_URL = process.env.UPLOAD_PUBLIC_URL ?? '/uploads'
 
 const MIME_MAP: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-  gif: 'image/gif',  webp: 'image/webp',
-  mp4: 'video/mp4',  webm: 'video/webm', mov: 'video/quicktime',
+  gif: 'image/gif', webp: 'image/webp',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -18,6 +18,7 @@ const MIME_MAP: Record<string, string> = {
 }
 
 function resolveUploadBase(): string {
+  if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR
   return path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL)
 }
 

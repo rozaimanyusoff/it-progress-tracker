@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
     const { readFile } = await import('fs/promises')
     const path = await import('path')
     const UPLOAD_PUBLIC_URL = process.env.UPLOAD_PUBLIC_URL ?? '/uploads'
-    const filePath = path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL, 'backup', filename)
+    const uploadBase = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL)
+    const filePath = path.join(uploadBase, 'backup', filename)
     try { backup = JSON.parse(await readFile(filePath, 'utf-8')) } catch { return NextResponse.json({ error: 'Backup file not found' }, { status: 404 }) }
   }
 
@@ -48,18 +49,18 @@ export async function POST(req: NextRequest) {
       // Keep users — restore them but skip password re-hash
       await tx.user.deleteMany()
 
-      if (data.users?.length)             await tx.user.createMany({ data: data.users, skipDuplicates: true })
-      if (data.projects?.length)          await tx.project.createMany({ data: data.projects, skipDuplicates: true })
-      if (data.modules?.length)           await tx.module.createMany({ data: data.modules, skipDuplicates: true })
-      if (data.projectAssignees?.length)  await tx.projectAssignee.createMany({ data: data.projectAssignees, skipDuplicates: true })
-      if (data.projectUpdates?.length)    await tx.projectUpdate.createMany({ data: data.projectUpdates, skipDuplicates: true })
-      if (data.issues?.length)            await tx.issue.createMany({ data: data.issues, skipDuplicates: true })
-      if (data.features?.length)          await tx.feature.createMany({ data: data.features, skipDuplicates: true })
+      if (data.users?.length) await tx.user.createMany({ data: data.users, skipDuplicates: true })
+      if (data.projects?.length) await tx.project.createMany({ data: data.projects, skipDuplicates: true })
+      if (data.modules?.length) await tx.module.createMany({ data: data.modules, skipDuplicates: true })
+      if (data.projectAssignees?.length) await tx.projectAssignee.createMany({ data: data.projectAssignees, skipDuplicates: true })
+      if (data.projectUpdates?.length) await tx.projectUpdate.createMany({ data: data.projectUpdates, skipDuplicates: true })
+      if (data.issues?.length) await tx.issue.createMany({ data: data.issues, skipDuplicates: true })
+      if (data.features?.length) await tx.feature.createMany({ data: data.features, skipDuplicates: true })
       if (data.featureDevelopers?.length) await tx.featureDeveloper.createMany({ data: data.featureDevelopers, skipDuplicates: true })
-      if (data.tasks?.length)             await tx.task.createMany({ data: data.tasks, skipDuplicates: true })
-      if (data.taskUpdates?.length)       await tx.taskUpdate.createMany({ data: data.taskUpdates, skipDuplicates: true })
-      if (data.auditLogs?.length)         await tx.auditLog.createMany({ data: data.auditLogs, skipDuplicates: true })
-      if (data.appSettings?.length)       await tx.appSetting.createMany({ data: data.appSettings, skipDuplicates: true })
+      if (data.tasks?.length) await tx.task.createMany({ data: data.tasks, skipDuplicates: true })
+      if (data.taskUpdates?.length) await tx.taskUpdate.createMany({ data: data.taskUpdates, skipDuplicates: true })
+      if (data.auditLogs?.length) await tx.auditLog.createMany({ data: data.auditLogs, skipDuplicates: true })
+      if (data.appSettings?.length) await tx.appSetting.createMany({ data: data.appSettings, skipDuplicates: true })
     }, { timeout: 60000 })
 
     await prisma.auditLog.create({

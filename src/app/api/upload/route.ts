@@ -21,11 +21,14 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 const MAX_SIZE_MB = 50
 
-// UPLOAD_PUBLIC_URL — URL prefix for stored URLs and deriving the filesystem path.
-//   Files are stored under public/<UPLOAD_PUBLIC_URL> so Next.js serves them statically.
+// UPLOAD_PUBLIC_URL — URL prefix stored in the DB for generated file URLs (e.g. /uploads).
+// UPLOAD_DIR      — Filesystem path where files are physically stored.
+//   Dev default  : <cwd>/public/UPLOAD_PUBLIC_URL  (served by Next.js static assets)
+//   Production   : set UPLOAD_DIR=/mnt/<shareddir>  and serve /uploads via nginx/proxy
 const UPLOAD_PUBLIC_URL = process.env.UPLOAD_PUBLIC_URL ?? '/uploads'
 
 function resolveUploadBase(): string {
+  if (process.env.UPLOAD_DIR) return process.env.UPLOAD_DIR
   return path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL)
 }
 
