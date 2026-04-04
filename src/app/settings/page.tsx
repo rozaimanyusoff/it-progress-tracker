@@ -35,11 +35,11 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
 
 // ── Team Members Tab ──────────────────────────────────────────────
 function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [users, setUsers]       = useState<User[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [form, setForm]         = useState({ name: '', email: '', role: 'member' })
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ name: '', email: '', role: 'member' })
 
   useEffect(() => {
     fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(u); setLoading(false) })
@@ -150,12 +150,12 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
 
 // ── Features Tab ──────────────────────────────────────────────────
 function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [projects, setProjects]   = useState<Project[]>([])
-  const [features, setFeatures]   = useState<Feature[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [features, setFeatures] = useState<Feature[]>([])
   const [projectId, setProjectId] = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [showForm, setShowForm]   = useState(false)
-  const [saving, setSaving]       = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', mandays: '1', planned_start: '', planned_end: '' })
 
   useEffect(() => {
@@ -285,14 +285,14 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
 
 // ── Branding Tab ──────────────────────────────────────────────────
 function BrandingTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [form, setForm]           = useState({ brand_name: '', brand_logo_url: '', login_bg_url: '', theme_color: 'blue' })
-  const [saving, setSaving]       = useState(false)
+  const [form, setForm] = useState({ brand_name: '', brand_logo_url: '', login_bg_url: '', theme_color: 'blue' })
+  const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadingBg, setUploadingBg] = useState(false)
-  const [preview, setPreview]     = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const [bgPreview, setBgPreview] = useState<string | null>(null)
-  const fileInputRef              = useRef<HTMLInputElement>(null)
-  const bgInputRef                = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const bgInputRef = useRef<HTMLInputElement>(null)
 
   const COLORS = ['blue', 'indigo', 'violet', 'emerald', 'rose', 'orange', 'slate']
   const COLOR_PREVIEW: Record<string, string> = {
@@ -589,13 +589,13 @@ function DatabaseTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
 
 // ── Backup & Restore Tab ──────────────────────────────────────────
 function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [backups, setBackups]         = useState<any[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [creating, setCreating]       = useState(false)
-  const [restoring, setRestoring]     = useState<string | null>(null)
-  const [uploading, setUploading]     = useState(false)
+  const [backups, setBackups] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [restoring, setRestoring] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null)
-  const fileInputRef                  = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function loadBackups() {
     setLoading(true)
@@ -725,11 +725,11 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
 
 // ── Audit Logs Tab ────────────────────────────────────────────────
 function AuditLogsTab() {
-  const [logs, setLogs]         = useState<any[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [logs, setLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [filterAction, setFilterAction] = useState('')
-  const [filterUser, setFilterUser]     = useState('')
-  const [users, setUsers]       = useState<{ id: number; name: string }[]>([])
+  const [filterUser, setFilterUser] = useState('')
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
     fetch('/api/admin/users').then(r => r.json()).then(setUsers)
@@ -739,20 +739,20 @@ function AuditLogsTab() {
     setLoading(true)
     const params = new URLSearchParams()
     if (filterAction) params.set('action', filterAction)
-    if (filterUser)   params.set('user_id', filterUser)
+    if (filterUser) params.set('user_id', filterUser)
     fetch(`/api/audit-logs?${params}`).then(r => r.json()).then(d => { setLogs(d); setLoading(false) })
   }, [filterAction, filterUser])
 
   const ACTION_COLORS: Record<string, string> = {
-    CREATE:          'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-    UPDATE:          'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
-    DELETE:          'bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-    EXPORT:          'bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400',
-    LOGIN:           'bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400',
-    LOGOUT:          'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
+    CREATE: 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+    UPDATE: 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+    DELETE: 'bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+    EXPORT: 'bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400',
+    LOGIN: 'bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400',
+    LOGOUT: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
     CHANGE_PASSWORD: 'bg-orange-50 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-    BACKUP:          'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
-    RESTORE:         'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
+    BACKUP: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
+    RESTORE: 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400',
   }
 
   const ALL_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'EXPORT', 'LOGIN', 'LOGOUT', 'CHANGE_PASSWORD', 'BACKUP', 'RESTORE']
@@ -849,11 +849,10 @@ export default function SettingsPage() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === tab
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${activeTab === tab
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
+              }`}
           >
             {tab}
           </button>
@@ -862,11 +861,11 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       {activeTab === 'Team Members' && <TeamTab showToast={showToast} />}
-      {activeTab === 'Branding'     && <BrandingTab showToast={showToast} />}
-      {activeTab === 'Email'        && <EmailTab showToast={showToast} />}
-      {activeTab === 'Database'        && <DatabaseTab showToast={showToast} />}
+      {activeTab === 'Branding' && <BrandingTab showToast={showToast} />}
+      {activeTab === 'Email' && <EmailTab showToast={showToast} />}
+      {activeTab === 'Database' && <DatabaseTab showToast={showToast} />}
       {activeTab === 'Backup & Restore' && <BackupTab showToast={showToast} />}
-      {activeTab === 'Audit Logs'      && <AuditLogsTab />}
+      {activeTab === 'Audit Logs' && <AuditLogsTab />}
     </Layout>
   )
 }

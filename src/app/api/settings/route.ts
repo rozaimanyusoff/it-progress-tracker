@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     dbPort = settings.db_port ?? url.port ?? '5432'
     dbName = settings.db_name ?? url.pathname.replace('/', '')
     dbUser = settings.db_user ?? url.username
-  } catch {}
+  } catch { }
 
   // Merge env-based email defaults (never expose SMTP_PASS or DB password)
   return NextResponse.json({

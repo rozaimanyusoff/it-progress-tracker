@@ -14,6 +14,7 @@ model User {
   role                     Role            @default(member)
   initials                 String?
   contact_number           String?
+  avatar_url               String?
   is_active                Boolean         @default(false)
   activation_token         String?         @unique
   activation_token_expiry  DateTime?
