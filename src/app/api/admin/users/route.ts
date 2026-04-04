@@ -20,6 +20,12 @@ export async function GET() {
       role: true,
       is_active: true,
       created_at: true,
+      unit_id: true,
+      dept_id: true,
+      company_id: true,
+      unit: { select: { id: true, name: true } },
+      department: { select: { id: true, name: true } },
+      company: { select: { id: true, name: true } },
     },
   })
 

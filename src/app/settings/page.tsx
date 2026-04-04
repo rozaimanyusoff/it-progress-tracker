@@ -3,9 +3,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
+import { Pencil, Trash2, PauseCircle, PlayCircle } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────
-type User = { id: number; name: string; email: string; role: string; is_active: boolean }
+type OrgItem = { id: number; name: string }
+type User = {
+  id: number; name: string; email: string; role: string; is_active: boolean
+  unit_id: number | null; dept_id: number | null; company_id: number | null
+  unit: OrgItem | null; department: OrgItem | null; company: OrgItem | null
+}
 type Feature = {
   id: number; title: string; description: string | null; mandays: number
   planned_start: string; planned_end: string; status: string
@@ -18,7 +24,7 @@ type Settings = {
   smtp_host: string; smtp_port: string; smtp_user: string; smtp_from: string
 }
 
-const TABS = ['Team Members', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
+const TABS = ['Team Members', 'Organisation', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
 type Tab = typeof TABS[number]
 
 const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -33,6 +39,130 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   )
 }
 
+// ── Edit User Modal ───────────────────────────────────────────────
+function EditUserModal({ user, onClose, onSaved, showToast }: {
+  user: User
+  onClose: () => void
+  onSaved: (updated: User) => void
+  showToast: (t: 'success' | 'error', m: string) => void
+}) {
+  const [form, setForm] = useState({
+    name: user.name,
+    role: user.role,
+    unit_id: user.unit_id ?? '',
+    dept_id: user.dept_id ?? '',
+    company_id: user.company_id ?? '',
+  })
+  const [units, setUnits] = useState<OrgItem[]>([])
+  const [depts, setDepts] = useState<OrgItem[]>([])
+  const [companies, setCompanies] = useState<OrgItem[]>([])
+  const [newUnit, setNewUnit] = useState(''); const [newDept, setNewDept] = useState(''); const [newCompany, setNewCompany] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/org').then(r => r.json()).then(d => { setUnits(d.units ?? []); setDepts(d.depts ?? []); setCompanies(d.companies ?? []) })
+  }, [])
+
+  async function createOrg(type: string, name: string, setter: (items: OrgItem[]) => void, fieldKey: string) {
+    if (!name.trim()) return
+    const res = await fetch('/api/org', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, name: name.trim() }) })
+    if (res.ok) {
+      const item: OrgItem = await res.json()
+      setter(prev => [...prev, item].sort((a, b) => a.name.localeCompare(b.name)))
+      setForm(f => ({ ...f, [fieldKey]: item.id }))
+      if (type === 'unit') setNewUnit('')
+      if (type === 'dept') setNewDept('')
+      if (type === 'company') setNewCompany('')
+    } else showToast('error', (await res.json()).error || 'Failed to create')
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true)
+    const res = await fetch(`/api/admin/users/${user.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: form.name,
+        role: form.role,
+        unit_id: form.unit_id ? Number(form.unit_id) : null,
+        dept_id: form.dept_id ? Number(form.dept_id) : null,
+        company_id: form.company_id ? Number(form.company_id) : null,
+      }),
+    })
+    setSaving(false)
+    if (res.ok) { onSaved(await res.json()); showToast('success', `${form.name} updated`) }
+    else showToast('error', (await res.json()).error || 'Failed to update')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="w-full max-w-lg bg-white dark:bg-navy-800 rounded-xl shadow-2xl border border-slate-200 dark:border-navy-700 p-6">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">Edit User — {user.email}</h2>
+        <form onSubmit={handleSave} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2"><label className={labelClass}>Full Name</label><input required className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div><label className={labelClass}>Role</label>
+              <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                <option value="member">Member</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Unit */}
+          <div>
+            <label className={labelClass}>Unit</label>
+            <div className="flex gap-2">
+              <select className={inputClass} value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))}>
+                <option value="">— None —</option>
+                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2 mt-1.5">
+              <input className={`${inputClass} text-xs`} placeholder="Create new unit..." value={newUnit} onChange={e => setNewUnit(e.target.value)} />
+              <button type="button" onClick={() => createOrg('unit', newUnit, setUnits, 'unit_id')} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 shrink-0">+ Add</button>
+            </div>
+          </div>
+
+          {/* Dept */}
+          <div>
+            <label className={labelClass}>Department</label>
+            <div className="flex gap-2">
+              <select className={inputClass} value={form.dept_id} onChange={e => setForm(f => ({ ...f, dept_id: e.target.value }))}>
+                <option value="">— None —</option>
+                {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2 mt-1.5">
+              <input className={`${inputClass} text-xs`} placeholder="Create new department..." value={newDept} onChange={e => setNewDept(e.target.value)} />
+              <button type="button" onClick={() => createOrg('dept', newDept, setDepts, 'dept_id')} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 shrink-0">+ Add</button>
+            </div>
+          </div>
+
+          {/* Company */}
+          <div>
+            <label className={labelClass}>Company</label>
+            <div className="flex gap-2">
+              <select className={inputClass} value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
+                <option value="">— None —</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2 mt-1.5">
+              <input className={`${inputClass} text-xs`} placeholder="Create new company..." value={newCompany} onChange={e => setNewCompany(e.target.value)} />
+              <button type="button" onClick={() => createOrg('company', newCompany, setCompanies, 'company_id')} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 shrink-0">+ Add</button>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg text-sm transition-colors">{saving ? 'Saving...' : 'Save Changes'}</button>
+            <button type="button" onClick={onClose} className="flex-1 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Team Members Tab ──────────────────────────────────────────────
 function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
   const [users, setUsers] = useState<User[]>([])
@@ -40,6 +170,7 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', role: 'member' })
+  const [editUser, setEditUser] = useState<User | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(Array.isArray(u) ? u : []); setLoading(false) })
@@ -68,6 +199,19 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
     else showToast('error', 'Failed to remove user')
   }
 
+  async function handleToggleSuspend(user: User) {
+    const nextActive = !user.is_active
+    const res = await fetch(`/api/admin/users/${user.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: nextActive }),
+    })
+    if (res.ok) {
+      const updated: User = await res.json()
+      setUsers(prev => prev.map(u => u.id === user.id ? updated : u))
+      showToast('success', `${user.name} ${nextActive ? 'reactivated' : 'suspended'}`)
+    } else showToast('error', 'Failed to update user')
+  }
+
   async function handleResend(user: User) {
     const res = await fetch(`/api/admin/users/${user.id}`, { method: 'POST' })
     if (res.ok) showToast('success', `Activation email resent to ${user.email}`)
@@ -78,6 +222,15 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
 
   return (
     <div>
+      {editUser && (
+        <EditUserModal
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onSaved={updated => { setUsers(prev => prev.map(u => u.id === updated.id ? updated : u)); setEditUser(null) }}
+          showToast={showToast}
+        />
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">{users.length} member{users.length !== 1 ? 's' : ''}</p>
         <button onClick={() => setShowForm(v => !v)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
@@ -110,19 +263,27 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
           <thead>
             <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
               <th className="text-left px-5 py-3 font-medium">Name</th>
+              <th className="text-left px-5 py-3 font-medium hidden sm:table-cell">Unit / Dept</th>
               <th className="text-left px-5 py-3 font-medium">Role</th>
               <th className="text-left px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            {users.length === 0 && <tr><td colSpan={4} className="px-5 py-10 text-center text-slate-400">No members yet.</td></tr>}
+            {users.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400">No members yet.</td></tr>}
             {users.map(user => (
               <tr key={user.id} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">{user.name[0].toUpperCase()}</div>
                     <div><p className="font-medium text-slate-900 dark:text-white">{user.name}</p><p className="text-xs text-slate-400">{user.email}</p></div>
+                  </div>
+                </td>
+                <td className="px-5 py-3 hidden sm:table-cell">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {user.unit?.name && <p>{user.unit.name}</p>}
+                    {user.department?.name && <p className="text-slate-400">{user.department.name}</p>}
+                    {!user.unit && !user.department && <span className="text-slate-300 dark:text-slate-600">—</span>}
                   </div>
                 </td>
                 <td className="px-5 py-3">
@@ -134,15 +295,113 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
                     : <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>Pending</span>}
                 </td>
                 <td className="px-5 py-3 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    {!user.is_active && <button onClick={() => handleResend(user)} className="px-3 py-1 text-xs text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded-md hover:border-blue-500">Resend</button>}
-                    <button onClick={() => handleDelete(user)} className="px-3 py-1 text-xs text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 rounded-md hover:border-red-400">Remove</button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    {!user.is_active && (
+                      <button onClick={() => handleResend(user)} className="px-2.5 py-1 text-xs text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded-md hover:border-blue-500">Resend</button>
+                    )}
+                    <button onClick={() => setEditUser(user)} title="Edit" className="p-1.5 rounded-md text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleToggleSuspend(user)} title={user.is_active ? 'Suspend' : 'Reactivate'}
+                      className={`p-1.5 rounded-md transition-colors ${user.is_active ? 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20' : 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'}`}>
+                      {user.is_active ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => handleDelete(user)} title="Remove" className="p-1.5 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Organisation Tab (Unit / Dept / Company CRUD) ─────────────────
+type OrgSection = { type: 'unit' | 'dept' | 'company'; label: string }
+const ORG_SECTIONS: OrgSection[] = [
+  { type: 'unit', label: 'Units' },
+  { type: 'dept', label: 'Departments' },
+  { type: 'company', label: 'Companies' },
+]
+
+function OrgCrudSection({ type, label, showToast }: OrgSection & { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [items, setItems] = useState<OrgItem[]>([])
+  const [newName, setNewName] = useState('')
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/org?type=${type}`).then(r => r.json()).then(d => setItems(Array.isArray(d) ? d : []))
+  }, [type])
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault(); if (!newName.trim()) return; setSaving(true)
+    const res = await fetch('/api/org', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, name: newName.trim() }) })
+    setSaving(false)
+    if (res.ok) { const item = await res.json(); setItems(prev => [...prev, item].sort((a, b) => a.name.localeCompare(b.name))); setNewName(''); showToast('success', `${label.slice(0, -1)} added`) }
+    else showToast('error', (await res.json()).error || 'Failed to create')
+  }
+
+  async function handleUpdate(id: number) {
+    if (!editName.trim()) return
+    const res = await fetch(`/api/org/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, name: editName.trim() }) })
+    if (res.ok) { const item = await res.json(); setItems(prev => prev.map(i => i.id === id ? item : i).sort((a, b) => a.name.localeCompare(b.name))); setEditId(null); showToast('success', 'Updated') }
+    else showToast('error', (await res.json()).error || 'Failed to update')
+  }
+
+  async function handleDelete(id: number, name: string) {
+    if (!confirm(`Delete "${name}"?`)) return
+    const res = await fetch(`/api/org/${id}?type=${type}`, { method: 'DELETE' })
+    if (res.ok) { setItems(prev => prev.filter(i => i.id !== id)); showToast('success', 'Deleted') }
+    else showToast('error', 'Failed to delete')
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 overflow-hidden">
+      <div className="px-5 py-3 bg-slate-50 dark:bg-navy-700 border-b border-slate-200 dark:border-navy-700">
+        <h3 className="font-semibold text-slate-800 dark:text-white text-sm">{label}</h3>
+      </div>
+      <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
+        {items.length === 0 && <p className="text-xs text-slate-400 py-2 text-center">No {label.toLowerCase()} yet.</p>}
+        {items.map(item => (
+          <div key={item.id} className="flex items-center gap-2">
+            {editId === item.id ? (
+              <>
+                <input autoFocus className={`${inputClass} flex-1 text-xs`} value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleUpdate(item.id); if (e.key === 'Escape') setEditId(null) }} />
+                <button onClick={() => handleUpdate(item.id)} className="px-2 py-1 text-xs bg-blue-600 text-white rounded">Save</button>
+                <button onClick={() => setEditId(null)} className="px-2 py-1 text-xs bg-slate-200 dark:bg-navy-700 text-slate-600 dark:text-slate-300 rounded">Cancel</button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-sm text-slate-800 dark:text-slate-200">{item.name}</span>
+                <button onClick={() => { setEditId(item.id); setEditName(item.name) }} className="p-1 text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={() => handleDelete(item.id, item.name)} className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="px-4 pb-4 border-t border-slate-100 dark:border-navy-700 pt-3">
+        <form onSubmit={handleCreate} className="flex gap-2">
+          <input className={`${inputClass} flex-1 text-xs`} placeholder={`Add new ${label.slice(0, -1).toLowerCase()}...`} value={newName} onChange={e => setNewName(e.target.value)} />
+          <button type="submit" disabled={saving || !newName.trim()} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 shrink-0">+ Add</button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function OrgTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-slate-500 dark:text-slate-400">Manage organisation structure options used when editing user profiles.</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {ORG_SECTIONS.map(s => <OrgCrudSection key={s.type} {...s} showToast={showToast} />)}
       </div>
     </div>
   )
@@ -861,6 +1120,7 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       {activeTab === 'Team Members' && <TeamTab showToast={showToast} />}
+      {activeTab === 'Organisation' && <OrgTab showToast={showToast} />}
       {activeTab === 'Branding' && <BrandingTab showToast={showToast} />}
       {activeTab === 'Email' && <EmailTab showToast={showToast} />}
       {activeTab === 'Database' && <DatabaseTab showToast={showToast} />}

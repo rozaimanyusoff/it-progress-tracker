@@ -19,6 +19,12 @@ model User {
   activation_token         String?         @unique
   activation_token_expiry  DateTime?
   created_at               DateTime        @default(now())
+  unit_id                  Int?
+  dept_id                  Int?
+  company_id               Int?
+  unit                     OrgUnit?        @relation(fields: [unit_id], references: [id], onDelete: SetNull)
+  department               Department?     @relation(fields: [dept_id], references: [id], onDelete: SetNull)
+  company                  Company?        @relation(fields: [company_id], references: [id], onDelete: SetNull)
   project_assignments      ProjectAssignee[]
   updates                  ProjectUpdate[]
   issues                   Issue[]
@@ -32,6 +38,27 @@ model User {
   task_history             TaskHistory[]
   resolved_issues          Issue[]        @relation("IssueResolver")
   issue_history            IssueHistory[] @relation("IssueHistoryUser")
+}
+
+model OrgUnit {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  created_at DateTime @default(now())
+  users      User[]
+}
+
+model Department {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  created_at DateTime @default(now())
+  users      User[]
+}
+
+model Company {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  created_at DateTime @default(now())
+  users      User[]
 }
 
 model Project {
