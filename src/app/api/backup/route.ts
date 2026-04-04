@@ -46,19 +46,19 @@ export async function POST(req: NextRequest) {
 
   const [users, projects, modules, projectAssignees, projectUpdates, issues, features,
     featureDevelopers, tasks, taskUpdates, auditLogs, appSettings] = await Promise.all([
-    prisma.user.findMany(),
-    prisma.project.findMany(),
-    prisma.module.findMany(),
-    prisma.projectAssignee.findMany(),
-    prisma.projectUpdate.findMany(),
-    prisma.issue.findMany(),
-    prisma.feature.findMany(),
-    prisma.featureDeveloper.findMany(),
-    prisma.task.findMany(),
-    prisma.taskUpdate.findMany(),
-    prisma.auditLog.findMany(),
-    prisma.appSetting.findMany(),
-  ])
+      prisma.user.findMany(),
+      prisma.project.findMany(),
+      prisma.module.findMany(),
+      prisma.projectAssignee.findMany(),
+      prisma.projectUpdate.findMany(),
+      prisma.issue.findMany(),
+      prisma.feature.findMany(),
+      prisma.featureDeveloper.findMany(),
+      prisma.task.findMany(),
+      prisma.taskUpdate.findMany(),
+      prisma.auditLog.findMany(),
+      prisma.appSetting.findMany(),
+    ])
 
   const backup = {
     version: 1,
