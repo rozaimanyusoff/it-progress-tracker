@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import { Pencil, Trash2, PauseCircle, PlayCircle } from 'lucide-react'
+import OrgSelect from '@/components/OrgSelect'
 
 // ── Types ─────────────────────────────────────────────────────────
 type OrgItem = { id: number; name: string }
@@ -48,33 +49,21 @@ function EditUserModal({ user, onClose, onSaved, showToast }: {
 }) {
   const [form, setForm] = useState({
     name: user.name,
+    initials: '',
+    contact_number: '',
     role: user.role,
-    unit_id: user.unit_id ?? '',
-    dept_id: user.dept_id ?? '',
-    company_id: user.company_id ?? '',
+    unit_id: user.unit_id,
+    dept_id: user.dept_id,
+    company_id: user.company_id,
   })
-  const [units, setUnits] = useState<OrgItem[]>([])
-  const [depts, setDepts] = useState<OrgItem[]>([])
-  const [companies, setCompanies] = useState<OrgItem[]>([])
-  const [newUnit, setNewUnit] = useState(''); const [newDept, setNewDept] = useState(''); const [newCompany, setNewCompany] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Fetch existing profile fields (initials, contact_number) from admin context
   useEffect(() => {
-    fetch('/api/org').then(r => r.json()).then(d => { setUnits(d.units ?? []); setDepts(d.depts ?? []); setCompanies(d.companies ?? []) })
-  }, [])
-
-  async function createOrg(type: string, name: string, setter: (items: OrgItem[]) => void, fieldKey: string) {
-    if (!name.trim()) return
-    const res = await fetch('/api/org', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, name: name.trim() }) })
-    if (res.ok) {
-      const item: OrgItem = await res.json()
-      setter(prev => [...prev, item].sort((a, b) => a.name.localeCompare(b.name)))
-      setForm(f => ({ ...f, [fieldKey]: item.id }))
-      if (type === 'unit') setNewUnit('')
-      if (type === 'dept') setNewDept('')
-      if (type === 'company') setNewCompany('')
-    } else showToast('error', (await res.json()).error || 'Failed to create')
-  }
+    fetch(`/api/admin/users/${user.id}/profile`).then(r => r.json()).then(d => {
+      setForm(f => ({ ...f, initials: d.initials ?? '', contact_number: d.contact_number ?? '' }))
+    }).catch(() => {})
+  }, [user.id])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setSaving(true)
@@ -82,10 +71,12 @@ function EditUserModal({ user, onClose, onSaved, showToast }: {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: form.name,
+        initials: form.initials,
+        contact_number: form.contact_number,
         role: form.role,
-        unit_id: form.unit_id ? Number(form.unit_id) : null,
-        dept_id: form.dept_id ? Number(form.dept_id) : null,
-        company_id: form.company_id ? Number(form.company_id) : null,
+        unit_id: form.unit_id,
+        dept_id: form.dept_id,
+        company_id: form.company_id,
       }),
     })
     setSaving(false)
@@ -95,64 +86,34 @@ function EditUserModal({ user, onClose, onSaved, showToast }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-lg bg-white dark:bg-navy-800 rounded-xl shadow-2xl border border-slate-200 dark:border-navy-700 p-6">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">Edit User — {user.email}</h2>
+      <div className="w-full max-w-lg bg-white dark:bg-navy-800 rounded-xl shadow-2xl border border-slate-200 dark:border-navy-700 p-6 max-h-[90vh] overflow-y-auto">
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Edit User</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
+        </div>
         <form onSubmit={handleSave} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2"><label className={labelClass}>Full Name</label><input required className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
-            <div><label className={labelClass}>Role</label>
-              <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                <option value="member">Member</option>
-                <option value="manager">Manager</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Unit */}
           <div>
-            <label className={labelClass}>Unit</label>
-            <div className="flex gap-2">
-              <select className={inputClass} value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))}>
-                <option value="">— None —</option>
-                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
-            <div className="flex gap-2 mt-1.5">
-              <input className={`${inputClass} text-xs`} placeholder="Create new unit..." value={newUnit} onChange={e => setNewUnit(e.target.value)} />
-              <button type="button" onClick={() => createOrg('unit', newUnit, setUnits, 'unit_id')} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 shrink-0">+ Add</button>
-            </div>
+            <label className={labelClass}>Full Name *</label>
+            <input required className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ahmad Razif" />
           </div>
-
-          {/* Dept */}
           <div>
-            <label className={labelClass}>Department</label>
-            <div className="flex gap-2">
-              <select className={inputClass} value={form.dept_id} onChange={e => setForm(f => ({ ...f, dept_id: e.target.value }))}>
-                <option value="">— None —</option>
-                {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
-            <div className="flex gap-2 mt-1.5">
-              <input className={`${inputClass} text-xs`} placeholder="Create new department..." value={newDept} onChange={e => setNewDept(e.target.value)} />
-              <button type="button" onClick={() => createOrg('dept', newDept, setDepts, 'dept_id')} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 shrink-0">+ Add</button>
-            </div>
+            <label className={labelClass}>Initials <span className="text-slate-400 font-normal">(up to 3 chars)</span></label>
+            <input className={inputClass} value={form.initials} onChange={e => setForm(f => ({ ...f, initials: e.target.value.toUpperCase().slice(0, 3) }))} placeholder="AR" maxLength={3} />
           </div>
-
-          {/* Company */}
           <div>
-            <label className={labelClass}>Company</label>
-            <div className="flex gap-2">
-              <select className={inputClass} value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
-                <option value="">— None —</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div className="flex gap-2 mt-1.5">
-              <input className={`${inputClass} text-xs`} placeholder="Create new company..." value={newCompany} onChange={e => setNewCompany(e.target.value)} />
-              <button type="button" onClick={() => createOrg('company', newCompany, setCompanies, 'company_id')} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600 shrink-0">+ Add</button>
-            </div>
+            <label className={labelClass}>Contact Number</label>
+            <input className={inputClass} value={form.contact_number} onChange={e => setForm(f => ({ ...f, contact_number: e.target.value }))} placeholder="+60 12-345 6789" type="tel" />
           </div>
-
+          <div>
+            <label className={labelClass}>Role</label>
+            <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="member">Member</option>
+              <option value="manager">Manager</option>
+            </select>
+          </div>
+          <OrgSelect type="unit" label="Unit" value={form.unit_id} onChange={id => setForm(f => ({ ...f, unit_id: id }))} />
+          <OrgSelect type="dept" label="Department" value={form.dept_id} onChange={id => setForm(f => ({ ...f, dept_id: id }))} />
+          <OrgSelect type="company" label="Company" value={form.company_id} onChange={id => setForm(f => ({ ...f, company_id: id }))} />
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg text-sm transition-colors">{saving ? 'Saving...' : 'Save Changes'}</button>
             <button type="button" onClick={onClose} className="flex-1 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">Cancel</button>
@@ -1109,8 +1070,8 @@ export default function SettingsPage() {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${activeTab === tab
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
           >
             {tab}

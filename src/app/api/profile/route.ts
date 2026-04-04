@@ -10,7 +10,14 @@ export async function GET() {
 
    const user = await prisma.user.findUnique({
       where: { id: Number((session.user as any).id) },
-      select: { id: true, name: true, email: true, role: true, initials: true, contact_number: true, avatar_url: true },
+      select: {
+         id: true, name: true, email: true, role: true,
+         initials: true, contact_number: true, avatar_url: true,
+         unit_id: true, dept_id: true, company_id: true,
+         unit: { select: { id: true, name: true } },
+         department: { select: { id: true, name: true } },
+         company: { select: { id: true, name: true } },
+      },
    })
    if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
    return NextResponse.json(user)
@@ -21,7 +28,7 @@ export async function PATCH(req: NextRequest) {
    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
    const body = await req.json()
-   const { name, initials, contact_number, current_password, new_password } = body
+   const { name, initials, contact_number, unit_id, dept_id, company_id, current_password, new_password } = body
 
    const userId = Number((session.user as any).id)
    const user = await prisma.user.findUnique({ where: { id: userId } })
@@ -39,6 +46,9 @@ export async function PATCH(req: NextRequest) {
    if (contact_number !== undefined) {
       data.contact_number = contact_number?.trim() || null
    }
+   if ('unit_id' in body) data.unit_id = unit_id ?? null
+   if ('dept_id' in body) data.dept_id = dept_id ?? null
+   if ('company_id' in body) data.company_id = company_id ?? null
 
    if (new_password) {
       if (!current_password) return NextResponse.json({ error: 'Current password is required' }, { status: 400 })
@@ -52,7 +62,14 @@ export async function PATCH(req: NextRequest) {
    const updated = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, name: true, email: true, role: true, initials: true, contact_number: true, avatar_url: true },
+      select: {
+         id: true, name: true, email: true, role: true,
+         initials: true, contact_number: true, avatar_url: true,
+         unit_id: true, dept_id: true, company_id: true,
+         unit: { select: { id: true, name: true } },
+         department: { select: { id: true, name: true } },
+         company: { select: { id: true, name: true } },
+      },
    })
 
    await prisma.auditLog.create({

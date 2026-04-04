@@ -75,6 +75,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.name !== undefined) data.name = body.name
   if (body.role !== undefined) data.role = body.role
   if (body.is_active !== undefined) data.is_active = body.is_active
+  if (body.initials !== undefined) data.initials = body.initials || null
+  if (body.contact_number !== undefined) data.contact_number = body.contact_number || null
   if ('unit_id' in body) data.unit_id = body.unit_id ?? null
   if ('dept_id' in body) data.dept_id = body.dept_id ?? null
   if ('company_id' in body) data.company_id = body.company_id ?? null
@@ -102,4 +104,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   })
 
   return NextResponse.json(updated)
+}
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session || (session.user as any).role !== 'manager') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const { id } = await params
+  const user = await prisma.user.findUnique({
+    where: { id: Number(id) },
+    select: { initials: true, contact_number: true },
+  })
+  if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json(user)
 }

@@ -3,13 +3,19 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLayout from '@/components/Layout'
+import OrgSelect from '@/components/OrgSelect'
 
 export default function NewProjectPage() {
   const { data: session } = useSession()
   const router = useRouter()
   const [members, setMembers] = useState<any[]>([])
   const [form, setForm] = useState({
-    title: '', description: '', assignee_ids: [] as number[], start_date: '', deadline: '', status: 'Pending',
+    title: '', description: '',
+    assignee_ids: [] as number[],
+    start_date: '', deadline: '', status: 'Pending',
+    unit_id: null as number | null,
+    dept_id: null as number | null,
+    company_id: null as number | null,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -119,6 +125,9 @@ export default function NewProjectPage() {
                 <option value="OnHold">On Hold</option>
               </select>
             </div>
+            <OrgSelect type="unit" label="Unit" value={form.unit_id} onChange={id => setForm(f => ({ ...f, unit_id: id }))} />
+            <OrgSelect type="dept" label="Department" value={form.dept_id} onChange={id => setForm(f => ({ ...f, dept_id: id }))} />
+            <OrgSelect type="company" label="Company" value={form.company_id} onChange={id => setForm(f => ({ ...f, company_id: id }))} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors">
                 {saving ? 'Creating...' : 'Create Project'}

@@ -3,11 +3,19 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
+import OrgSelect from '@/components/OrgSelect'
 
 const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
 const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1'
 
-type Profile = { id: number; name: string; email: string; role: string; initials: string | null; contact_number: string | null; avatar_url: string | null }
+type Profile = {
+   id: number; name: string; email: string; role: string
+   initials: string | null; contact_number: string | null; avatar_url: string | null
+   unit_id: number | null; dept_id: number | null; company_id: number | null
+   unit: { id: number; name: string } | null
+   department: { id: number; name: string } | null
+   company: { id: number; name: string } | null
+}
 
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
    return (
@@ -21,7 +29,7 @@ export default function ProfilePage() {
    const { data: session, status } = useSession()
    const router = useRouter()
    const [profile, setProfile] = useState<Profile | null>(null)
-   const [form, setForm] = useState({ name: '', initials: '', contact_number: '' })
+   const [form, setForm] = useState({ name: '', initials: '', contact_number: '', unit_id: null as number | null, dept_id: null as number | null, company_id: null as number | null })
    const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' })
    const [saving, setSaving] = useState(false)
    const [savingPw, setSavingPw] = useState(false)
@@ -39,7 +47,14 @@ export default function ProfilePage() {
       if (!session) return
       fetch('/api/profile').then(r => r.json()).then((p: Profile) => {
          setProfile(p)
-         setForm({ name: p.name, initials: p.initials ?? '', contact_number: p.contact_number ?? '' })
+         setForm({
+            name: p.name,
+            initials: p.initials ?? '',
+            contact_number: p.contact_number ?? '',
+            unit_id: p.unit_id ?? null,
+            dept_id: p.dept_id ?? null,
+            company_id: p.company_id ?? null,
+         })
          if (p.avatar_url) setAvatarPreview(p.avatar_url)
       })
    }, [session])
@@ -74,7 +89,14 @@ export default function ProfilePage() {
       const res = await fetch('/api/profile', {
          method: 'PATCH',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ name: form.name, initials: form.initials, contact_number: form.contact_number }),
+         body: JSON.stringify({
+            name: form.name,
+            initials: form.initials,
+            contact_number: form.contact_number,
+            unit_id: form.unit_id,
+            dept_id: form.dept_id,
+            company_id: form.company_id,
+         }),
       })
       setSaving(false)
       if (res.ok) {
@@ -188,6 +210,9 @@ export default function ProfilePage() {
                         type="tel"
                      />
                   </div>
+                  <OrgSelect type="unit" label="Unit" value={form.unit_id} onChange={id => setForm(f => ({ ...f, unit_id: id }))} />
+                  <OrgSelect type="dept" label="Department" value={form.dept_id} onChange={id => setForm(f => ({ ...f, dept_id: id }))} />
+                  <OrgSelect type="company" label="Company" value={form.company_id} onChange={id => setForm(f => ({ ...f, company_id: id }))} />
                   <button type="submit" disabled={saving} className="w-full px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
                      {saving ? 'Saving...' : 'Save Changes'}
                   </button>

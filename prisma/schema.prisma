@@ -41,24 +41,27 @@ model User {
 }
 
 model OrgUnit {
-  id         Int      @id @default(autoincrement())
-  name       String   @unique
-  created_at DateTime @default(now())
+  id         Int       @id @default(autoincrement())
+  name       String    @unique
+  created_at DateTime  @default(now())
   users      User[]
+  projects   Project[]
 }
 
 model Department {
-  id         Int      @id @default(autoincrement())
-  name       String   @unique
-  created_at DateTime @default(now())
+  id         Int       @id @default(autoincrement())
+  name       String    @unique
+  created_at DateTime  @default(now())
   users      User[]
+  projects   Project[]
 }
 
 model Company {
-  id         Int      @id @default(autoincrement())
-  name       String   @unique
-  created_at DateTime @default(now())
+  id         Int       @id @default(autoincrement())
+  name       String    @unique
+  created_at DateTime  @default(now())
   users      User[]
+  projects   Project[]
 }
 
 model Project {
@@ -73,6 +76,12 @@ model Project {
   actual_end        DateTime?
   health_status     HealthStatus?
   created_at        DateTime          @default(now())
+  unit_id           Int?
+  dept_id           Int?
+  company_id        Int?
+  unit              OrgUnit?          @relation(fields: [unit_id], references: [id], onDelete: SetNull)
+  department        Department?       @relation(fields: [dept_id], references: [id], onDelete: SetNull)
+  company           Company?          @relation(fields: [company_id], references: [id], onDelete: SetNull)
   updates           ProjectUpdate[]
   issues            Issue[]
   modules           Module[]

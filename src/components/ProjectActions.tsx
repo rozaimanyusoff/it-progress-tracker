@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle } from 'lucide-react'
+import OrgSelect from '@/components/OrgSelect'
 
 interface ProjectActionsProps {
   project: {
@@ -12,6 +13,9 @@ interface ProjectActionsProps {
     start_date: string
     deadline: string
     assignees: { user: { id: number; name: string } }[]
+    unit_id?: number | null
+    dept_id?: number | null
+    company_id?: number | null
   }
   isManager: boolean
   onIssueCreated?: () => void
@@ -30,6 +34,9 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
     start_date: project.start_date.slice(0, 10),
     deadline: project.deadline.slice(0, 10),
     assignee_ids: project.assignees.map(a => a.user.id),
+    unit_id: project.unit_id ?? null as number | null,
+    dept_id: project.dept_id ?? null as number | null,
+    company_id: project.company_id ?? null as number | null,
   })
   const [members, setMembers] = useState<{ id: number; name: string }[]>([])
 
@@ -290,6 +297,9 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{editForm.assignee_ids.length} member(s) selected</p>
                 )}
               </div>
+              <OrgSelect type="unit" label="Unit" value={editForm.unit_id} onChange={id => setEditForm(f => ({ ...f, unit_id: id }))} />
+              <OrgSelect type="dept" label="Department" value={editForm.dept_id} onChange={id => setEditForm(f => ({ ...f, dept_id: id }))} />
+              <OrgSelect type="company" label="Company" value={editForm.company_id} onChange={id => setEditForm(f => ({ ...f, company_id: id }))} />
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={submitEdit} disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium disabled:opacity-50">

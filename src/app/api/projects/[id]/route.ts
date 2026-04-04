@@ -40,6 +40,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       status: body.status,
       start_date: body.start_date ? new Date(body.start_date) : undefined,
       deadline: body.deadline ? new Date(body.deadline) : undefined,
+      unit_id: 'unit_id' in body ? (body.unit_id ?? null) : undefined,
+      dept_id: 'dept_id' in body ? (body.dept_id ?? null) : undefined,
+      company_id: 'company_id' in body ? (body.company_id ?? null) : undefined,
       assignees: assigneeIds.length > 0
         ? {
           deleteMany: {},
