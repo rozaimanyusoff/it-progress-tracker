@@ -42,7 +42,7 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
   const [form, setForm] = useState({ name: '', email: '', role: 'member' })
 
   useEffect(() => {
-    fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(u); setLoading(false) })
+    fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(Array.isArray(u) ? u : []); setLoading(false) })
   }, [])
 
   async function handleAdd(e: React.FormEvent) {
@@ -54,7 +54,7 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
     setSaving(false)
     if (res.ok) {
       const fresh = await fetch('/api/admin/users').then(r => r.json())
-      setUsers(fresh); setForm({ name: '', email: '', role: 'member' }); setShowForm(false)
+      setUsers(Array.isArray(fresh) ? fresh : []); setForm({ name: '', email: '', role: 'member' }); setShowForm(false)
       showToast('success', `Invitation sent to ${form.email}`)
     } else {
       showToast('error', (await res.json()).error || 'Failed to add user')
@@ -732,7 +732,7 @@ function AuditLogsTab() {
   const [users, setUsers] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
-    fetch('/api/admin/users').then(r => r.json()).then(setUsers)
+    fetch('/api/admin/users').then(r => r.json()).then(u => setUsers(Array.isArray(u) ? u : []))
   }, [])
 
   useEffect(() => {
