@@ -6,7 +6,8 @@ import { writeFile, mkdir, readdir, stat } from 'fs/promises'
 import path from 'path'
 
 const UPLOAD_PUBLIC_URL = process.env.UPLOAD_PUBLIC_URL ?? '/uploads'
-const BACKUP_DIR = path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL, 'backup')
+const UPLOAD_BASE = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL)
+const BACKUP_DIR = path.join(UPLOAD_BASE, 'backup')
 
 async function requireManager(req: NextRequest) {
   const session = await getServerSession(authOptions)
