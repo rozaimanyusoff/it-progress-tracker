@@ -39,10 +39,6 @@ export default function NewProjectPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (form.assignee_ids.length === 0) {
-      setError('Please select at least one assignee.')
-      return
-    }
     setSaving(true)
     setError('')
     const res = await fetch('/api/projects', {
@@ -82,7 +78,7 @@ export default function NewProjectPage() {
               <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={`${inputClass} h-24 resize-none`} />
             </div>
             <div>
-              <label className={labelClass}>Assignees *</label>
+              <label className={labelClass}>Assignees <span className="text-slate-400 font-normal">(optional — can be assigned later)</span></label>
               <div className="rounded-lg border border-slate-300 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 divide-y divide-slate-200 dark:divide-navy-700">
                 {members.map(m => (
                   <label key={m.id} className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-navy-800 transition-colors">

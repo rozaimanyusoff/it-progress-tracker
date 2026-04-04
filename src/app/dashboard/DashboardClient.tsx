@@ -122,7 +122,9 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                       <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm truncate mb-1">{project.description}</p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-slate-400 dark:text-slate-500">
-                      <span>Assignees: {project.assignees.map(a => a.user.name).join(', ') || '—'}</span>
+                      {project.assignees.length > 0 && (
+                        <span>Assignees: {project.assignees.map(a => a.user.name).join(', ')}</span>
+                      )}
                       <span>Deadline: {new Date(project.deadline).toLocaleDateString()}</span>
                       {project._count.issues > 0 && (
                         <span className="text-red-500 dark:text-red-400">{project._count.issues} open issue(s)</span>
