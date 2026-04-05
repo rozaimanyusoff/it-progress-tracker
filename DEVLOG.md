@@ -11,6 +11,49 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-05 — Module Template System (Parts 1–5) + Production Seed Guide
+
+### Skema DB (Prisma)
+- Tambah enum `DeliverableType`: `database | backend | frontend | testing | documentation`
+- Tambah model `ModuleTemplate` (code, display_name, description, icon, sort_order, is_active)
+- Tambah model `TemplateDeliverable` (FK → ModuleTemplate, cascade delete)
+- Tambah model `TemplateTask` (FK → TemplateDeliverable, cascade delete, est_mandays Decimal(4,1))
+- Jalankan migration: `20260405145155_add_module_templates`
+
+### Seed Data
+- Tambah `prisma/seed-templates.ts` — seed 4 standard templates:
+  - `simple_crud` — 5 deliverables, 17 tasks
+  - `workflow_approval` — 6 deliverables, 27 tasks
+  - `reporting_heavy` — 5 deliverables, 18 tasks
+  - `master_data` — 5 deliverables, 17 tasks
+
+### API Routes
+- `GET /api/module-templates` — senarai semua template aktif (dengan deliverables & tasks)
+- `GET /api/module-templates/[id]/preview` — preview struktur template tanpa create apa-apa
+- `POST /api/modules/from-template` — create module + deliverables + tasks dari template terpilih (sokong customizations: toggle include, rename, est_mandays override, assignee per task, custom tasks)
+- `POST /api/modules/[id]/save-as-template` — simpan module sedia ada sebagai custom template baru
+
+### UI
+- Tambah `src/components/ModuleTemplateModal.tsx` — modal 2 langkah:
+  - **Step 1**: Grid 2×2 template cards (icon, nama, description, bilangan deliverable/task) + pilihan "Start empty"
+  - **Step 2**: Panel kiri (nama module, assignee, tarikh) + panel kanan (senarai deliverable boleh toggle/rename/remove, task boleh toggle/rename/remove/ubah est_mandays/tetapkan assignee, tambah custom task/deliverable)
+- Update `DeliverableSection.tsx`:
+  - Butang "+ Module" kini buka template picker modal (bukan terus modal kosong)
+  - Modal edit module kekal untuk edit sahaja
+  - Tambah butang 🔖 "Save as template" pada header setiap module
+  - Save-as-template modal: masukkan nama template → POST ke `/api/modules/[id]/save-as-template`
+
+---
+
+### Deploy ke Production
+- Jalankan migration dahulu: `npx prisma migrate deploy`
+- Kemudian seed template: `npx tsx prisma/seed-templates.ts`
+- Seed template adalah **idempotent** — selamat dijalankan semula (delete + reinsert)
+- Seed utama (`prisma/seed.ts`) **jangan** dijalankan di production (mengandungi test users)
+- Boleh tambah script dalam `package.json`: `"db:seed:templates": "tsx prisma/seed-templates.ts"`
+
+---
+
 ## 2026-04-04 — Profil pengguna, upload avatar, latar belakang halaman login, pembaikan seed DB
 
 ### Skop

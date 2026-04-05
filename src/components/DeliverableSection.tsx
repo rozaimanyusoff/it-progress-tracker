@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import FeatureTaskList from './FeatureTaskList'
-import { Pencil, Trash2, X } from 'lucide-react'
+import ModuleTemplateModal from './ModuleTemplateModal'
+import { Pencil, Trash2, X, Bookmark } from 'lucide-react'
 
 interface Task { status: string; est_mandays?: number | null; _count?: { issues: number } }
 
@@ -220,11 +221,20 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   const [delivRecords, setDeliverableRecords] = useState<DeliverableRecord[]>([])
   const [titleIsCustom, setTitleIsCustom] = useState(false)
 
-  // Module modal
+  // Template modal (add new module via template picker)
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+
+  // Module modal (edit existing module only)
   const [showModuleModal, setShowModuleModal] = useState(false)
   const [editingModule, setEditingModule] = useState<Module | null>(null)
   const [moduleForm, setModuleForm] = useState(BLANK_MODULE_FORM)
   const [moduleSaving, setModuleSaving] = useState(false)
+
+  // Save-as-template modal
+  const [saveAsTemplateModule, setSaveAsTemplateModule] = useState<Module | null>(null)
+  const [saveAsTemplateName, setSaveAsTemplateName] = useState('')
+  const [saveAsTemplateSaving, setSaveAsTemplateSaving] = useState(false)
+  const [saveAsTemplateError, setSaveAsTemplateError] = useState('')
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'module' | 'deliverable'; id: number; title: string } | null>(null)
@@ -378,9 +388,37 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
 
   // ── Module CRUD ───────────────────────────────────────────────
   function openAddModule() {
-    setEditingModule(null)
-    setModuleForm(BLANK_MODULE_FORM)
-    setShowModuleModal(true)
+    setShowTemplateModal(true)
+  }
+
+  function handleTemplateCreated(module: any, newDeliverables: any[]) {
+    setShowTemplateModal(false)
+    setModules(prev => [...prev, module])
+    setDeliverables(prev => [...prev, ...newDeliverables])
+    setExpandedModules(prev => new Set([...prev, module.id]))
+  }
+
+  async function saveModuleAsTemplate() {
+    if (!saveAsTemplateModule || !saveAsTemplateName.trim()) return
+    setSaveAsTemplateSaving(true)
+    setSaveAsTemplateError('')
+    try {
+      const res = await fetch(`/api/modules/${saveAsTemplateModule.id}/save-as-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: saveAsTemplateName.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to save template')
+      }
+      setSaveAsTemplateModule(null)
+      setSaveAsTemplateName('')
+    } catch (e: any) {
+      setSaveAsTemplateError(e.message)
+    } finally {
+      setSaveAsTemplateSaving(false)
+    }
   }
 
   function openEditModule(m: Module) {
@@ -604,6 +642,13 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                         className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300"
                       >
                         + Deliverable
+                      </button>
+                      <button
+                        onClick={() => { setSaveAsTemplateModule(mod); setSaveAsTemplateName(mod.title); setSaveAsTemplateError('') }}
+                        className="p-1 border border-indigo-200 dark:border-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400"
+                        title="Save as template"
+                      >
+                        <Bookmark className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
                         <Pencil className="w-3.5 h-3.5" />
@@ -884,12 +929,12 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
         </div>
       )}
 
-      {/* ── Module Modal ── */}
+      {/* ── Module Modal (edit only) ── */}
       {showModuleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{editingModule ? 'Edit Module' : 'Add Module'}</h2>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Edit Module</h2>
               <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-4">
@@ -929,7 +974,55 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
             <div className="flex justify-end gap-3 mt-5">
               <button onClick={() => setShowModuleModal(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50">Cancel</button>
               <button onClick={saveModule} disabled={moduleSaving || !moduleForm.title.trim() || !!(moduleForm.start_date && moduleForm.end_date && moduleForm.start_date > moduleForm.end_date)} className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
-                {moduleSaving ? 'Saving...' : editingModule ? 'Save Changes' : 'Create Module'}
+                {moduleSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Template Modal (new module) ── */}
+      {showTemplateModal && (
+        <ModuleTemplateModal
+          projectId={projectId}
+          members={members}
+          projectStartDate={projectStartDate}
+          projectDeadline={projectDeadline}
+          onClose={() => setShowTemplateModal(false)}
+          onCreated={handleTemplateCreated}
+        />
+      )}
+
+      {/* ── Save as Template Modal ── */}
+      {saveAsTemplateModule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Save as Template</h2>
+              <button onClick={() => setSaveAsTemplateModule(null)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Save <strong className="text-slate-700 dark:text-slate-200">{saveAsTemplateModule.title}</strong> and its deliverables as a reusable template.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Template Name *</label>
+              <input
+                className={inputClass}
+                value={saveAsTemplateName}
+                onChange={e => setSaveAsTemplateName(e.target.value)}
+                placeholder="e.g. Leave Application Module"
+                autoFocus
+              />
+            </div>
+            {saveAsTemplateError && <p className="text-sm text-red-500 mb-3">{saveAsTemplateError}</p>}
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setSaveAsTemplateModule(null)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700">Cancel</button>
+              <button
+                onClick={saveModuleAsTemplate}
+                disabled={saveAsTemplateSaving || !saveAsTemplateName.trim()}
+                className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-50"
+              >
+                {saveAsTemplateSaving ? 'Saving...' : 'Save Template'}
               </button>
             </div>
           </div>

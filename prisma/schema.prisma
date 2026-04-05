@@ -391,3 +391,44 @@ model TaskUpdate {
   task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [user_id], references: [id])
 }
+
+// ── Module Template System ────────────────────────────────────────
+
+enum DeliverableType {
+  database
+  backend
+  frontend
+  testing
+  documentation
+}
+
+model ModuleTemplate {
+  id           Int                   @id @default(autoincrement())
+  code         String                @unique @db.VarChar(50)
+  display_name String                @db.VarChar(100)
+  description  String?
+  icon         String?               @db.VarChar(50)
+  sort_order   Int                   @default(0)
+  is_active    Boolean               @default(true)
+  created_at   DateTime              @default(now())
+  deliverables TemplateDeliverable[]
+}
+
+model TemplateDeliverable {
+  id          Int             @id @default(autoincrement())
+  template_id Int
+  name        String          @db.VarChar(255)
+  type        DeliverableType
+  sort_order  Int             @default(0)
+  template    ModuleTemplate  @relation(fields: [template_id], references: [id], onDelete: Cascade)
+  tasks       TemplateTask[]
+}
+
+model TemplateTask {
+  id                      Int                 @id @default(autoincrement())
+  template_deliverable_id Int
+  name                    String              @db.VarChar(500)
+  est_mandays             Decimal?            @db.Decimal(4, 1)
+  sort_order              Int                 @default(0)
+  deliverable             TemplateDeliverable @relation(fields: [template_deliverable_id], references: [id], onDelete: Cascade)
+}
