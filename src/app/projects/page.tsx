@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import AppLayout from '@/components/Layout'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -17,8 +18,16 @@ type Feature = {
   status: string
   project_links?: { project: { id: number; title: string } }[]
 }
-type DeliverableRecord = {
-  id: number; title: string; description: string | null; created_at: string
+type TemplateTask = {
+  id: number; name: string; est_mandays: number | null; sort_order: number
+}
+type TemplateDeliverable = {
+  id: number; name: string; type: string; sort_order: number; tasks: TemplateTask[]
+}
+type ModuleTemplate = {
+  id: number; code: string; display_name: string; description: string | null
+  icon: string | null; sort_order: number; is_active: boolean
+  deliverables: TemplateDeliverable[]
 }
 
 const TABS = ['Projects', 'New Project', 'Features', 'Deliverables'] as const
@@ -33,6 +42,15 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
       {msg}
     </div>
   )
+}
+
+// ── Type badge colours (shared with ModuleTemplateModal) ──────────
+const TYPE_BADGE: Record<string, string> = {
+  database: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  backend: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  frontend: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  testing: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  documentation: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 }
 
 // ── Status helpers ─────────────────────────────────────────────────
@@ -407,90 +425,273 @@ function FeaturesTab({ showToast }: { showToast: (t: 'success' | 'error', m: str
 }
 
 // ── Deliverables Tab ──────────────────────────────────────────────
+const DELIV_TYPES = ['database', 'backend', 'frontend', 'testing', 'documentation'] as const
+type DelivType = typeof DELIV_TYPES[number]
+
+type TaskDraft = { name: string; est_mandays: string }
+type DelivDraft = { name: string; type: DelivType; tasks: TaskDraft[] }
+
 function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
-  const [records, setRecords] = useState<DeliverableRecord[]>([])
+  const [templates, setTemplates] = useState<ModuleTemplate[]>([])
   const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  const [expandedDeliverables, setExpandedDeliverables] = useState<Record<number, boolean>>({})
+
+  // Create form
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '' })
-  const [editingRecord, setEditingRecord] = useState<DeliverableRecord | null>(null)
+  const [tplName, setTplName] = useState('')
+  const [tplIcon, setTplIcon] = useState('')
+  const [tplDesc, setTplDesc] = useState('')
+  const [delivDrafts, setDelivDrafts] = useState<DelivDraft[]>([
+    { name: '', type: 'frontend', tasks: [] },
+  ])
 
-  function fetchRecords() {
+  // Edit
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editIcon, setEditIcon] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+
+  function fetchTemplates() {
     setLoading(true)
-    fetch('/api/deliverable-records').then(r => r.json()).then(data => {
-      setRecords(Array.isArray(data) ? data : [])
+    fetch('/api/module-templates').then(r => r.json()).then(data => {
+      const list: ModuleTemplate[] = Array.isArray(data) ? data : []
+      setTemplates(list)
+      const exp: Record<number, boolean> = {}
+      list.forEach(t => { exp[t.id] = true })
+      setExpanded(exp)
       setLoading(false)
     })
   }
 
-  useEffect(() => { fetchRecords() }, [])
+  useEffect(() => { fetchTemplates() }, [])
 
-  async function handleSave(e: React.FormEvent) {
+  function toggleTemplate(id: number) {
+    setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function toggleDeliverable(id: number) {
+    setExpandedDeliverables(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  // ── Deliverable drafts helpers ────────────────────────────────
+  function addDelivRow() {
+    setDelivDrafts(prev => [...prev, { name: '', type: 'frontend', tasks: [] }])
+  }
+  function removeDelivRow(i: number) {
+    setDelivDrafts(prev => prev.filter((_, idx) => idx !== i))
+  }
+  function updateDeliv(i: number, patch: Partial<DelivDraft>) {
+    setDelivDrafts(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
+  }
+  function addTaskRow(di: number) {
+    setDelivDrafts(prev => prev.map((d, idx) => idx === di
+      ? { ...d, tasks: [...d.tasks, { name: '', est_mandays: '' }] }
+      : d))
+  }
+  function removeTaskRow(di: number, ti: number) {
+    setDelivDrafts(prev => prev.map((d, idx) => idx === di
+      ? { ...d, tasks: d.tasks.filter((_, j) => j !== ti) }
+      : d))
+  }
+  function updateTask(di: number, ti: number, patch: Partial<TaskDraft>) {
+    setDelivDrafts(prev => prev.map((d, idx) => idx === di
+      ? { ...d, tasks: d.tasks.map((t, j) => j === ti ? { ...t, ...patch } : t) }
+      : d))
+  }
+
+  // ── Create ────────────────────────────────────────────────────
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
+    if (!tplName.trim()) return
     setSaving(true)
-    const url = editingRecord ? `/api/deliverable-records/${editingRecord.id}` : '/api/deliverable-records'
-    const method = editingRecord ? 'PUT' : 'POST'
-    const res = await fetch(url, {
-      method, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: form.title, description: form.description || null }),
+    const res = await fetch('/api/module-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        display_name: tplName,
+        icon: tplIcon || null,
+        description: tplDesc || null,
+        deliverables: delivDrafts.filter(d => d.name.trim()).map(d => ({
+          name: d.name.trim(),
+          type: d.type,
+          tasks: d.tasks.filter(t => t.name.trim()).map(t => ({
+            name: t.name.trim(),
+            est_mandays: t.est_mandays ? Number(t.est_mandays) : null,
+          })),
+        })),
+      }),
     })
     setSaving(false)
     if (res.ok) {
-      fetchRecords()
-      setForm({ title: '', description: '' })
       setShowForm(false)
-      setEditingRecord(null)
-      showToast('success', editingRecord ? 'Record updated' : 'Record created')
+      setTplName(''); setTplIcon(''); setTplDesc('')
+      setDelivDrafts([{ name: '', type: 'frontend', tasks: [] }])
+      fetchTemplates()
+      showToast('success', 'Template created')
     } else {
-      showToast('error', (await res.json()).error || 'Failed to save')
+      showToast('error', (await res.json()).error || 'Failed to create')
     }
   }
 
-  async function handleDelete(id: number, title: string) {
-    if (!confirm(`Delete "${title}"?`)) return
-    const res = await fetch(`/api/deliverable-records/${id}`, { method: 'DELETE' })
-    if (res.ok) { fetchRecords(); showToast('success', 'Deleted') }
+  // ── Edit (name/icon/desc only) ────────────────────────────────
+  function openEdit(tpl: ModuleTemplate) {
+    setEditingId(tpl.id)
+    setEditName(tpl.display_name)
+    setEditIcon(tpl.icon ?? '')
+    setEditDesc(tpl.description ?? '')
+  }
+
+  async function handleEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editName.trim() || editingId == null) return
+    setSaving(true)
+    const res = await fetch(`/api/module-templates/${editingId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: editName, icon: editIcon || null, description: editDesc || null }),
+    })
+    setSaving(false)
+    if (res.ok) {
+      setEditingId(null)
+      fetchTemplates()
+      showToast('success', 'Template updated')
+    } else {
+      showToast('error', 'Failed to update')
+    }
+  }
+
+  // ── Delete ────────────────────────────────────────────────────
+  async function handleDelete(id: number, name: string) {
+    if (!confirm(`Delete template "${name}"? This will remove all its deliverables and tasks.`)) return
+    const res = await fetch(`/api/module-templates/${id}`, { method: 'DELETE' })
+    if (res.ok) { fetchTemplates(); showToast('success', 'Deleted') }
     else showToast('error', 'Failed to delete')
-  }
-
-  function openEdit(r: DeliverableRecord) {
-    setEditingRecord(r)
-    setForm({ title: r.title, description: r.description || '' })
-    setShowForm(true)
-  }
-
-  function cancelForm() {
-    setShowForm(false)
-    setEditingRecord(null)
-    setForm({ title: '', description: '' })
   }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400 flex-1">Reusable deliverable templates for use in projects.</p>
-        <button onClick={() => { cancelForm(); setShowForm(v => !v) }} className="btn-primary px-4 py-1.5 rounded-lg text-sm font-semibold">
-          + New Record
+      <div className="flex items-center gap-3 mb-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400 flex-1">
+          Module templates with pre-defined deliverables and tasks.
+        </p>
+        <button
+          onClick={() => setShowForm(v => !v)}
+          className="btn-primary px-4 py-1.5 rounded-lg text-sm font-semibold"
+        >
+          + New Template
         </button>
       </div>
 
+      {/* ── Create form ── */}
       {showForm && (
-        <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-5 mb-5">
-          <h3 className="font-semibold text-slate-800 dark:text-white mb-4 text-sm">{editingRecord ? 'Edit Record' : 'New Deliverable Record'}</h3>
-          <form onSubmit={handleSave} className="space-y-3">
-            <div>
-              <label className={labelClass}>Title *</label>
-              <input required className={inputClass} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Dashboard, User Management" />
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-5 mb-5 space-y-4">
+          <h3 className="font-semibold text-slate-800 dark:text-white text-sm">New Template</h3>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Icon (emoji)</label>
+                <input className={inputClass} value={tplIcon} onChange={e => setTplIcon(e.target.value)} placeholder="📦" maxLength={4} />
+              </div>
+              <div className="col-span-2">
+                <label className={labelClass}>Template Name *</label>
+                <input required className={inputClass} value={tplName} onChange={e => setTplName(e.target.value)} placeholder="e.g. Simple CRUD" />
+              </div>
             </div>
             <div>
               <label className={labelClass}>Description</label>
-              <textarea className={`${inputClass} resize-none`} rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+              <input className={inputClass} value={tplDesc} onChange={e => setTplDesc(e.target.value)} placeholder="Optional description" />
             </div>
+
+            {/* Deliverables */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className={labelClass}>Deliverables</label>
+                <button type="button" onClick={addDelivRow} className="text-xs text-blue-500 hover:text-blue-700">+ Add deliverable</button>
+              </div>
+              <div className="space-y-3">
+                {delivDrafts.map((d, di) => (
+                  <div key={di} className="rounded-lg border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-3 space-y-2">
+                    <div className="flex gap-2">
+                      <select
+                        className={`${inputClass} w-36 shrink-0`}
+                        value={d.type}
+                        onChange={e => updateDeliv(di, { type: e.target.value as DelivType })}
+                      >
+                        {DELIV_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <input
+                        className={inputClass}
+                        value={d.name}
+                        onChange={e => updateDeliv(di, { name: e.target.value })}
+                        placeholder="Deliverable name, e.g. Backend API"
+                      />
+                      <button type="button" onClick={() => removeDelivRow(di)} className="text-red-400 hover:text-red-600 text-xs shrink-0 px-1">✕</button>
+                    </div>
+                    {/* Tasks */}
+                    <div className="ml-2 space-y-1.5">
+                      {d.tasks.map((t, ti) => (
+                        <div key={ti} className="flex gap-2 items-center">
+                          <input
+                            className={`${inputClass} flex-1`}
+                            value={t.name}
+                            onChange={e => updateTask(di, ti, { name: e.target.value })}
+                            placeholder="Task name"
+                          />
+                          <input
+                            type="number" step="0.5" min="0"
+                            className={`${inputClass} w-20`}
+                            value={t.est_mandays}
+                            onChange={e => updateTask(di, ti, { est_mandays: e.target.value })}
+                            placeholder="md"
+                          />
+                          <button type="button" onClick={() => removeTaskRow(di, ti)} className="text-red-400 hover:text-red-600 text-xs shrink-0 px-1">✕</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => addTaskRow(di)} className="text-xs text-blue-500 hover:text-blue-700">+ task</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-3 pt-1">
               <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
-                {saving ? 'Saving...' : editingRecord ? 'Save Changes' : 'Add Record'}
+                {saving ? 'Saving...' : 'Create Template'}
               </button>
-              <button type="button" onClick={cancelForm} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
+              <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Edit form ── */}
+      {editingId != null && (
+        <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-5 mb-5">
+          <h3 className="font-semibold text-slate-800 dark:text-white text-sm mb-3">Edit Template</h3>
+          <form onSubmit={handleEdit} className="space-y-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Icon</label>
+                <input className={inputClass} value={editIcon} onChange={e => setEditIcon(e.target.value)} placeholder="📦" maxLength={4} />
+              </div>
+              <div className="col-span-2">
+                <label className={labelClass}>Name *</label>
+                <input required className={inputClass} value={editName} onChange={e => setEditName(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>Description</label>
+              <input className={inputClass} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+            </div>
+            <div className="flex gap-3">
+              <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button type="button" onClick={() => setEditingId(null)} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
                 Cancel
               </button>
             </div>
@@ -499,32 +700,78 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
       )}
 
       {loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
-      {!loading && records.length === 0 && <p className="text-slate-400 text-sm py-8 text-center">No deliverable records yet.</p>}
-      {!loading && records.length > 0 && (
-        <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
-                <th className="text-left px-5 py-3 font-medium">Title</th>
-                <th className="text-left px-5 py-3 font-medium">Description</th>
-                <th className="text-right px-5 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map(r => (
-                <tr key={r.id} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700">
-                  <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{r.title}</td>
-                  <td className="px-5 py-3 text-xs text-slate-400 max-w-xs truncate">{r.description || <span className="italic">—</span>}</td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openEdit(r)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
-                      <button onClick={() => handleDelete(r.id, r.title)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Delete</button>
+      {!loading && templates.length === 0 && (
+        <p className="text-slate-400 text-sm py-8 text-center">No deliverable templates yet.</p>
+      )}
+      {!loading && templates.length > 0 && (
+        <div className="space-y-3">
+          {templates.map(tpl => {
+            const totalTasks = tpl.deliverables.reduce((s, d) => s + d.tasks.length, 0)
+            return (
+              <div key={tpl.id} className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl overflow-hidden">
+                {/* Template header */}
+                <div className="flex items-center gap-3 px-5 py-4">
+                  <button onClick={() => toggleTemplate(tpl.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                    <span className="text-2xl leading-none">{tpl.icon ?? '📦'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">{tpl.display_name}</p>
+                      {tpl.description && (
+                        <p className="text-xs text-slate-400 mt-0.5 truncate">{tpl.description}</p>
+                      )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="text-xs text-slate-400 shrink-0">
+                      {tpl.deliverables.length} deliverable{tpl.deliverables.length !== 1 ? 's' : ''} · {totalTasks} task{totalTasks !== 1 ? 's' : ''}
+                    </span>
+                    {expanded[tpl.id]
+                      ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                      : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
+                  </button>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => openEdit(tpl)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
+                    <button onClick={() => handleDelete(tpl.id, tpl.display_name)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Delete</button>
+                  </div>
+                </div>
+
+                {/* Deliverables */}
+                {expanded[tpl.id] && (
+                  <div className="border-t border-slate-100 dark:border-navy-700 divide-y divide-slate-100 dark:divide-navy-700">
+                    {tpl.deliverables.map(d => (
+                      <div key={d.id}>
+                        <button
+                          onClick={() => toggleDeliverable(d.id)}
+                          className="w-full flex items-center gap-2.5 px-5 py-2.5 hover:bg-slate-50 dark:hover:bg-navy-700/40 transition-colors text-left"
+                        >
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${TYPE_BADGE[d.type] ?? TYPE_BADGE.frontend}`}>
+                            {d.type}
+                          </span>
+                          <span className="flex-1 text-sm font-medium text-slate-800 dark:text-white">{d.name}</span>
+                          <span className="text-xs text-slate-400 shrink-0">{d.tasks.length} task{d.tasks.length !== 1 ? 's' : ''}</span>
+                          {expandedDeliverables[d.id]
+                            ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                        </button>
+
+                        {/* Tasks */}
+                        {expandedDeliverables[d.id] && d.tasks.length > 0 && (
+                          <div className="px-5 pb-3 space-y-1.5 bg-slate-50 dark:bg-navy-900/30">
+                            {d.tasks.map(task => (
+                              <div key={task.id} className="flex items-center gap-2 text-xs">
+                                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0 ml-1" />
+                                <span className="flex-1 text-slate-700 dark:text-slate-300">{task.name}</span>
+                                {task.est_mandays != null && (
+                                  <span className="text-slate-400 shrink-0">{task.est_mandays}d</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

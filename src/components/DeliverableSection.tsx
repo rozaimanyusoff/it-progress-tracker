@@ -42,10 +42,9 @@ interface Member {
   name: string
 }
 
-interface DeliverableRecord {
-  id: number
-  title: string
-  description?: string | null
+interface TemplateDeliverableOption {
+  name: string
+  templateName: string
 }
 
 interface Props {
@@ -218,7 +217,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   const [delivForm, setDelivForm] = useState(BLANK_DELIVERABLE_FORM)
   const [delivSaving, setDelivSaving] = useState(false)
   const [delivError, setDelivError] = useState('')
-  const [delivRecords, setDeliverableRecords] = useState<DeliverableRecord[]>([])
+  const [delivRecords, setDeliverableRecords] = useState<TemplateDeliverableOption[]>([])
   const [titleIsCustom, setTitleIsCustom] = useState(false)
 
   // Template modal (add new module via template picker)
@@ -244,7 +243,18 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
   useEffect(() => {
     fetchAll()
     fetch('/api/users').then(r => r.json()).then(setMembers)
-    fetch('/api/deliverable-records').then(r => r.json()).then(d => setDeliverableRecords(Array.isArray(d) ? d : []))
+    fetch('/api/module-templates').then(r => r.json()).then((templates: any[]) => {
+      if (!Array.isArray(templates)) return
+      const opts: TemplateDeliverableOption[] = []
+      templates.forEach(tpl => {
+        (tpl.deliverables ?? []).forEach((d: any) => {
+          if (!opts.some(o => o.name === d.name)) {
+            opts.push({ name: d.name, templateName: tpl.display_name })
+          }
+        })
+      })
+      setDeliverableRecords(opts)
+    })
   }, [projectId])
 
   async function fetchAll() {
@@ -284,7 +294,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
       is_actual_override: d.is_actual_override ?? false,
     })
     setDelivError('')
-    setTitleIsCustom(!delivRecords.some(r => r.title === d.title))
+    setTitleIsCustom(!delivRecords.some(r => r.name === d.title))
     setShowDelivModal(true)
   }
 
@@ -764,13 +774,12 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                         setTitleIsCustom(true)
                         setDelivForm({ ...delivForm, title: '' })
                       } else {
-                        const rec = delivRecords.find(r => r.title === e.target.value)
-                        setDelivForm({ ...delivForm, title: e.target.value, description: rec?.description || delivForm.description })
+                        setDelivForm({ ...delivForm, title: e.target.value })
                       }
                     }}
                   >
                     <option value="">-- Select deliverable --</option>
-                    {delivRecords.map(r => <option key={r.id} value={r.title}>{r.title}</option>)}
+                    {delivRecords.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
                     <option value="__new__">＋ Add new title...</option>
                   </select>
                 ) : (

@@ -11,6 +11,34 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-06 — Deliverables Tab: Template Management + Form Dropdown Fix
+
+### Masalah yang diselesaikan
+- Data template yang di-seed (`TemplateDeliverable`) tidak muncul dalam dropdown "Title" pada form "New Deliverable" di project details — sebab form membaca dari `DeliverableRecord` (jadual kosong), bukan dari `ModuleTemplate`
+- Tab Deliverables dalam `/projects` hanya papar `DeliverableRecord` (kosong), bukan data template sebenar
+
+### API Routes
+- Tambah `POST /api/module-templates` — cipta template baru dengan nested deliverables & tasks dalam satu request
+- Tambah `PUT /api/module-templates/[id]` — kemaskini nama, icon, dan description template
+- Tambah `DELETE /api/module-templates/[id]` — padam template (cascade ke deliverables & tasks)
+
+### Perubahan UI
+
+**`src/components/DeliverableSection.tsx`**
+- Form "New Deliverable" → dropdown "Title" kini membaca nama deliverable dari `/api/module-templates` (bukan `/api/deliverable-records`)
+- Nama unik dikumpul merentasi semua template aktif — sebarang template baru yang ditambah akan muncul automatik dalam dropdown
+
+**`src/app/projects/page.tsx` — Tab Deliverables**
+- Papar data `ModuleTemplate` dengan struktur boleh-kembang: template → deliverables (dengan type badge) → tasks (dengan est. mandays)
+- Tambah butang **"+ New Template"** — form inline untuk cipta template baru:
+  - Nama, icon (emoji), description
+  - Boleh tambah berbilang deliverables (pilih type: database/backend/frontend/testing/documentation)
+  - Setiap deliverable boleh ada senarai tasks dengan nama dan est. mandays
+- Tambah butang **Edit** per template — kemaskini nama, icon, description
+- Tambah butang **Delete** per template — padam dengan konfirmasi (cascade delete)
+
+---
+
 ## 2026-04-05 — Module Template System (Parts 1–5) + Production Seed Guide
 
 ### Skema DB (Prisma)
