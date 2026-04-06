@@ -38,6 +38,10 @@ model User {
   task_history             TaskHistory[]
   resolved_issues          Issue[]        @relation("IssueResolver")
   issue_history            IssueHistory[] @relation("IssueHistoryUser")
+  created_meetings         Meeting[]      @relation("MeetingCreator")
+  meeting_attendances      MeetingAttendee[]
+  meeting_agenda_pics      MeetingAgendaPIC[]
+  meeting_followups        MeetingFollowup[]
 }
 
 model OrgUnit {
@@ -431,4 +435,61 @@ model TemplateTask {
   est_mandays             Decimal?            @db.Decimal(4, 1)
   sort_order              Int                 @default(0)
   deliverable             TemplateDeliverable @relation(fields: [template_deliverable_id], references: [id], onDelete: Cascade)
+}
+
+// ── Planner / Meeting ─────────────────────────────────────────────
+
+model Meeting {
+  id         Int               @id @default(autoincrement())
+  title      String
+  venue      String?
+  date       DateTime          @db.Date
+  time_from  String            @db.VarChar(5)
+  time_to    String            @db.VarChar(5)
+  created_by Int
+  created_at DateTime          @default(now())
+  creator    User              @relation("MeetingCreator", fields: [created_by], references: [id])
+  attendees  MeetingAttendee[]
+  agendas    MeetingAgenda[]
+}
+
+model MeetingAttendee {
+  meeting_id Int
+  user_id    Int
+  attended   Boolean  @default(false)
+  meeting    Meeting  @relation(fields: [meeting_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  @@id([meeting_id, user_id])
+}
+
+model MeetingAgenda {
+  id         Int                @id @default(autoincrement())
+  meeting_id Int
+  sort_no    Int                @default(0)
+  agenda     String
+  issued_by  String?
+  time       String?            @db.VarChar(10)
+  details    String?
+  action     String?
+  meeting    Meeting            @relation(fields: [meeting_id], references: [id], onDelete: Cascade)
+  pics       MeetingAgendaPIC[]
+  followups  MeetingFollowup[]
+}
+
+model MeetingAgendaPIC {
+  agenda_id  Int
+  user_id    Int
+  agenda     MeetingAgenda @relation(fields: [agenda_id], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  @@id([agenda_id, user_id])
+}
+
+model MeetingFollowup {
+  id         Int           @id @default(autoincrement())
+  agenda_id  Int
+  note       String
+  created_by Int
+  created_at DateTime      @default(now())
+  agenda     MeetingAgenda @relation(fields: [agenda_id], references: [id], onDelete: Cascade)
+  creator    User          @relation(fields: [created_by], references: [id])
 }

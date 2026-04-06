@@ -104,6 +104,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     est_mandays: '',
   })
   const [addingTask, setAddingTask] = useState(false)
+  const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [editingEstMandays, setEditingEstMandays] = useState<string>('')
@@ -124,6 +125,14 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
       due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
     }))
   }, [deliverablePlannedEnd])
+
+  useEffect(() => {
+    if (!showAddTask || !deliverableId) return
+    fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
+      .then(r => r.json())
+      .then(data => setPresetTasks(Array.isArray(data) ? data : []))
+      .catch(() => setPresetTasks([]))
+  }, [showAddTask, deliverableId])
 
   async function fetchTasks() {
     setLoading(true)
@@ -294,6 +303,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
           targetStatus={pendingStatus.target}
           actualStartDate={pendingTask.actual_start}
           dueDate={pendingTask.due_date}
+          isManager={userRole === 'manager'}
           onConfirm={handleStatusConfirm}
           onCancel={() => setPendingStatus(null)}
         />
@@ -522,6 +532,24 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
               </button>
             ) : (
               <div className="space-y-2 py-1">
+                {presetTasks.length > 0 && (
+                  <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset tasks — click to use:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {presetTasks.map((t, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setNewTask(p => ({ ...p, title: t.name, est_mandays: t.est_mandays != null ? String(t.est_mandays) : p.est_mandays }))}
+                          className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                        >
+                          {t.name}
+                          {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 flex-wrap">
                   <input
                     className={`${inputClass} flex-1 min-w-40`}
@@ -588,7 +616,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     {addingTask ? 'Adding...' : 'Save'}
                   </button>
                   <button
-                    onClick={() => { setShowAddTask(false); setNewTask({ title: '', assignee: '', due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
+                    onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', assignee: '', due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
                     className="text-slate-400 hover:text-slate-600 text-sm"
                   >
                     Cancel

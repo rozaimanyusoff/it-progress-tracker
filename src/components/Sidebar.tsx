@@ -4,13 +4,14 @@ import { usePathname } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, Kanban, Users, FolderKanban, AlertCircle, Settings, BarChart3, X, Sun, Moon, LogOut, LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Kanban, Users, FolderKanban, AlertCircle, Settings, BarChart3, X, Sun, Moon, LogOut, CalendarDays, LucideIcon } from 'lucide-react'
 
 const navItems: { href: string; label: string; Icon: LucideIcon; roles: string[]; activePrefixes?: string[] }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, roles: ['manager', 'member'], activePrefixes: ['/dashboard'] },
   { href: '/kanban', label: 'My Kanban', Icon: Kanban, roles: ['member'] },
   { href: '/kanban', label: 'Team Kanban', Icon: Users, roles: ['manager'] },
-  { href: '/projects', label: 'Projects', Icon: FolderKanban, roles: ['manager'], activePrefixes: ['/projects'] },
+  { href: '/projects', label: 'Projects', Icon: FolderKanban, roles: ['manager', 'member'], activePrefixes: ['/projects'] },
+  { href: '/planner', label: 'Planner', Icon: CalendarDays, roles: ['manager', 'member'], activePrefixes: ['/planner'] },
   { href: '/issues', label: 'Issues', Icon: AlertCircle, roles: ['manager', 'member'] },
   { href: '/settings', label: 'Settings', Icon: Settings, roles: ['manager'] },
   { href: '/export', label: 'Report', Icon: BarChart3, roles: ['manager'] },

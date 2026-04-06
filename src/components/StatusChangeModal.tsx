@@ -12,6 +12,8 @@ interface Props {
    actualStartDate?: string | null
    /** Pass due_date so InProgress can validate minimum date */
    dueDate?: string | null
+   /** Managers can select any past date without min restriction */
+   isManager?: boolean
    onConfirm: (taskId: number, newStatus: string, opts: { actual_date?: string; blocked_reason?: string }) => void
    onCancel: () => void
 }
@@ -53,7 +55,7 @@ function todayStr() {
    return new Date().toISOString().slice(0, 10)
 }
 
-export default function StatusChangeModal({ taskId, taskTitle, targetStatus, actualStartDate, dueDate, onConfirm, onCancel }: Props) {
+export default function StatusChangeModal({ taskId, taskTitle, targetStatus, actualStartDate, dueDate, isManager, onConfirm, onCancel }: Props) {
    const cfg = STATUS_CONFIG[targetStatus]
    const [date, setDate] = useState(todayStr())
    const [reason, setReason] = useState('')
@@ -70,9 +72,9 @@ export default function StatusChangeModal({ taskId, taskTitle, targetStatus, act
 
    // Date constraints
    const today = todayStr()
-   const minDate = (() => {
+   // Managers can backdate freely — only apply min restriction for members
+   const minDate = isManager ? undefined : (() => {
       if (targetStatus === 'InProgress') {
-         // Cannot be before (due_date - 90 days), but realistically just don't restrict too hard
          if (dueDate) {
             const d = new Date(dueDate)
             d.setDate(d.getDate() - 90)

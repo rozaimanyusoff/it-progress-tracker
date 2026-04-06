@@ -11,13 +11,29 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-06 — Bugfix: Meeting Create 500 Error
+
+### Masalah yang diselesaikan
+
+- `POST /api/meetings` gagal dengan `TypeError: Cannot read properties of undefined (reading 'create')` — Prisma client tidak mempunyai `meeting` model kerana client belum di-generate selepas schema dikemaskini dengan model `Meeting`, `MeetingAttendee`, `MeetingAgenda`, dll.
+
+### Penyelesaian
+
+- Jalankan `npx prisma generate` untuk regenerate Prisma Client supaya merangkumi model `Meeting` yang baru
+- Sahkan tiada pending migrations dengan `npx prisma migrate deploy` — semua 28 migrations sudah diapply
+- Restart dev server untuk pick up client yang baru
+
+---
+
 ## 2026-04-06 — Deliverables Tab: Template Management + Form Dropdown Fix
 
 ### Masalah yang diselesaikan
+
 - Data template yang di-seed (`TemplateDeliverable`) tidak muncul dalam dropdown "Title" pada form "New Deliverable" di project details — sebab form membaca dari `DeliverableRecord` (jadual kosong), bukan dari `ModuleTemplate`
 - Tab Deliverables dalam `/projects` hanya papar `DeliverableRecord` (kosong), bukan data template sebenar
 
 ### API Routes
+
 - Tambah `POST /api/module-templates` — cipta template baru dengan nested deliverables & tasks dalam satu request
 - Tambah `PUT /api/module-templates/[id]` — kemaskini nama, icon, dan description template
 - Tambah `DELETE /api/module-templates/[id]` — padam template (cascade ke deliverables & tasks)
@@ -25,15 +41,17 @@ Format: **terbaru di atas**.
 ### Perubahan UI
 
 **`src/components/DeliverableSection.tsx`**
+
 - Form "New Deliverable" → dropdown "Title" kini membaca nama deliverable dari `/api/module-templates` (bukan `/api/deliverable-records`)
 - Nama unik dikumpul merentasi semua template aktif — sebarang template baru yang ditambah akan muncul automatik dalam dropdown
 
 **`src/app/projects/page.tsx` — Tab Deliverables**
+
 - Papar data `ModuleTemplate` dengan struktur boleh-kembang: template → deliverables (dengan type badge) → tasks (dengan est. mandays)
 - Tambah butang **"+ New Template"** — form inline untuk cipta template baru:
-  - Nama, icon (emoji), description
-  - Boleh tambah berbilang deliverables (pilih type: database/backend/frontend/testing/documentation)
-  - Setiap deliverable boleh ada senarai tasks dengan nama dan est. mandays
+   - Nama, icon (emoji), description
+   - Boleh tambah berbilang deliverables (pilih type: database/backend/frontend/testing/documentation)
+   - Setiap deliverable boleh ada senarai tasks dengan nama dan est. mandays
 - Tambah butang **Edit** per template — kemaskini nama, icon, description
 - Tambah butang **Delete** per template — padam dengan konfirmasi (cascade delete)
 
@@ -42,6 +60,7 @@ Format: **terbaru di atas**.
 ## 2026-04-05 — Module Template System (Parts 1–5) + Production Seed Guide
 
 ### Skema DB (Prisma)
+
 - Tambah enum `DeliverableType`: `database | backend | frontend | testing | documentation`
 - Tambah model `ModuleTemplate` (code, display_name, description, icon, sort_order, is_active)
 - Tambah model `TemplateDeliverable` (FK → ModuleTemplate, cascade delete)
@@ -49,31 +68,35 @@ Format: **terbaru di atas**.
 - Jalankan migration: `20260405145155_add_module_templates`
 
 ### Seed Data
+
 - Tambah `prisma/seed-templates.ts` — seed 4 standard templates:
-  - `simple_crud` — 5 deliverables, 17 tasks
-  - `workflow_approval` — 6 deliverables, 27 tasks
-  - `reporting_heavy` — 5 deliverables, 18 tasks
-  - `master_data` — 5 deliverables, 17 tasks
+   - `simple_crud` — 5 deliverables, 17 tasks
+   - `workflow_approval` — 6 deliverables, 27 tasks
+   - `reporting_heavy` — 5 deliverables, 18 tasks
+   - `master_data` — 5 deliverables, 17 tasks
 
 ### API Routes
+
 - `GET /api/module-templates` — senarai semua template aktif (dengan deliverables & tasks)
 - `GET /api/module-templates/[id]/preview` — preview struktur template tanpa create apa-apa
 - `POST /api/modules/from-template` — create module + deliverables + tasks dari template terpilih (sokong customizations: toggle include, rename, est_mandays override, assignee per task, custom tasks)
 - `POST /api/modules/[id]/save-as-template` — simpan module sedia ada sebagai custom template baru
 
 ### UI
+
 - Tambah `src/components/ModuleTemplateModal.tsx` — modal 2 langkah:
-  - **Step 1**: Grid 2×2 template cards (icon, nama, description, bilangan deliverable/task) + pilihan "Start empty"
-  - **Step 2**: Panel kiri (nama module, assignee, tarikh) + panel kanan (senarai deliverable boleh toggle/rename/remove, task boleh toggle/rename/remove/ubah est_mandays/tetapkan assignee, tambah custom task/deliverable)
+   - **Step 1**: Grid 2×2 template cards (icon, nama, description, bilangan deliverable/task) + pilihan "Start empty"
+   - **Step 2**: Panel kiri (nama module, assignee, tarikh) + panel kanan (senarai deliverable boleh toggle/rename/remove, task boleh toggle/rename/remove/ubah est_mandays/tetapkan assignee, tambah custom task/deliverable)
 - Update `DeliverableSection.tsx`:
-  - Butang "+ Module" kini buka template picker modal (bukan terus modal kosong)
-  - Modal edit module kekal untuk edit sahaja
-  - Tambah butang 🔖 "Save as template" pada header setiap module
-  - Save-as-template modal: masukkan nama template → POST ke `/api/modules/[id]/save-as-template`
+   - Butang "+ Module" kini buka template picker modal (bukan terus modal kosong)
+   - Modal edit module kekal untuk edit sahaja
+   - Tambah butang 🔖 "Save as template" pada header setiap module
+   - Save-as-template modal: masukkan nama template → POST ke `/api/modules/[id]/save-as-template`
 
 ---
 
 ### Deploy ke Production
+
 - Jalankan migration dahulu: `npx prisma migrate deploy`
 - Kemudian seed template: `npx tsx prisma/seed-templates.ts`
 - Seed template adalah **idempotent** — selamat dijalankan semula (delete + reinsert)

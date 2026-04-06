@@ -380,11 +380,22 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
             <div className="shrink-0 flex items-end px-3 pb-2 text-xs font-medium text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-navy-700" style={{ width: LABEL_W }}>
               Module / Deliverable / Task
             </div>
-            <div className="flex-1 relative h-10">
+            <div className={`flex-1 relative ${viewMode === 'week' ? 'h-20' : 'h-10'}`}>
               {ticks.map((tick, i) => (
                 <div key={i} className="absolute top-0 h-full flex flex-col items-center" style={{ left: `${tick.left}%` }}>
                   <div className="w-px h-2 bg-slate-300 dark:bg-slate-600 mt-1" />
-                  {tick.label && <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap mt-0.5 -translate-x-1/2">{tick.label}</span>}
+                  {tick.label && (
+                    viewMode === 'week' ? (
+                      <span
+                        className="text-slate-500 dark:text-slate-400 whitespace-nowrap mt-1"
+                        style={{ writingMode: 'vertical-lr', fontSize: 10, lineHeight: 1 }}
+                      >
+                        {tick.label}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap mt-0.5 -translate-x-1/2">{tick.label}</span>
+                    )
+                  )}
                 </div>
               ))}
               {todayLeft >= 0 && todayLeft <= 100 && <div className="absolute top-0 bottom-0 w-px bg-blue-500 opacity-60" style={{ left: `${todayLeft}%` }} />}

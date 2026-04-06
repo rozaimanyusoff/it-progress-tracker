@@ -65,7 +65,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 // ── Projects List Tab ──────────────────────────────────────────────
-function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
+function ProjectsTab({ onNewProject, isManager }: { onNewProject: () => void; isManager: boolean }) {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,9 +80,11 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
     return (
       <div className="text-center py-16">
         <p className="text-slate-400 text-sm mb-4">No projects yet.</p>
-        <button onClick={onNewProject} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold">
-          + Create First Project
-        </button>
+        {isManager && (
+          <button onClick={onNewProject} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold">
+            + Create First Project
+          </button>
+        )}
       </div>
     )
   }
@@ -91,9 +93,11 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
-        <button onClick={onNewProject} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">
-          + New Project
-        </button>
+        {isManager && (
+          <button onClick={onNewProject} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">
+            + New Project
+          </button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -447,11 +451,20 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
     { name: '', type: 'frontend', tasks: [] },
   ])
 
-  // Edit
+  // Edit template metadata
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
   const [editIcon, setEditIcon] = useState('')
   const [editDesc, setEditDesc] = useState('')
+
+  // Inline task editing within edit mode
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
+  const [taskEditName, setTaskEditName] = useState('')
+  const [taskEditMd, setTaskEditMd] = useState('')
+  const [addingToDelivId, setAddingToDelivId] = useState<number | null>(null)
+  const [newTaskName, setNewTaskName] = useState('')
+  const [newTaskMd, setNewTaskMd] = useState('')
+  const [taskSaving, setTaskSaving] = useState(false)
 
   function fetchTemplates() {
     setLoading(true)
@@ -562,6 +575,45 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
     }
   }
 
+  // ── Task CRUD (within edit mode) ─────────────────────────────
+  function startEditTask(task: TemplateTask) {
+    setEditingTaskId(task.id)
+    setTaskEditName(task.name)
+    setTaskEditMd(task.est_mandays != null ? String(task.est_mandays) : '')
+  }
+
+  async function saveTaskEdit(taskId: number) {
+    setTaskSaving(true)
+    const res = await fetch(`/api/template-tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: taskEditName, est_mandays: taskEditMd !== '' ? Number(taskEditMd) : null }),
+    })
+    setTaskSaving(false)
+    if (res.ok) { setEditingTaskId(null); fetchTemplates() }
+    else showToast('error', 'Failed to update task')
+  }
+
+  async function deleteTask(taskId: number) {
+    if (!confirm('Delete this task?')) return
+    const res = await fetch(`/api/template-tasks/${taskId}`, { method: 'DELETE' })
+    if (res.ok) fetchTemplates()
+    else showToast('error', 'Failed to delete task')
+  }
+
+  async function addTask(delivId: number) {
+    if (!newTaskName.trim()) return
+    setTaskSaving(true)
+    const res = await fetch('/api/template-tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_deliverable_id: delivId, name: newTaskName, est_mandays: newTaskMd !== '' ? Number(newTaskMd) : null }),
+    })
+    setTaskSaving(false)
+    if (res.ok) { setAddingToDelivId(null); setNewTaskName(''); setNewTaskMd(''); fetchTemplates() }
+    else showToast('error', 'Failed to add task')
+  }
+
   // ── Delete ────────────────────────────────────────────────────
   async function handleDelete(id: number, name: string) {
     if (!confirm(`Delete template "${name}"? This will remove all its deliverables and tasks.`)) return
@@ -669,35 +721,141 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
       )}
 
       {/* ── Edit form ── */}
-      {editingId != null && (
-        <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-5 mb-5">
-          <h3 className="font-semibold text-slate-800 dark:text-white text-sm mb-3">Edit Template</h3>
-          <form onSubmit={handleEdit} className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+      {editingId != null && (() => {
+        const editingTpl = templates.find(t => t.id === editingId)
+        return (
+          <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-5 mb-5 space-y-4">
+            <h3 className="font-semibold text-slate-800 dark:text-white text-sm">Edit Template</h3>
+
+            {/* Metadata */}
+            <form onSubmit={handleEdit} className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className={labelClass}>Icon</label>
+                  <input className={inputClass} value={editIcon} onChange={e => setEditIcon(e.target.value)} placeholder="📦" maxLength={4} />
+                </div>
+                <div className="col-span-2">
+                  <label className={labelClass}>Name *</label>
+                  <input required className={inputClass} value={editName} onChange={e => setEditName(e.target.value)} />
+                </div>
+              </div>
               <div>
-                <label className={labelClass}>Icon</label>
-                <input className={inputClass} value={editIcon} onChange={e => setEditIcon(e.target.value)} placeholder="📦" maxLength={4} />
+                <label className={labelClass}>Description</label>
+                <input className={inputClass} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
               </div>
-              <div className="col-span-2">
-                <label className={labelClass}>Name *</label>
-                <input required className={inputClass} value={editName} onChange={e => setEditName(e.target.value)} />
+              <div className="flex gap-3">
+                <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button type="button" onClick={() => { setEditingId(null); setEditingTaskId(null); setAddingToDelivId(null) }} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
+                  Cancel
+                </button>
               </div>
-            </div>
-            <div>
-              <label className={labelClass}>Description</label>
-              <input className={inputClass} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
-            </div>
-            <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-              <button type="button" onClick={() => setEditingId(null)} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+            </form>
+
+            {/* Deliverables + tasks editor */}
+            {editingTpl && editingTpl.deliverables.length > 0 && (
+              <div className="space-y-3 pt-1">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Deliverables & Tasks</p>
+                {editingTpl.deliverables.map(d => (
+                  <div key={d.id} className="rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 overflow-hidden">
+                    {/* Deliverable header */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-navy-700">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${TYPE_BADGE[d.type] ?? TYPE_BADGE.frontend}`}>{d.type}</span>
+                      <span className="text-sm font-medium text-slate-800 dark:text-white flex-1">{d.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setAddingToDelivId(d.id); setNewTaskName(''); setNewTaskMd('') }}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        + Add task
+                      </button>
+                    </div>
+
+                    {/* Task list */}
+                    <div className="divide-y divide-slate-100 dark:divide-navy-700">
+                      {d.tasks.map(task => (
+                        <div key={task.id} className="flex items-center gap-2 px-3 py-1.5">
+                          {editingTaskId === task.id ? (
+                            <>
+                              <input
+                                className={`${inputClass} flex-1 text-xs py-1`}
+                                value={taskEditName}
+                                onChange={e => setTaskEditName(e.target.value)}
+                                autoFocus
+                              />
+                              <input
+                                type="number" min="0.5" step="0.5"
+                                className={`${inputClass} w-16 text-xs py-1`}
+                                placeholder="md"
+                                value={taskEditMd}
+                                onChange={e => setTaskEditMd(e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => saveTaskEdit(task.id)}
+                                disabled={taskSaving}
+                                className="text-xs px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                              >
+                                Save
+                              </button>
+                              <button type="button" onClick={() => setEditingTaskId(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" />
+                              <span className="flex-1 text-xs text-slate-700 dark:text-slate-300">{task.name}</span>
+                              {task.est_mandays != null && (
+                                <span className="text-xs text-slate-400 shrink-0">{task.est_mandays}d</span>
+                              )}
+                              <button type="button" onClick={() => startEditTask(task)} className="text-xs text-slate-400 hover:text-blue-600 px-1">✎</button>
+                              <button type="button" onClick={() => deleteTask(task.id)} className="text-xs text-slate-400 hover:text-red-500 px-1">✕</button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Add task inline form */}
+                      {addingToDelivId === d.id && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50/50 dark:bg-blue-900/10">
+                          <input
+                            className={`${inputClass} flex-1 text-xs py-1`}
+                            placeholder="Task name *"
+                            value={newTaskName}
+                            onChange={e => setNewTaskName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && addTask(d.id)}
+                            autoFocus
+                          />
+                          <input
+                            type="number" min="0.5" step="0.5"
+                            className={`${inputClass} w-16 text-xs py-1`}
+                            placeholder="md"
+                            value={newTaskMd}
+                            onChange={e => setNewTaskMd(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addTask(d.id)}
+                            disabled={taskSaving || !newTaskName.trim()}
+                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                          <button type="button" onClick={() => setAddingToDelivId(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+                        </div>
+                      )}
+
+                      {d.tasks.length === 0 && addingToDelivId !== d.id && (
+                        <p className="px-3 py-2 text-xs text-slate-400 italic">No tasks — click "+ Add task" to add one.</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
       {!loading && templates.length === 0 && (
@@ -785,9 +943,12 @@ export default function ProjectsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Projects')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
+  const isManager = (session?.user as any)?.role === 'manager'
+  const visibleTabs = isManager ? TABS : (['Projects'] as const as readonly Tab[])
+
   useEffect(() => {
     if (status === 'loading') return
-    if (!session || (session.user as any).role !== 'manager') router.replace('/dashboard')
+    if (!session) router.replace('/dashboard')
   }, [session, status, router])
 
   function showToast(type: 'success' | 'error', msg: string) {
@@ -806,7 +967,7 @@ export default function ProjectsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-slate-200 dark:border-navy-700">
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -820,10 +981,10 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {activeTab === 'Projects' && <ProjectsTab onNewProject={() => setActiveTab('New Project')} />}
-      {activeTab === 'New Project' && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
-      {activeTab === 'Features' && <FeaturesTab showToast={showToast} />}
-      {activeTab === 'Deliverables' && <DeliverablesTab showToast={showToast} />}
+      {activeTab === 'Projects' && <ProjectsTab onNewProject={() => setActiveTab('New Project')} isManager={isManager} />}
+      {activeTab === 'New Project' && isManager && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
+      {activeTab === 'Features' && isManager && <FeaturesTab showToast={showToast} />}
+      {activeTab === 'Deliverables' && isManager && <DeliverablesTab showToast={showToast} />}
     </AppLayout>
   )
 }

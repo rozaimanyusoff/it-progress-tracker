@@ -60,6 +60,7 @@ function AddTaskModal({
   const [estMandays, setEstMandays] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
 
@@ -93,11 +94,15 @@ function AddTaskModal({
     })
   }, [projectId, moduleId])
 
-  // Auto-fill due date from deliverable.planned_end
+  // Auto-fill due date from deliverable.planned_end + fetch preset tasks
   useEffect(() => {
-    if (!deliverableId) return
+    if (!deliverableId) { setPresetTasks([]); return }
     const deliv = deliverables.find(d => d.id === Number(deliverableId))
     if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
+    fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
+      .then(r => r.json())
+      .then(data => setPresetTasks(Array.isArray(data) ? data : []))
+      .catch(() => setPresetTasks([]))
   }, [deliverableId])
 
   const selectedDeliverable = deliverables.find(d => d.id === Number(deliverableId))
@@ -174,6 +179,26 @@ function AddTaskModal({
                 <option value="">Select deliverable...</option>
                 {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
               </select>
+            </div>
+          )}
+
+          {/* Preset tasks — shown when deliverable has matching template tasks */}
+          {deliverableId && presetTasks.length > 0 && (
+            <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Preset tasks — click to use:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {presetTasks.map((t, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setTitle(t.name); if (t.est_mandays != null) setEstMandays(String(t.est_mandays)) }}
+                    className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                  >
+                    {t.name}
+                    {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -464,6 +489,7 @@ export default function TeamKanbanBoard() {
           targetStatus={pendingStatus.target}
           actualStartDate={(pendingTask as any).actual_start ?? null}
           dueDate={pendingTask.due_date}
+          isManager={isManager}
           onConfirm={handlePopupConfirm}
           onCancel={() => setPendingStatus(null)}
         />

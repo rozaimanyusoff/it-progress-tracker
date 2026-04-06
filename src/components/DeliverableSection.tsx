@@ -193,6 +193,19 @@ function DeliverableCard({
   )
 }
 
+function countWorkdays(start: string, end: string): number {
+  const s = new Date(start), e = new Date(end)
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) return 1
+  let count = 0
+  const cur = new Date(s)
+  while (cur <= e) {
+    const day = cur.getDay()
+    if (day !== 0 && day !== 6) count++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return Math.max(1, count)
+}
+
 const BLANK_DELIVERABLE_FORM = { title: '', description: '', mandays: '1', status: 'Pending', module_id: '', planned_start: '', planned_end: '', actual_start: '', actual_end: '', is_actual_override: false }
 const BLANK_MODULE_FORM = { title: '', description: '', start_date: '', end_date: '' }
 
@@ -814,7 +827,11 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                     type="date" className={inputClass}
                     value={delivForm.planned_start}
                     min={projMin} max={delivForm.planned_end || projMax}
-                    onChange={e => setDelivForm({ ...delivForm, planned_start: e.target.value })}
+                    onChange={e => {
+                      const start = e.target.value
+                      const mandays = start && delivForm.planned_end ? String(countWorkdays(start, delivForm.planned_end)) : delivForm.mandays
+                      setDelivForm({ ...delivForm, planned_start: start, mandays })
+                    }}
                   />
                 </div>
                 <div>
@@ -823,7 +840,11 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                     type="date" className={inputClass}
                     value={delivForm.planned_end}
                     min={delivForm.planned_start || projMin} max={projMax}
-                    onChange={e => setDelivForm({ ...delivForm, planned_end: e.target.value })}
+                    onChange={e => {
+                      const end = e.target.value
+                      const mandays = delivForm.planned_start && end ? String(countWorkdays(delivForm.planned_start, end)) : delivForm.mandays
+                      setDelivForm({ ...delivForm, planned_end: end, mandays })
+                    }}
                   />
                 </div>
               </div>
