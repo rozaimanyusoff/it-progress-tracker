@@ -28,7 +28,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
   const role = (session?.user as any)?.role
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const [counts, setCounts] = useState<{ kanban: number; issues: number } | null>(null)
+  const [counts, setCounts] = useState<{ kanban: number; issues: number; planner: number; projects: number } | null>(null)
   const [branding, setBranding] = useState<{ brand_name: string; brand_logo_url: string } | null>(null)
   const [userProfile, setUserProfile] = useState<{ initials: string | null; avatar_url: string | null } | null>(null)
 
@@ -94,6 +94,11 @@ export default function Sidebar({ open = false, onClose }: Props) {
             >
               <item.Icon className="w-4 h-4 shrink-0" />
               <span className="flex-1">{item.label}</span>
+              {counts && item.href === '/projects' && counts.projects > 0 && (
+                <span className={`text-[11px] font-semibold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 ${active ? 'bg-white/30 text-white' : 'bg-primary text-white opacity-80'}`}>
+                  {counts.projects}
+                </span>
+              )}
               {counts && item.href === '/kanban' && counts.kanban > 0 && (
                 <span className={`text-[11px] font-semibold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 ${active ? 'bg-white/30 text-white' : 'bg-primary text-white opacity-80'}`}>
                   {counts.kanban}
@@ -102,6 +107,11 @@ export default function Sidebar({ open = false, onClose }: Props) {
               {counts && item.href === '/issues' && counts.issues > 0 && (
                 <span className={`text-[11px] font-semibold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 ${active ? 'bg-white/30 text-white' : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'}`}>
                   {counts.issues}
+                </span>
+              )}
+              {counts && item.href === '/planner' && counts.planner > 0 && (
+                <span className={`text-[11px] font-semibold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 ${active ? 'bg-white/30 text-white' : 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'}`}>
+                  {counts.planner}
                 </span>
               )}
             </Link>

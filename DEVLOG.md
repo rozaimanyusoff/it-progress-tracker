@@ -11,6 +11,35 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-14 — Planner: Edit Meeting + Sidebar Notification Counters
+
+### Penambahan Feature
+
+**Edit Meeting Title/Details (`src/app/planner/page.tsx`)**
+- Tambah butang pencil (✎) di header modal MeetingDetail — hanya kelihatan untuk manager
+- Klik butang buka form inline dalam header: Title, Date, Venue, Time From, Time To
+- Save memanggil `PUT /api/meetings/[id]` (sudah wujud) dan update state terus tanpa reload
+- Import tambahan: `Pencil`, `Check` dari lucide-react
+
+**Sidebar Counter: Planner (`src/components/Sidebar.tsx`, `src/app/api/counts/route.ts`)**
+- Member yang login akan nampak badge amber pada menu Planner
+- Counter = bilangan `MeetingAgenda` di mana user adalah PIC (`MeetingAgendaPIC`) **dan** belum post sebarang followup (`MeetingFollowup.created_by`) untuk agenda tersebut
+- Badge hilang secara automatik apabila member post followup/update
+
+**Sidebar Counter: Projects (`src/components/Sidebar.tsx`, `src/app/api/counts/route.ts`)**
+- Member yang login akan nampak badge pada menu Projects
+- Counter = bilangan project yang member di-assign sebagai assignee (`ProjectAssignee`)
+- Badge warna primary (konsisten dengan badge Kanban)
+
+### Perubahan API
+
+**`src/app/api/counts/route.ts`**
+- Tambah query `plannerPending`: count `MeetingAgenda` di mana `pics.some.user_id == userId` dan `followups.none.created_by == userId` — member sahaja
+- Tambah query `projectCount`: count `ProjectAssignee` di mana `user_id == userId` — member sahaja
+- Response kini return `{ kanban, issues, planner, projects }`
+
+---
+
 ## 2026-04-13 — Dashboard & Project Details: Overhaul UI + Analytics
 
 ### Pembaikan Bug

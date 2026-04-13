@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { ChevronLeft, ChevronRight, X, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Plus, Trash2, Pencil, Check } from 'lucide-react'
 import AppLayout from '@/components/Layout'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -288,6 +288,8 @@ function MeetingDetail({
   const [editingAgendaId, setEditingAgendaId] = useState<number | null>(null)
   const [editAgenda, setEditAgenda] = useState<typeof newAgenda | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editingMeeting, setEditingMeeting] = useState(false)
+  const [editMeetingForm, setEditMeetingForm] = useState({ title: initial.title, venue: initial.venue ?? '', date: initial.date.slice(0, 10), time_from: initial.time_from, time_to: initial.time_to })
 
   function togglePIC(uid: number, form: typeof newAgenda, setForm: (v: typeof newAgenda) => void) {
     setForm({ ...form, pic_ids: form.pic_ids.includes(uid) ? form.pic_ids.filter(x => x !== uid) : [...form.pic_ids, uid] })
@@ -364,6 +366,22 @@ function MeetingDetail({
     if (res.ok) { onDeleted(); onClose() }
   }
 
+  async function saveMeeting() {
+    if (!editMeetingForm.title.trim()) return
+    setSaving(true)
+    const res = await fetch(`/api/meetings/${meeting.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editMeetingForm),
+    })
+    setSaving(false)
+    if (res.ok) {
+      const updated = await res.json()
+      setMeeting(updated)
+      setEditingMeeting(false)
+    }
+  }
+
   function startEditAgenda(a: MeetingAgenda) {
     setEditingAgendaId(a.id)
     setEditAgenda({ agenda: a.agenda, issued_by: a.issued_by ?? '', time: a.time ?? '', details: a.details ?? '', action: a.action ?? '', pic_ids: a.pics.map(p => p.user.id) })
@@ -407,24 +425,76 @@ function MeetingDetail({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-4xl my-4">
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-slate-200 dark:border-navy-700">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{meeting.title}</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {meeting.date.slice(0, 10)} · {meeting.time_from}–{meeting.time_to}
-              {meeting.venue && ` · ${meeting.venue}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isManager && (
-              <button onClick={deleteMeeting} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        <div className="p-5 border-b border-slate-200 dark:border-navy-700">
+          {editingMeeting ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <input
+                    className={iClass}
+                    placeholder="Meeting title"
+                    value={editMeetingForm.title}
+                    onChange={e => setEditMeetingForm(f => ({ ...f, title: e.target.value }))}
+                  />
+                </div>
+                <input
+                  type="date"
+                  className={iClass}
+                  value={editMeetingForm.date}
+                  onChange={e => setEditMeetingForm(f => ({ ...f, date: e.target.value }))}
+                />
+                <input
+                  className={iClass}
+                  placeholder="Venue"
+                  value={editMeetingForm.venue}
+                  onChange={e => setEditMeetingForm(f => ({ ...f, venue: e.target.value }))}
+                />
+                <input
+                  type="time"
+                  className={iClass}
+                  value={editMeetingForm.time_from}
+                  onChange={e => setEditMeetingForm(f => ({ ...f, time_from: e.target.value }))}
+                />
+                <input
+                  type="time"
+                  className={iClass}
+                  value={editMeetingForm.time_to}
+                  onChange={e => setEditMeetingForm(f => ({ ...f, time_to: e.target.value }))}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveMeeting} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg disabled:opacity-50">
+                  <Check className="w-3 h-3" /> {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button onClick={() => setEditingMeeting(false)} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900 dark:text-white">{meeting.title}</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {meeting.date.slice(0, 10)} · {meeting.time_from}–{meeting.time_to}
+                  {meeting.venue && ` · ${meeting.venue}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {isManager && (
+                  <>
+                    <button onClick={() => { setEditMeetingForm({ title: meeting.title, venue: meeting.venue ?? '', date: meeting.date.slice(0, 10), time_from: meeting.time_from, time_to: meeting.time_to }); setEditingMeeting(true) }} className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={deleteMeeting} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+                <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-5 space-y-6 max-h-[80vh] overflow-y-auto">
