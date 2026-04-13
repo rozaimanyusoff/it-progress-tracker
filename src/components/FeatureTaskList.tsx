@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
 import { Pencil, Trash2, Check, X } from 'lucide-react'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
@@ -117,15 +118,35 @@ function AssigneePicker({
   onChange: (ids: number[]) => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const updatePos = useCallback(() => {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setPos({
+      top: rect.bottom + window.scrollY + 4,
+      left: rect.left + window.scrollX,
+      width: Math.max(rect.width, 200),
+    })
+  }, [])
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) setOpen(false)
     }
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
+
+  function handleOpen() {
+    updatePos()
+    setOpen(o => !o)
+  }
 
   function toggle(id: number) {
     const current = value.map(v => v.id)
@@ -133,10 +154,10 @@ function AssigneePicker({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={triggerRef} className="relative">
       <div
         className="flex items-center gap-1 flex-wrap cursor-pointer min-h-[28px] group"
-        onClick={() => setOpen(o => !o)}
+        onClick={handleOpen}
       >
         {value.length === 0 ? (
           <span className="text-xs text-slate-400 dark:text-slate-500 italic group-hover:text-slate-500">Unassigned</span>
@@ -147,8 +168,12 @@ function AssigneePicker({
         )}
         <span className="text-[10px] text-slate-300 dark:text-slate-600 group-hover:text-slate-400 ml-0.5">▾</span>
       </div>
-      {open && (
-        <div className="absolute z-20 top-full mt-1 left-0 bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg shadow-xl p-1.5 min-w-44 max-h-48 overflow-y-auto">
+      {open && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{ position: 'absolute', top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 9999 }}
+          className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg shadow-2xl p-1.5 max-h-56 overflow-y-auto"
+        >
           {options.length === 0 ? (
             <p className="text-xs text-slate-400 px-2 py-1.5">No users available</p>
           ) : (
@@ -163,11 +188,12 @@ function AssigneePicker({
                   onChange={() => toggle(u.id)}
                   className="rounded accent-blue-600"
                 />
-                <span className="text-sm text-slate-700 dark:text-slate-300">{u.name}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">{u.name}</span>
               </label>
             ))
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
