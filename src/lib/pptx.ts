@@ -597,8 +597,7 @@ interface ReportTaskInput {
   status: string
   actual_end: Date | null
   time_spent_seconds: number
-  assigned_to: number | null
-  assignee: { id: number; name: string } | null
+  assignees: { id: number; name: string }[]
 }
 
 interface ReportProjectInput {
@@ -763,15 +762,15 @@ export async function generateReportPPTX(
   for (const { deliverables } of projects) {
     for (const deliv of deliverables) {
       for (const task of deliv.tasks) {
-        if (!task.assigned_to || !task.assignee) continue
-        const id = task.assigned_to
-        if (!memberMap.has(id)) {
-          memberMap.set(id, { name: task.assignee.name, taskCount: 0, timeSeconds: 0, statusCounts: {} })
+        for (const a of task.assignees ?? []) {
+          if (!memberMap.has(a.id)) {
+            memberMap.set(a.id, { name: a.name, taskCount: 0, timeSeconds: 0, statusCounts: {} })
+          }
+          const m = memberMap.get(a.id)!
+          m.taskCount++
+          m.timeSeconds += (task as any).time_spent_seconds ?? 0
+          m.statusCounts[task.status] = (m.statusCounts[task.status] ?? 0) + 1
         }
-        const m = memberMap.get(id)!
-        m.taskCount++
-        m.timeSeconds += task.time_spent_seconds ?? 0
-        m.statusCounts[task.status] = (m.statusCounts[task.status] ?? 0) + 1
       }
     }
   }

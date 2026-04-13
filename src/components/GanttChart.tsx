@@ -8,8 +8,7 @@ interface GanttTask {
   status: string
   actual_start: string | null
   actual_end: string | null
-  assigned_to: number | null
-  assignee: { id: number; name: string } | null
+  assignees: { id: number; name: string }[]
 }
 
 interface GanttDeliverable {
@@ -271,7 +270,7 @@ function DeliverableRow({
               <span className="w-4 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{task.title}</p>
-                {task.assignee && <p className="text-xs text-slate-400 truncate">{task.assignee.name}</p>}
+                {task.assignees?.length > 0 && <p className="text-xs text-slate-400 truncate">{task.assignees.map(a => a.name).join(', ')}</p>}
               </div>
             </div>
             <div className="flex-1 relative" style={{ height: 36 }}>

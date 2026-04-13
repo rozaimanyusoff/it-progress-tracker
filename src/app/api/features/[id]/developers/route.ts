@@ -28,9 +28,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .filter((id) => !developer_ids.includes(id))
 
     if (removedDevIds.length > 0) {
-      await tx.task.updateMany({
-        where: { feature_id: featureId, assigned_to: { in: removedDevIds } },
-        data: { assigned_to: null },
+      // Remove removed developers from task assignees for this feature
+      await tx.taskAssignee.deleteMany({
+        where: { task: { feature_id: featureId }, user_id: { in: removedDevIds } },
       })
     }
 

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       feature: {
         include: {
           tasks: {
-            include: { assignee: { select: { id: true, name: true } } },
+            include: { assignees: { include: { user: { select: { id: true, name: true } } } } },
             orderBy: { order: 'asc' },
           },
         },

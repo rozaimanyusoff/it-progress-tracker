@@ -1,9 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { Pencil, Trash2, Check, X } from 'lucide-react'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
+
+interface TaskAssignee {
+  user: { id: number; name: string }
+}
 
 interface Task {
   id: number
@@ -11,8 +15,7 @@ interface Task {
   status: string
   order: number
   is_predefined: boolean
-  assigned_to: number | null
-  assignee: { id: number; name: string } | null
+  assignees: TaskAssignee[]
   due_date: string | null
   actual_start: string | null
   est_mandays: number | null
@@ -90,6 +93,124 @@ function dueDateBadge(due: string | null, status: string): React.ReactNode {
   return <span className="text-[10px] text-slate-400 ml-1">{dateStr}</span>
 }
 
+// ── Assignee Chip ──────────────────────────────────────────────────
+function AssigneeChip({ name }: { name: string }) {
+  const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+  return (
+    <span
+      title={name}
+      className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-semibold shrink-0 border border-blue-200 dark:border-blue-700"
+    >
+      {initials}
+    </span>
+  )
+}
+
+// ── Multi-select Assignee Picker ───────────────────────────────────
+function AssigneePicker({
+  value,
+  options,
+  onChange,
+}: {
+  value: { id: number; name: string }[]
+  options: { id: number; name: string }[]
+  onChange: (ids: number[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  function toggle(id: number) {
+    const current = value.map(v => v.id)
+    onChange(current.includes(id) ? current.filter(x => x !== id) : [...current, id])
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        className="flex items-center gap-1 flex-wrap cursor-pointer min-h-[28px] group"
+        onClick={() => setOpen(o => !o)}
+      >
+        {value.length === 0 ? (
+          <span className="text-xs text-slate-400 dark:text-slate-500 italic group-hover:text-slate-500">Unassigned</span>
+        ) : (
+          <div className="flex items-center gap-0.5 flex-wrap">
+            {value.map(u => <AssigneeChip key={u.id} name={u.name} />)}
+          </div>
+        )}
+        <span className="text-[10px] text-slate-300 dark:text-slate-600 group-hover:text-slate-400 ml-0.5">▾</span>
+      </div>
+      {open && (
+        <div className="absolute z-20 top-full mt-1 left-0 bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg shadow-xl p-1.5 min-w-44 max-h-48 overflow-y-auto">
+          {options.length === 0 ? (
+            <p className="text-xs text-slate-400 px-2 py-1.5">No users available</p>
+          ) : (
+            options.map(u => (
+              <label
+                key={u.id}
+                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-navy-700 rounded cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={value.some(v => v.id === u.id)}
+                  onChange={() => toggle(u.id)}
+                  className="rounded accent-blue-600"
+                />
+                <span className="text-sm text-slate-700 dark:text-slate-300">{u.name}</span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Assignee multi-checkbox for forms ─────────────────────────────
+function AssigneeCheckList({
+  value,
+  options,
+  onChange,
+}: {
+  value: number[]
+  options: { id: number; name: string }[]
+  onChange: (ids: number[]) => void
+}) {
+  function toggle(id: number) {
+    onChange(value.includes(id) ? value.filter(x => x !== id) : [...value, id])
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(u => (
+        <label
+          key={u.id}
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs cursor-pointer transition-colors ${
+            value.includes(u.id)
+              ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+              : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={value.includes(u.id)}
+            onChange={() => toggle(u.id)}
+            className="sr-only"
+          />
+          <AssigneeChip name={u.name} />
+          {u.name.split(' ')[0]}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 export default function FeatureTaskList({ featureId, deliverableId, deliverableMandays, deliverablePlannedEnd, userRole, developers }: Props) {
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
@@ -98,7 +219,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   const [showAddTask, setShowAddTask] = useState(false)
   const [newTask, setNewTask] = useState({
     title: '',
-    assignee: '',
+    assigneeIds: [] as number[],
     due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
     priority: 'medium',
     est_mandays: '',
@@ -143,25 +264,25 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     setLoading(false)
   }
 
+  function isTaskAssignee(task: Task) {
+    return task.assignees.some(a => a.user.id === currentUserId)
+  }
+
   async function updateTaskStatus(taskId: number, newStatus: string) {
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
 
-    // Blocked → InProgress = unblock flow
     if (task.status === 'Blocked' && newStatus === 'InProgress') {
       setPendingStatus({ taskId, target: 'Unblock' })
       return
     }
 
-    // Statuses that require a popup
     if (POPUP_STATUSES.has(newStatus)) {
-      // PM-only: InReview → Done
       if (newStatus === 'Done' && userRole !== 'manager') return
       setPendingStatus({ taskId, target: newStatus as StatusTarget })
       return
     }
 
-    // Todo: direct (no popup)
     await doStatusUpdate(taskId, newStatus, {})
   }
 
@@ -191,21 +312,15 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     doStatusUpdate(taskId, newStatus, opts)
   }
 
-  async function updateTaskAssignee(taskId: number, assigneeId: string) {
+  async function updateTaskAssignees(taskId: number, assigneeIds: number[]) {
     const res = await fetch(`/api/tasks/${taskId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assigned_to: assigneeId ? Number(assigneeId) : null }),
+      body: JSON.stringify({ assignee_ids: assigneeIds }),
     })
     if (res.ok) {
-      const dev = developers.find((d) => d.user.id === Number(assigneeId))
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? { ...t, assigned_to: assigneeId ? Number(assigneeId) : null, assignee: dev ? dev.user : null }
-            : t
-        )
-      )
+      const updated = await res.json()
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, assignees: updated.assignees } : t))
     }
   }
 
@@ -250,13 +365,19 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   async function addCustomTask() {
     if (!newTask.title.trim()) return
     setAddingTask(true)
+
+    // For members: always include themselves + any partners
+    const resolvedIds = userRole === 'manager'
+      ? newTask.assigneeIds
+      : [currentUserId, ...newTask.assigneeIds.filter(id => id !== currentUserId)]
+
     const res = await fetch('/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...(featureId ? { feature_id: featureId } : { deliverable_id: deliverableId }),
         title: newTask.title,
-        assigned_to: newTask.assignee ? Number(newTask.assignee) : null,
+        assignee_ids: resolvedIds,
         due_date: newTask.due_date || null,
         priority: newTask.priority,
         est_mandays: newTask.est_mandays ? Number(newTask.est_mandays) : null,
@@ -267,7 +388,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
       setTasks((prev) => [...prev, task])
       setNewTask({
         title: '',
-        assignee: '',
+        assigneeIds: [],
         due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
         priority: 'medium',
         est_mandays: '',
@@ -281,11 +402,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
 
   const inputClass = 'bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded px-2 py-1 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500'
 
-  // Mandays warning
   const totalTaskMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
   const showMdWarning = deliverableMandays != null && deliverableMandays > 0 && totalTaskMd > deliverableMandays
 
-  // Due date warning for new task
   const delivPlannedEndDate = deliverablePlannedEnd ? new Date(deliverablePlannedEnd) : null
   const newDueDateValue = newTask.due_date ? new Date(newTask.due_date) : null
   const newDueDateWarning = delivPlannedEndDate && newDueDateValue && newDueDateValue > delivPlannedEndDate
@@ -293,6 +412,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   const doneTasks = tasks.filter(t => t.status === 'Done').length
 
   const pendingTask = pendingStatus ? tasks.find(t => t.id === pendingStatus.taskId) : null
+
+  // Options for assignee picker: managers see all developers, members see all developers (for partners)
+  const assigneeOptions = developers.map(d => d.user)
 
   return (
     <>
@@ -322,7 +444,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                 Task
                 <span className="ml-2 font-normal text-slate-400">{doneTasks}/{tasks.length} · {progressPct}%</span>
               </th>
-              <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</th>
+              <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Assignees</th>
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Est. md</th>
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Due Date</th>
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Status</th>
@@ -383,22 +505,30 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     </div>
                   )}
                 </td>
+
+                {/* Assignee cell */}
                 <td className="px-3 py-2">
                   {userRole === 'manager' ? (
-                    <select
-                      className={inputClass}
-                      value={task.assigned_to?.toString() ?? ''}
-                      onChange={(e) => updateTaskAssignee(task.id, e.target.value)}
-                    >
-                      <option value="">Unassigned</option>
-                      {developers.map((d) => (
-                        <option key={d.user.id} value={d.user.id}>{d.user.name}</option>
-                      ))}
-                    </select>
+                    <AssigneePicker
+                      value={task.assignees.map(a => a.user)}
+                      options={assigneeOptions}
+                      onChange={(ids) => updateTaskAssignees(task.id, ids)}
+                    />
                   ) : (
-                    <span className="text-slate-600 dark:text-slate-300">{task.assignee?.name ?? '—'}</span>
+                    <div className="flex items-center gap-0.5 flex-wrap">
+                      {task.assignees.length === 0 ? (
+                        <span className="text-slate-400 text-xs">—</span>
+                      ) : (
+                        task.assignees.map(a => (
+                          <span key={a.user.id} title={a.user.name}>
+                            <AssigneeChip name={a.user.name} />
+                          </span>
+                        ))
+                      )}
+                    </div>
                   )}
                 </td>
+
                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400 text-xs">
                   {editingTaskId === task.id ? (
                     <input
@@ -444,8 +574,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                         <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                       ))}
                     </select>
-                  ) : task.assigned_to === currentUserId ? (
-                    // Members can only advance their own tasks (except Done which needs PM)
+                  ) : isTaskAssignee(task) ? (
                     <select
                       className={`${inputClass} text-xs`}
                       value={task.status}
@@ -463,8 +592,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1">
-                    {/* Block/Unblock button — integrates with popup */}
-                    {(userRole === 'manager' || task.assigned_to === currentUserId) && (
+                    {(userRole === 'manager' || isTaskAssignee(task)) && (
                       <button
                         onClick={() => toggleBlock(task)}
                         className={`p-1 rounded text-xs ${task.is_blocked || task.status === 'Blocked' ? 'text-green-500 hover:text-green-700' : 'text-red-400 hover:text-red-600'}`}
@@ -501,19 +629,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                           </>
                         )}
                       </>
-                    ) : (
-                      <>
-                        {!task.is_predefined && task.status === 'Todo' && task.assigned_to === currentUserId && (
-                          <button
-                            onClick={() => deleteTask(task.id, task.title)}
-                            className="p-1 rounded text-red-400 hover:text-red-600"
-                            title="Delete task"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </>
-                    )}
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -521,111 +637,117 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
           </tbody>
         </table>
 
-        {userRole === 'manager' && (
-          <div className="px-3 py-2 border-t border-slate-100 dark:border-navy-700">
-            {!showAddTask ? (
-              <button
-                onClick={() => setShowAddTask(true)}
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                + Add Custom Task
-              </button>
-            ) : (
-              <div className="space-y-2 py-1">
-                {presetTasks.length > 0 && (
-                  <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset tasks — click to use:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {presetTasks.map((t, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => setNewTask(p => ({ ...p, title: t.name, est_mandays: t.est_mandays != null ? String(t.est_mandays) : p.est_mandays }))}
-                          className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                        >
-                          {t.name}
-                          {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
-                        </button>
-                      ))}
-                    </div>
+        {/* Add task form — visible to all users */}
+        <div className="px-3 py-2 border-t border-slate-100 dark:border-navy-700">
+          {!showAddTask ? (
+            <button
+              onClick={() => setShowAddTask(true)}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              + Add Task
+            </button>
+          ) : (
+            <div className="space-y-2 py-1">
+              {presetTasks.length > 0 && (
+                <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset tasks — click to use:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {presetTasks.map((t, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setNewTask(p => ({ ...p, title: t.name, est_mandays: t.est_mandays != null ? String(t.est_mandays) : p.est_mandays }))}
+                        className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                      >
+                        {t.name}
+                        {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
+                      </button>
+                    ))}
                   </div>
-                )}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    className={`${inputClass} flex-1 min-w-40`}
-                    placeholder="Task title *"
-                    value={newTask.title}
-                    onChange={(e) => setNewTask(p => ({ ...p, title: e.target.value }))}
-                    onKeyDown={(e) => e.key === 'Enter' && addCustomTask()}
-                    autoFocus
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  className={`${inputClass} flex-1 min-w-40`}
+                  placeholder="Task title *"
+                  value={newTask.title}
+                  onChange={(e) => setNewTask(p => ({ ...p, title: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && addCustomTask()}
+                  autoFocus
+                />
+              </div>
+
+              {/* Assignees */}
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                  {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
+                </p>
+                {assigneeOptions.length > 0 ? (
+                  <AssigneeCheckList
+                    value={newTask.assigneeIds}
+                    options={userRole === 'manager' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
+                    onChange={(ids) => setNewTask(p => ({ ...p, assigneeIds: ids }))}
                   />
+                ) : (
+                  <span className="text-xs text-slate-400">No developers to assign</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div>
+                  <label className="text-xs text-slate-500 mr-1">Due date</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={newTask.due_date}
+                    onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))}
+                  />
+                  {newDueDateWarning && (
+                    <span className="text-xs text-amber-600 ml-1">Due date exceeds deliverable end date</span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mr-1">Priority</label>
                   <select
                     className={inputClass}
-                    value={newTask.assignee}
-                    onChange={(e) => setNewTask(p => ({ ...p, assignee: e.target.value }))}
+                    value={newTask.priority}
+                    onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}
                   >
-                    <option value="">Unassigned</option>
-                    {developers.map((d) => (
-                      <option key={d.user.id} value={d.user.id}>{d.user.name}</option>
-                    ))}
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
                   </select>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div>
-                    <label className="text-xs text-slate-500 mr-1">Due date</label>
-                    <input
-                      type="date"
-                      className={inputClass}
-                      value={newTask.due_date}
-                      onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))}
-                    />
-                    {newDueDateWarning && (
-                      <span className="text-xs text-amber-600 ml-1">Due date exceeds deliverable end date</span>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mr-1">Priority</label>
-                    <select
-                      className={inputClass}
-                      value={newTask.priority}
-                      onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mr-1">Est. md</label>
-                    <input
-                      type="number"
-                      min="0.5"
-                      step="0.5"
-                      className={`${inputClass} w-20`}
-                      placeholder="—"
-                      value={newTask.est_mandays}
-                      onChange={e => setNewTask(p => ({ ...p, est_mandays: e.target.value }))}
-                    />
-                  </div>
-                  <button
-                    onClick={addCustomTask}
-                    disabled={addingTask}
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm disabled:opacity-50"
-                  >
-                    {addingTask ? 'Adding...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', assignee: '', due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
-                    className="text-slate-400 hover:text-slate-600 text-sm"
-                  >
-                    Cancel
-                  </button>
+                <div>
+                  <label className="text-xs text-slate-500 mr-1">Est. md</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    className={`${inputClass} w-20`}
+                    placeholder="—"
+                    value={newTask.est_mandays}
+                    onChange={e => setNewTask(p => ({ ...p, est_mandays: e.target.value }))}
+                  />
                 </div>
+                <button
+                  onClick={addCustomTask}
+                  disabled={addingTask}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm disabled:opacity-50"
+                >
+                  {addingTask ? 'Adding...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
+                  className="text-slate-400 hover:text-slate-600 text-sm"
+                >
+                  Cancel
+                </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         {deleteConfirm && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">

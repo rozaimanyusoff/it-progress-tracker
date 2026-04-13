@@ -71,11 +71,9 @@ export default function DashboardClient({ projects, session }: { projects: Proje
             {isManager ? 'All projects overview' : 'Your assigned projects'}
           </p>
         </div>
-        {isManager && (
-          <Link href="/projects/new" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
-            + New Project
-          </Link>
-        )}
+        <Link href="/projects/new" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
+          + New Project
+        </Link>
       </div>
 
       {/* Stats */}

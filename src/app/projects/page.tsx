@@ -65,7 +65,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 // ── Projects List Tab ──────────────────────────────────────────────
-function ProjectsTab({ onNewProject, isManager }: { onNewProject: () => void; isManager: boolean }) {
+function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,11 +80,9 @@ function ProjectsTab({ onNewProject, isManager }: { onNewProject: () => void; is
     return (
       <div className="text-center py-16">
         <p className="text-slate-400 text-sm mb-4">No projects yet.</p>
-        {isManager && (
-          <button onClick={onNewProject} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold">
-            + Create First Project
-          </button>
-        )}
+        <button onClick={onNewProject} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold">
+          + Create First Project
+        </button>
       </div>
     )
   }
@@ -93,11 +91,9 @@ function ProjectsTab({ onNewProject, isManager }: { onNewProject: () => void; is
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
-        {isManager && (
-          <button onClick={onNewProject} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">
-            + New Project
-          </button>
-        )}
+        <button onClick={onNewProject} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">
+          + New Project
+        </button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -943,8 +939,7 @@ export default function ProjectsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Projects')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
-  const isManager = (session?.user as any)?.role === 'manager'
-  const visibleTabs = isManager ? TABS : (['Projects'] as const as readonly Tab[])
+  const visibleTabs = TABS
 
   useEffect(() => {
     if (status === 'loading') return
@@ -981,10 +976,10 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {activeTab === 'Projects' && <ProjectsTab onNewProject={() => setActiveTab('New Project')} isManager={isManager} />}
-      {activeTab === 'New Project' && isManager && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
-      {activeTab === 'Features' && isManager && <FeaturesTab showToast={showToast} />}
-      {activeTab === 'Deliverables' && isManager && <DeliverablesTab showToast={showToast} />}
+      {activeTab === 'Projects' && <ProjectsTab onNewProject={() => setActiveTab('New Project')} />}
+      {activeTab === 'New Project' && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
+      {activeTab === 'Features' && <FeaturesTab showToast={showToast} />}
+      {activeTab === 'Deliverables' && <DeliverablesTab showToast={showToast} />}
     </AppLayout>
   )
 }

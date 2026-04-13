@@ -10,8 +10,7 @@ interface GanttTask {
    status: string
    actual_start: string | null
    actual_end: string | null
-   assigned_to: number | null
-   assignee: { id: number; name: string } | null
+   assignees: { id: number; name: string }[]
 }
 
 interface GanttDeliverable {

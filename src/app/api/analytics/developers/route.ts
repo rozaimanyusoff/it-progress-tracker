@@ -42,17 +42,21 @@ export async function GET(req: NextRequest) {
       id: true,
       name: true,
       email: true,
-      assigned_tasks: {
-        where: taskWhere,
+      task_assignees: {
+        where: { task: taskWhere },
         select: {
-          id: true,
-          status: true,
-          actual_start: true,
-          actual_end: true,
-          created_at: true,
-          est_mandays: true,
-          feature: {
-            select: { mandays: true },
+          task: {
+            select: {
+              id: true,
+              status: true,
+              actual_start: true,
+              actual_end: true,
+              created_at: true,
+              est_mandays: true,
+              feature: {
+                select: { mandays: true },
+              },
+            },
           },
         },
       },
@@ -69,26 +73,26 @@ export async function GET(req: NextRequest) {
   const today = new Date()
 
   const developers = users.map((u) => {
-    const tasks = u.assigned_tasks
+    const tasks = u.task_assignees.map((ta) => ta.task)
     const tasksDone = tasks.filter((t) => t.status === 'Done').length
     const tasksInProgress = tasks.filter(
       (t) => t.status === 'InProgress' || t.status === 'InReview'
     ).length
 
     // Sum task-level est_mandays (new granular estimate); fall back to feature-level mandays if no task-level data
-    const taskEstMandays = u.assigned_tasks.reduce(
-      (sum, t) => sum + (t.est_mandays != null ? Number(t.est_mandays) : 0),
+    const taskEstMandays = tasks.reduce(
+      (sum: number, t) => sum + (t.est_mandays != null ? Number(t.est_mandays) : 0),
       0
     )
     const featureEstMandays = u.feature_assignments.reduce(
-      (sum, fa) => sum + fa.feature.mandays,
+      (sum: number, fa) => sum + fa.feature.mandays,
       0
     )
     const estimatedMandays = taskEstMandays > 0 ? taskEstMandays : featureEstMandays
 
     const totalSpentDays = tasks
       .filter((t) => t.actual_start && t.actual_end)
-      .reduce((sum, t) => {
+      .reduce((sum: number, t) => {
         const diff =
           new Date(t.actual_end!).getTime() - new Date(t.actual_start!).getTime()
         return sum + diff / (1000 * 60 * 60 * 24)
@@ -97,7 +101,7 @@ export async function GET(req: NextRequest) {
     // 4-week trend: tasks assigned per week
     const weeklyTasksTrend = weeks.map((w) => ({
       week: w.label,
-      count: u.assigned_tasks.filter((t) => {
+      count: tasks.filter((t) => {
         const created = new Date(t.created_at)
         return created >= w.start && created < w.end
       }).length,
@@ -107,9 +111,9 @@ export async function GET(req: NextRequest) {
     const weeklyTimeTrend = weeks.map((w) => ({
       week: w.label,
       hours: Math.round(
-        u.assigned_tasks
+        tasks
           .filter((t) => t.actual_start && t.actual_end && new Date(t.actual_start) >= w.start && new Date(t.actual_start) < w.end)
-          .reduce((sum, t) => {
+          .reduce((sum: number, t) => {
             const diff = new Date(t.actual_end!).getTime() - new Date(t.actual_start!).getTime()
             return sum + diff / (1000 * 60 * 60)
           }, 0) * 10
@@ -129,6 +133,8 @@ export async function GET(req: NextRequest) {
       weeklyTimeTrend,
     }
   })
+
+  void today
 
   return NextResponse.json({ developers })
 }

@@ -20,6 +20,7 @@ interface Task {
   priority: string
   is_blocked: boolean
   blocked_reason: string | null
+  assignees: { user: { id: number; name: string } }[]
   project: { id: number; title: string } | null
   module: { id: number; title: string } | null
   feature: { id: number; title: string } | null
@@ -103,9 +104,13 @@ function formatElapsed(seconds: number): string {
 
 // ── Add Task Modal ────────────────────────────────────────────────
 function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (task: Task) => void }) {
+  const { data: session } = useSession()
+  const currentUserId = Number((session?.user as any)?.id)
   const [projects, setProjects] = useState<Project[]>([])
   const [modules, setModules] = useState<Module[]>([])
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
+  const [allUsers, setAllUsers] = useState<{ id: number; name: string }[]>([])
+  const [partnerIds, setPartnerIds] = useState<number[]>([])
   const [projectId, setProjectId] = useState('')
   const [moduleId, setModuleId] = useState('') // '' = unset, '__none__' = project-level
   const [deliverableId, setDeliverableId] = useState('')
@@ -124,6 +129,9 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then((data: any[]) =>
       setProjects(data.map(p => ({ id: p.id, title: p.title })))
+    )
+    fetch('/api/users').then(r => r.json()).then((data: any[]) =>
+      setAllUsers(data.map((u: any) => ({ id: u.id, name: u.name })))
     )
   }, [])
 
@@ -175,6 +183,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
         deliverable_id: Number(deliverableId),
         title: title.trim(),
         description: description.trim() || null,
+        assignee_ids: partnerIds, // member's own ID is added server-side
         due_date: dueDate || null,
         priority,
         est_mandays: estMandays ? Number(estMandays) : null,
@@ -267,7 +276,40 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
             <textarea className={`${inputClass} resize-none`} rows={2} value={description} onChange={e => setDescription(e.target.value)} />
           </div>
 
-          {/* 6. Due date */}
+          {/* 6. Partners */}
+          {allUsers.filter(u => u.id !== currentUserId).length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Partners <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <p className="text-xs text-slate-400 mb-1.5">You are auto-assigned. Add partners to collaborate on this task.</p>
+              <div className="flex flex-wrap gap-1.5">
+                {allUsers.filter(u => u.id !== currentUserId).map(u => (
+                  <label
+                    key={u.id}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${
+                      partnerIds.includes(u.id)
+                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+                        : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={partnerIds.includes(u.id)}
+                      onChange={() => setPartnerIds(prev => prev.includes(u.id) ? prev.filter(x => x !== u.id) : [...prev, u.id])}
+                      className="sr-only"
+                    />
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 bg-slate-200 dark:bg-slate-700">
+                      {u.name[0].toUpperCase()}
+                    </span>
+                    {u.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 7. Due date */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
             <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />

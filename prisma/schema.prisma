@@ -32,7 +32,7 @@ model User {
   audit_logs               AuditLog[]
   feature_assignments      FeatureDeveloper[]
   created_features         Feature[]          @relation("FeatureCreator")
-  assigned_tasks           Task[]             @relation("TaskAssignee")
+  task_assignees           TaskAssignee[]
   status_updated_tasks     Task[]             @relation("TaskStatusUpdater")
   task_updates             TaskUpdate[]
   task_history             TaskHistory[]
@@ -329,7 +329,6 @@ model Task {
   title              String
   description        String?
   status             TaskStatus    @default(Todo)
-  assigned_to        Int?
   order              Int           @default(0)
   is_predefined      Boolean       @default(false)
   actual_start       DateTime?
@@ -350,11 +349,19 @@ model Task {
   status_updated_by  Int?
   feature            Feature?      @relation(fields: [feature_id], references: [id], onDelete: Cascade)
   deliverable        Deliverable?  @relation(fields: [deliverable_id], references: [id], onDelete: Cascade)
-  assignee           User?         @relation("TaskAssignee", fields: [assigned_to], references: [id])
   status_updater     User?         @relation("TaskStatusUpdater", fields: [status_updated_by], references: [id])
+  assignees          TaskAssignee[]
   task_updates       TaskUpdate[]
   task_history       TaskHistory[]
   issues             Issue[]
+}
+
+model TaskAssignee {
+  task_id    Int
+  user_id    Int
+  task       Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  @@id([task_id, user_id])
 }
 
 model TaskHistory {

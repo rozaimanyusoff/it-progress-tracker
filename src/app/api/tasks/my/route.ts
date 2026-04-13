@@ -9,8 +9,9 @@ export async function GET(req: NextRequest) {
   const user = session.user as any
 
   const tasks = await prisma.task.findMany({
-    where: { assigned_to: Number(user.id) },
+    where: { assignees: { some: { user_id: Number(user.id) } } },
     include: {
+      assignees: { include: { user: { select: { id: true, name: true } } } },
       feature: {
         select: {
           id: true,

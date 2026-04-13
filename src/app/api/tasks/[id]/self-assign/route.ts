@@ -34,11 +34,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  const updated = await prisma.task.update({
+  // Add user to task assignees (upsert — no duplicate)
+  await prisma.taskAssignee.upsert({
+    where: { task_id_user_id: { task_id: Number(id), user_id: Number(user.id) } },
+    create: { task_id: Number(id), user_id: Number(user.id) },
+    update: {},
+  })
+
+  const updated = await prisma.task.findUnique({
     where: { id: Number(id) },
-    data: { assigned_to: Number(user.id) },
     include: {
-      assignee: { select: { id: true, name: true } },
+      assignees: { include: { user: { select: { id: true, name: true } } } },
       feature: { select: { id: true, title: true } },
     },
   })

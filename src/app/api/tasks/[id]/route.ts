@@ -138,32 +138,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const taskId = Number(id)
   const body = await req.json()
 
-  const existing = await prisma.task.findUnique({ where: { id: taskId } })
+  const existing = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: { assignees: true },
+  })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Member can only update status, is_blocked, blocked_reason, actual_date on their own assigned task
+  // Members can only update tasks they are assigned to; only managers can mark Done
   if (user.role === 'member') {
-    if (existing.assigned_to !== Number(user.id)) {
+    const isAssigned = existing.assignees.some((a) => a.user_id === Number(user.id))
+    if (!isAssigned) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    const allowedKeys = ['status', 'is_blocked', 'blocked_reason', 'actual_date']
-    const disallowedKeys = Object.keys(body).filter((k) => !allowedKeys.includes(k))
-    if (disallowedKeys.length > 0) {
-      return NextResponse.json({ error: 'Members can only update task status and blocked state' }, { status: 403 })
+    if (body.status === 'Done') {
+      return NextResponse.json({ error: 'Only managers can mark tasks as Done' }, { status: 403 })
     }
   }
 
   const updateData: any = {}
 
-  if (user.role === 'manager') {
-    if (body.title !== undefined) updateData.title = body.title
-    if (body.description !== undefined) updateData.description = body.description || null
-    if ('assigned_to' in body) updateData.assigned_to = body.assigned_to ? Number(body.assigned_to) : null
-    if (body.order !== undefined) updateData.order = Number(body.order)
-    if (body.due_date !== undefined) updateData.due_date = body.due_date ? new Date(body.due_date) : null
-    if (body.est_mandays !== undefined) updateData.est_mandays = body.est_mandays != null ? body.est_mandays : null
-    if (body.priority !== undefined) updateData.priority = body.priority
-  }
+  if (body.title !== undefined) updateData.title = body.title
+  if (body.description !== undefined) updateData.description = body.description || null
+  if (body.order !== undefined) updateData.order = Number(body.order)
+  if (body.due_date !== undefined) updateData.due_date = body.due_date ? new Date(body.due_date) : null
+  if (body.est_mandays !== undefined) updateData.est_mandays = body.est_mandays != null ? body.est_mandays : null
+  if (body.priority !== undefined) updateData.priority = body.priority
 
   // is_blocked can be updated by anyone assigned to the task (or manager)
   if (body.is_blocked !== undefined) updateData.is_blocked = body.is_blocked
@@ -229,8 +228,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const task = await prisma.task.update({
     where: { id: taskId },
     data: updateData,
-    include: { assignee: { select: { id: true, name: true, email: true } } },
+    include: {
+      assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
+    },
   })
+
+  // Managers can update assignees — replace the list
+  if ('assignee_ids' in body && user.role === 'manager') {
+    const newIds: number[] = (body.assignee_ids as any[]).map(Number)
+    const oldIds = existing.assignees.map((a) => a.user_id)
+    await prisma.taskAssignee.deleteMany({ where: { task_id: taskId } })
+    if (newIds.length > 0) {
+      await prisma.taskAssignee.createMany({
+        data: newIds.map((uid) => ({ task_id: taskId, user_id: uid })),
+      })
+    }
+    // Notify newly added assignees
+    const addedIds = newIds.filter((id) => !oldIds.includes(id))
+    for (const uid of addedIds) {
+      const assignee = await prisma.user.findUnique({ where: { id: uid }, select: { email: true, name: true } })
+      if (assignee) sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
+    }
+  }
 
   // Recalculate parent dates after task status change
   if (body.status !== undefined) {
@@ -284,26 +303,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'InProgress') {
-      if (task.assignee?.email) {
-        sendTaskRejected(task.assignee.email, task.assignee.name, task.title).catch(() => { })
+      for (const a of task.assignees) {
+        sendTaskRejected(a.user.email, a.user.name, task.title).catch(() => { })
       }
     }
 
     if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'Done') {
-      if (task.assignee?.email) {
-        sendTaskApproved(task.assignee.email, task.assignee.name, task.title).catch(() => { })
+      for (const a of task.assignees) {
+        sendTaskApproved(a.user.email, a.user.name, task.title).catch(() => { })
       }
     }
-  }
-
-  if (
-    user.role === 'manager' &&
-    'assigned_to' in body &&
-    body.assigned_to &&
-    body.assigned_to !== existing.assigned_to &&
-    task.assignee?.email
-  ) {
-    sendTaskAssigned(task.assignee.email, task.assignee.name, task.title).catch(() => { })
   }
 
   return NextResponse.json(task)
@@ -327,8 +336,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Only Todo tasks can be deleted' }, { status: 403 })
   }
 
-  if (user.role !== 'manager' && existing.assigned_to !== Number(user.id)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (user.role !== 'manager') {
+    return NextResponse.json({ error: 'Only managers can delete tasks' }, { status: 403 })
   }
 
   await prisma.task.delete({ where: { id: taskId } })

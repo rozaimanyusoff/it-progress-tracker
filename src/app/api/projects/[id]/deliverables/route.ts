@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     include: {
       tasks: {
         include: {
-          assignee: { select: { id: true, name: true } },
+          assignees: { include: { user: { select: { id: true, name: true } } } },
           _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
         },
         orderBy: { order: 'asc' },
@@ -34,7 +34,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const projectId = Number(id)
   const body = await req.json()

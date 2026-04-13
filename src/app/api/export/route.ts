@@ -43,13 +43,10 @@ export async function POST(req: NextRequest) {
           where: { project_id: projectId },
           include: {
             tasks: {
-              select: {
-                status: true,
-                actual_end: true,
-                time_spent_seconds: true,
-                assigned_to: true,
-                assignee: { select: { id: true, name: true } },
+              include: {
+                assignees: { include: { user: { select: { id: true, name: true } } } },
               },
+              orderBy: { order: 'asc' },
             },
           },
           orderBy: { order: 'asc' },

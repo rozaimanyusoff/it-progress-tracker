@@ -4,6 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendTaskAssigned } from '@/lib/email'
 
+const ASSIGNEE_INCLUDE = {
+  assignees: { include: { user: { select: { id: true, name: true } } } },
+} as const
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest) {
   const tasks = await prisma.task.findMany({
     where,
     include: {
-      assignee: { select: { id: true, name: true } },
+      ...ASSIGNEE_INCLUDE,
       _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
     },
     orderBy: { order: 'asc' },
@@ -38,15 +42,16 @@ export async function POST(req: NextRequest) {
   const user = session.user as any
 
   const body = await req.json()
-  const { feature_id, deliverable_id, title, description, assigned_to, due_date, est_mandays, priority } = body
+  const { feature_id, deliverable_id, title, description, assignee_ids, due_date, est_mandays, priority } = body
 
   if ((!feature_id && !deliverable_id) || !title) {
     return NextResponse.json({ error: 'feature_id or deliverable_id, and title are required' }, { status: 400 })
   }
 
-  const resolvedAssignee = user.role === 'manager'
-    ? (assigned_to ? Number(assigned_to) : null)
-    : Number(user.id)
+  // Managers can assign to anyone; members auto-assign to themselves + any additional partners
+  const resolvedIds: number[] = user.role === 'manager'
+    ? (assignee_ids ?? []).map(Number)
+    : [Number(user.id), ...((assignee_ids ?? []).map(Number).filter((id: number) => id !== Number(user.id)))]
 
   const whereClause = feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }
 
@@ -73,16 +78,18 @@ export async function POST(req: NextRequest) {
       ...(feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }),
       title,
       description: description || null,
-      assigned_to: resolvedAssignee,
       order: nextOrder,
       is_predefined: false,
       status: 'Todo',
       due_date: resolvedDueDate,
       est_mandays: est_mandays != null ? est_mandays : null,
       priority: priority || 'medium',
+      assignees: resolvedIds.length > 0
+        ? { create: resolvedIds.map(uid => ({ user_id: uid })) }
+        : undefined,
     },
     include: {
-      assignee: { select: { id: true, name: true } },
+      ...ASSIGNEE_INCLUDE,
     },
   })
 
@@ -96,14 +103,16 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // Notify the assignee when a manager creates and assigns a task
-  if (user.role === 'manager' && resolvedAssignee) {
-    const assignee = await prisma.user.findUnique({
-      where: { id: resolvedAssignee },
-      select: { email: true, name: true },
-    })
-    if (assignee) {
-      sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
+  // Notify assignees when manager creates and assigns a task
+  if (user.role === 'manager' && resolvedIds.length > 0) {
+    for (const uid of resolvedIds) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: uid },
+        select: { email: true, name: true },
+      })
+      if (assignee) {
+        sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
+      }
     }
   }
 

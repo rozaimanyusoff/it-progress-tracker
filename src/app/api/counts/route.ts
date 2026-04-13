@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
           is_predefined: false,
         },
       })
-      : prisma.task.count({ where: { assigned_to: userId, status: 'Todo', is_predefined: false } }),
+      : prisma.task.count({ where: { assignees: { some: { user_id: userId } }, status: 'Todo', is_predefined: false } }),
     // Open issues assigned to user (members only; managers: 0 since issues badge covers it)
     user.role === 'manager'
       ? Promise.resolve(0)

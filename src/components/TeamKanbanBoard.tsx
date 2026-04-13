@@ -13,7 +13,7 @@ interface Task {
   review_count: number
   time_started_at: string | null
   time_spent_seconds: number
-  assignee: { id: number; name: string } | null
+  assignees: { user: { id: number; name: string } }[]
   due_date: string | null
   est_mandays: number | null
   priority: string
@@ -52,7 +52,7 @@ function AddTaskModal({
   const [projectId, setProjectId] = useState('')
   const [moduleId, setModuleId] = useState('') // '' = no module selected, '__none__' = project-level
   const [deliverableId, setDeliverableId] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
+  const [assigneeIds, setAssigneeIds] = useState<number[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -122,7 +122,7 @@ function AddTaskModal({
         deliverable_id: Number(deliverableId),
         title: title.trim(),
         description: description.trim() || null,
-        assigned_to: assigneeId ? Number(assigneeId) : null,
+        assignee_ids: assigneeIds,
         due_date: dueDate || null,
         priority,
         est_mandays: estMandays ? Number(estMandays) : null,
@@ -214,13 +214,36 @@ function AddTaskModal({
             <textarea className={`${inputClass} resize-none`} rows={2} value={description} onChange={e => setDescription(e.target.value)} />
           </div>
 
-          {/* 6. Assign to */}
+          {/* 6. Assignees */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assign to *</label>
-            <select className={inputClass} value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
-              <option value="">Unassigned</option>
-              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assignees</label>
+            {members.length === 0 ? (
+              <p className="text-xs text-slate-400">No members available</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {members.map(m => (
+                  <label
+                    key={m.id}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${
+                      assigneeIds.includes(m.id)
+                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+                        : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={assigneeIds.includes(m.id)}
+                      onChange={() => setAssigneeIds(prev => prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id])}
+                      className="sr-only"
+                    />
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-current/10 text-[10px] font-bold shrink-0">
+                      {m.name[0].toUpperCase()}
+                    </span>
+                    {m.name}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 7. Due date */}
@@ -731,18 +754,21 @@ export default function TeamKanbanBoard() {
                         <div className="mt-1">{dueDateDisplay(task.due_date, task.status)}</div>
                       )}
 
-                      {/* Assignee + Update */}
+                      {/* Assignees + Update */}
                       <div className="flex items-center justify-between mt-2 gap-1">
-                        {task.assignee ? (
-                          <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 min-w-0">
-                            <AssigneeAvatar name={task.assignee.name} />
-                            <span className="truncate">{task.assignee.name}</span>
+                        {task.assignees.length > 0 ? (
+                          <span className="flex items-center gap-0.5 min-w-0 flex-wrap">
+                            {task.assignees.map(a => (
+                              <span key={a.user.id} title={a.user.name}>
+                                <AssigneeAvatar name={a.user.name} />
+                              </span>
+                            ))}
                           </span>
                         ) : (
                           <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
                         )}
                         <div className="flex items-center gap-1 shrink-0">
-                          {task.status === 'Todo' && (isManager || task.assignee?.id === currentUserId) && (
+                          {task.status === 'Todo' && (isManager || task.assignees.some(a => a.user.id === currentUserId)) && (
                             <button
                               onClick={() => handleDeleteTask(task.id, task.title)}
                               className="p-1 rounded border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"

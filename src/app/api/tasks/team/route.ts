@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
           module:  { select: { id: true, title: true } },
         },
       },
-      assignee: { select: { id: true, name: true } },
+      assignees: { include: { user: { select: { id: true, name: true } } } },
     },
     orderBy: [{ status: 'asc' }, { order: 'asc' }],
   })

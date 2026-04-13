@@ -26,14 +26,6 @@ export default function NewProjectPage() {
     fetch('/api/users').then(r => r.json()).then(setMembers)
   }, [])
 
-  if (user?.role !== 'manager') {
-    return (
-      <AppLayout>
-        <div className="text-center py-20 text-slate-400">Access denied. Manager only.</div>
-      </AppLayout>
-    )
-  }
-
   function toggleAssignee(id: number) {
     setForm(prev => ({
       ...prev,

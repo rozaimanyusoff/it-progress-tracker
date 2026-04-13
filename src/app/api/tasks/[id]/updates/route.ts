@@ -52,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { notes, media_urls = [], mark_complete, review_action } = body
 
   // Fetch current task
-  const task = await prisma.task.findUnique({ where: { id: taskId } })
+  const task = await prisma.task.findUnique({ where: { id: taskId }, include: { assignees: true } })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
   // ── Manager review action ─────────────────────────────────────────
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // ── Developer update ──────────────────────────────────────────────
-  if (task.assigned_to !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!task.assignees.some((a: any) => a.user_id === userId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Determine new status
   let newStatus = task.status

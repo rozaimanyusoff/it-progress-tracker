@@ -23,7 +23,6 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   const { project_id, title, description, start_date, end_date } = body
@@ -42,6 +41,16 @@ export async function POST(req: NextRequest) {
       start_date: start_date ? new Date(start_date) : null,
       end_date: end_date ? new Date(end_date) : null,
       order: (maxOrder._max.order ?? 0) + 1,
+    },
+  })
+
+  await prisma.auditLog.create({
+    data: {
+      user_id: Number(user.id),
+      action: 'CREATE',
+      target_type: 'Module',
+      target_id: module.id,
+      metadata: { title: module.title },
     },
   })
 

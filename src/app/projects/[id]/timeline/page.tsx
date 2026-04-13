@@ -29,7 +29,7 @@ export default async function TimelinePage({ params }: { params: Promise<{ id: s
       where: { project_id: projectId },
       include: {
         tasks: {
-          include: { assignee: { select: { id: true, name: true } } },
+          include: { assignees: { include: { user: { select: { id: true, name: true } } } } },
           orderBy: { order: 'asc' },
         },
       },
@@ -55,8 +55,7 @@ export default async function TimelinePage({ params }: { params: Promise<{ id: s
       status: t.status,
       actual_start: t.actual_start?.toISOString() ?? null,
       actual_end: t.actual_end?.toISOString() ?? null,
-      assigned_to: t.assigned_to,
-      assignee: t.assignee,
+      assignees: t.assignees.map((a: any) => a.user),
     })),
   }))
 

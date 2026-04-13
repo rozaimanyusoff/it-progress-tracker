@@ -110,15 +110,16 @@ export async function POST(req: NextRequest) {
     // Create tasks from template
     let taskOrder = 1
     for (const tc of includedTasks) {
+      const resolvedAssigneeId: number | null = tc.assignee_id ? Number(tc.assignee_id) : (assignee_id ? Number(assignee_id) : null)
       const task = await prisma.task.create({
         data: {
           deliverable_id: deliverable.id,
           title: tc.name,
           est_mandays: tc.est_mandays != null ? tc.est_mandays : null,
-          assigned_to: tc.assignee_id ? Number(tc.assignee_id) : (assignee_id ? Number(assignee_id) : null),
           due_date: dueDate,
           status: 'Todo',
           order: taskOrder++,
+          assignees: resolvedAssigneeId ? { create: [{ user_id: resolvedAssigneeId }] } : undefined,
         },
       })
       createdTasks.push(task)
@@ -127,15 +128,16 @@ export async function POST(req: NextRequest) {
     // Create custom tasks added by PM
     for (const ct of dc.custom_tasks ?? []) {
       if (!ct.name?.trim()) continue
+      const resolvedAssigneeId: number | null = ct.assignee_id ? Number(ct.assignee_id) : (assignee_id ? Number(assignee_id) : null)
       const task = await prisma.task.create({
         data: {
           deliverable_id: deliverable.id,
           title: ct.name,
           est_mandays: ct.est_mandays != null ? ct.est_mandays : null,
-          assigned_to: ct.assignee_id ? Number(ct.assignee_id) : (assignee_id ? Number(assignee_id) : null),
           due_date: dueDate,
           status: 'Todo',
           order: taskOrder++,
+          assignees: resolvedAssigneeId ? { create: [{ user_id: resolvedAssigneeId }] } : undefined,
         },
       })
       createdTasks.push(task)
