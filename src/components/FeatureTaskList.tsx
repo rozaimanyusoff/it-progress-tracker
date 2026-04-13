@@ -118,18 +118,19 @@ function AssigneePicker({
   onChange: (ids: number[]) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const [pos, setPos] = useState({ top: 0, left: 0 })
   const triggerRef = useRef<HTMLDivElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
-    setPos({
-      top: rect.bottom + window.scrollY + 4,
-      left: rect.left + window.scrollX,
-      width: Math.max(rect.width, 200),
-    })
+    // Flip upward if too close to bottom of viewport
+    const spaceBelow = window.innerHeight - rect.bottom
+    const top = spaceBelow < 220
+      ? rect.top + window.scrollY - 4  // will use translateY(-100%) below
+      : rect.bottom + window.scrollY + 4
+    setPos({ top, left: rect.left + window.scrollX })
   }, [])
 
   useEffect(() => {
@@ -171,24 +172,24 @@ function AssigneePicker({
       {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={dropdownRef}
-          style={{ position: 'absolute', top: pos.top, left: pos.left, minWidth: pos.width, zIndex: 9999 }}
-          className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg shadow-2xl p-1.5 max-h-56 overflow-y-auto"
+          style={{ position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999, minWidth: 220, width: 'max-content', maxWidth: 320 }}
+          className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg shadow-2xl py-1 max-h-60 overflow-y-auto"
         >
           {options.length === 0 ? (
-            <p className="text-xs text-slate-400 px-2 py-1.5">No users available</p>
+            <p className="text-xs text-slate-400 px-3 py-2">No users available</p>
           ) : (
             options.map(u => (
               <label
                 key={u.id}
-                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-navy-700 rounded cursor-pointer"
+                className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer select-none"
               >
                 <input
                   type="checkbox"
                   checked={value.some(v => v.id === u.id)}
                   onChange={() => toggle(u.id)}
-                  className="rounded accent-blue-600"
+                  className="rounded accent-blue-600 shrink-0"
                 />
-                <span className="text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">{u.name}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-200">{u.name}</span>
               </label>
             ))
           )}
