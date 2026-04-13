@@ -2,11 +2,12 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import AppLayout from '@/components/Layout'
-import Link from 'next/link'
-import DeliverableSection from '@/components/DeliverableSection'
-import ProjectIssueSection from '@/components/ProjectIssueSection'
 import ProjectDetailCard from '@/components/ProjectDetailCard'
+import DeveloperAnalytics from '@/components/DeveloperAnalytics'
+import DeliverableSidebar from '@/components/DeliverableSidebar'
+import ProjectNavBar from '@/components/ProjectNavBar'
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -23,8 +24,53 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   if (!project) notFound()
 
-  // Fetch modules and deliverables for the Gantt chart
-  const [projectModules, deliverables] = await Promise.all([
+  // Fetch sibling projects for the nav bar (lightweight)
+  const user = session.user as any
+  const siblingProjects = await prisma.project.findMany({
+    where: user.role === 'manager'
+      ? {}
+      : { assignees: { some: { user_id: Number(user.id) } } },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      updates: { select: { progress_pct: true }, orderBy: { created_at: 'desc' }, take: 1 },
+    },
+    orderBy: { created_at: 'desc' },
+  })
+
+  // Compute progress + status for nav bar
+  type SiblingTaskCount = { project_id: bigint; total: bigint; done: bigint }
+  const siblingIds = siblingProjects.map(p => p.id)
+  const siblingTaskCounts = siblingIds.length > 0
+    ? await prisma.$queryRaw<SiblingTaskCount[]>(
+        Prisma.sql`
+          SELECT d.project_id, COUNT(t.id) AS total,
+                 COUNT(CASE WHEN t.status = 'Done' THEN 1 END) AS done
+          FROM "Deliverable" d
+          INNER JOIN "Task" t ON t.deliverable_id = d.id
+          WHERE d.project_id = ANY(ARRAY[${Prisma.join(siblingIds)}]::int[])
+          GROUP BY d.project_id
+        `
+      )
+    : []
+  const siblingTaskMap = new Map(siblingTaskCounts.map(r => [Number(r.project_id), r]))
+  const navProjects = siblingProjects.map(p => {
+    const stats = siblingTaskMap.get(p.id)
+    const computedProgress = stats && Number(stats.total) > 0
+      ? Math.round(Number(stats.done) / Number(stats.total) * 100)
+      : (p.updates[0]?.progress_pct ?? 0)
+    const computedStatus = (() => {
+      if (p.status === 'OnHold') return 'OnHold'
+      if (computedProgress >= 100) return 'Done'
+      if (computedProgress > 0) return 'InProgress'
+      return p.status
+    })()
+    return { id: p.id, title: p.title, computedProgress, computedStatus }
+  })
+
+  // Fetch modules, deliverables, and open issue count
+  const [projectModules, deliverables, openIssueCount] = await Promise.all([
     prisma.module.findMany({
       where: { project_id: project.id },
       orderBy: { order: 'asc' },
@@ -39,6 +85,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         _count: { select: { issues: { where: { issue_status: { notIn: ['resolved', 'closed'] } } } } },
       },
       orderBy: { order: 'asc' },
+    }),
+    prisma.issue.count({
+      where: {
+        project_id: project.id,
+        issue_status: { notIn: ['resolved', 'closed'] },
+      },
     }),
   ])
 
@@ -88,9 +140,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   return (
     <AppLayout>
-      <div className="mb-6">
-        <Link href="/dashboard" className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm">← Back</Link>
-      </div>
+      <ProjectNavBar projects={navProjects} currentId={project.id} />
 
       {/* Header + Gantt + Burndown card */}
       <ProjectDetailCard
@@ -109,19 +159,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         computedStatus={computedStatus}
         ganttDeliverables={ganttDeliverables}
         ganttModules={ganttModules}
+        openIssueCount={openIssueCount}
       />
 
-      {/* Modules & Deliverables Section */}
-      <div className="mt-6">
-        <DeliverableSection
-          projectId={project.id}
-          userRole={(session.user as any).role}
-          projectStartDate={project.start_date.toISOString()}
-          projectDeadline={project.deadline.toISOString()}
-        />
-      </div>
+      {/* Modules & Deliverables — right slide-in sidebar */}
+      <DeliverableSidebar
+        projectId={project.id}
+        userRole={(session.user as any).role}
+        projectStartDate={project.start_date.toISOString()}
+        projectDeadline={project.deadline.toISOString()}
+      />
 
-      <ProjectIssueSection projectId={project.id} />
+      {/* Developer Analytics — per project */}
+      <div className="mt-6">
+        <DeveloperAnalytics projectId={project.id} />
+      </div>
     </AppLayout>
   )
 }

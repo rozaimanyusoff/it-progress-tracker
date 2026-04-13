@@ -614,16 +614,14 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
             </div>
           )}
         </div>
-        {userRole === 'manager' && (
-          <div className="flex items-center gap-2">
-            <button onClick={openAddModule} className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg border border-slate-200 dark:border-navy-600">
-              + Module
-            </button>
-            <button onClick={() => openAddDeliv()} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
-              + Add Deliverable
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button onClick={openAddModule} className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg border border-slate-200 dark:border-navy-600">
+            + Module
+          </button>
+          <button onClick={() => openAddDeliv()} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
+            + Add Deliverable
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -658,39 +656,39 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                       {modDeliverables.length} deliverable(s) · {doneTasks}/{totalTasks} tasks
                     </span>
                   </button>
-                  {userRole === 'manager' && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => { openAddDeliv(mod.id); setExpandedModules(prev => new Set([...prev, mod.id])) }}
-                        className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300"
-                      >
-                        + Deliverable
-                      </button>
-                      <button
-                        onClick={() => { setSaveAsTemplateModule(mod); setSaveAsTemplateName(mod.title); setSaveAsTemplateError('') }}
-                        className="p-1 border border-indigo-200 dark:border-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400"
-                        title="Save as template"
-                      >
-                        <Bookmark className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => deleteModule(mod.id, mod.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Delete module">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => { openAddDeliv(mod.id); setExpandedModules(prev => new Set([...prev, mod.id])) }}
+                      className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300"
+                    >
+                      + Deliverable
+                    </button>
+                    {userRole === 'manager' && (
+                      <>
+                        <button
+                          onClick={() => { setSaveAsTemplateModule(mod); setSaveAsTemplateName(mod.title); setSaveAsTemplateError('') }}
+                          className="p-1 border border-indigo-200 dark:border-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400"
+                          title="Save as template"
+                        >
+                          <Bookmark className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => deleteModule(mod.id, mod.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Delete module">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {isOpen && (
                   <div className="p-3 space-y-2">
                     {modDeliverables.length === 0 ? (
                       <p className="text-xs text-slate-400 py-2 text-center">
-                        No deliverables in this module yet.
-                        {userRole === 'manager' && (
-                          <button onClick={() => openAddDeliv(mod.id)} className="ml-1 text-blue-500 hover:underline">Add one</button>
-                        )}
+                        No deliverables in this module yet.{' '}
+                        <button onClick={() => openAddDeliv(mod.id)} className="ml-1 text-blue-500 hover:underline">Add one</button>
                       </p>
                     ) : (
                       (() => {
@@ -735,7 +733,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                 <div className="p-3 space-y-2">
                   {ungrouped.length === 0 ? (
                     <p className="text-sm text-slate-400 py-4 text-center">
-                      No deliverables yet.{userRole === 'manager' ? ' Click "+ Add Deliverable" to create one.' : ''}
+                      No deliverables yet. Click &quot;+ Add Deliverable&quot; to create one.
                     </p>
                   ) : (
                     (() => {

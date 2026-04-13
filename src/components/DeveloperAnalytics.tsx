@@ -3,20 +3,13 @@
 import { useState, useEffect } from 'react'
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
 } from 'recharts'
-
-interface WeekPoint {
-  week: string
-  [name: string]: number | string
-}
+import { X, ArrowRightLeft } from 'lucide-react'
 
 interface DeveloperStat {
   id: number
@@ -28,7 +21,20 @@ interface DeveloperStat {
   estimatedMandays: number
   totalSpentDays: number
   weeklyTasksTrend: { week: string; count: number }[]
+  weeklyCompletedTrend: { week: string; count: number }[]
   weeklyTimeTrend: { week: string; hours: number }[]
+}
+
+interface AssigneeTask {
+  id: number
+  title: string
+  status: string
+  priority: string
+  est_mandays: number | null
+  due_date: string | null
+  assignees: { user: { id: number; name: string } }[]
+  deliverable: { id: number; title: string } | null
+  feature: { id: number; title: string } | null
 }
 
 interface Props {
@@ -36,31 +42,192 @@ interface Props {
   projectId?: number
 }
 
-function MiniCircle({ value, size = 36, color }: { value: number; size?: number; color: string }) {
-  const strokeWidth = 4
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (value / 100) * circumference
+const DEV_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#14b8a6']
+
+function lighten(hex: string) { return hex + '55' }
+
+const STATUS_LABEL: Record<string, string> = {
+  Todo: 'Todo', InProgress: 'In Progress', InReview: 'In Review', Blocked: 'Blocked',
+}
+const STATUS_COLOR: Record<string, string> = {
+  Todo: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  InProgress: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  InReview: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  Blocked: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+}
+const PRIORITY_COLOR: Record<string, string> = {
+  critical: 'text-red-600', high: 'text-orange-500', medium: 'text-blue-500', low: 'text-slate-400',
+}
+
+// ── Reassign Modal ─────────────────────────────────────────────────────────────
+function ReassignModal({
+  dev,
+  allDevs,
+  projectId,
+  onClose,
+  onDone,
+}: {
+  dev: DeveloperStat
+  allDevs: DeveloperStat[]
+  projectId?: number
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [tasks, setTasks] = useState<AssigneeTask[]>([])
+  const [loading, setLoading] = useState(true)
+  const [reassigning, setReassigning] = useState<number | null>(null)
+  const [toUserId, setToUserId] = useState<Record<number, string>>({})
+  const others = allDevs.filter(d => d.id !== dev.id)
+
+  useEffect(() => {
+    const url = projectId
+      ? `/api/tasks/by-assignee?user_id=${dev.id}&project_id=${projectId}`
+      : `/api/tasks/by-assignee?user_id=${dev.id}`
+    fetch(url)
+      .then(r => r.json())
+      .then(data => { setTasks(Array.isArray(data) ? data : []); setLoading(false) })
+  }, [dev.id, projectId])
+
+  async function reassign(taskId: number) {
+    const targetId = toUserId[taskId]
+    if (!targetId) return
+    setReassigning(taskId)
+    // Keep existing assignees, replace this dev with new one
+    const task = tasks.find(t => t.id === taskId)!
+    const currentIds = task.assignees.map(a => a.user.id).filter(id => id !== dev.id)
+    const newIds = [...currentIds, Number(targetId)]
+    await fetch(`/api/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignee_ids: newIds }),
+    })
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    setReassigning(null)
+  }
+
   return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" stroke="currentColor" className="text-slate-200 dark:text-navy-700" />
-      <circle
-        cx={size / 2} cy={size / 2} r={radius}
-        strokeWidth={strokeWidth} fill="none"
-        stroke={color}
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-      />
-    </svg>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="w-full max-w-xl bg-white dark:bg-navy-800 rounded-2xl border border-slate-200 dark:border-navy-700 flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-navy-700 shrink-0">
+          <div>
+            <h3 className="font-semibold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+              <ArrowRightLeft className="w-4 h-4 text-blue-500" />
+              Reassign Tasks — {dev.name}
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Active (non-completed) tasks{projectId ? ' in this project' : ''}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-navy-700 text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <p className="text-sm text-slate-400 text-center py-8">Loading tasks...</p>
+          ) : tasks.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">No active tasks assigned to {dev.name}{projectId ? ' in this project' : ''}.</p>
+          ) : (
+            <div className="space-y-2">
+              {tasks.map(task => (
+                <div key={task.id} className="rounded-lg border border-slate-200 dark:border-navy-700 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium text-slate-800 dark:text-white truncate">{task.title}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLOR[task.status] ?? STATUS_COLOR.Todo}`}>
+                          {STATUS_LABEL[task.status] ?? task.status}
+                        </span>
+                        <span className={`text-[10px] font-medium ${PRIORITY_COLOR[task.priority] ?? ''}`}>
+                          {task.priority}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">
+                        {task.deliverable?.title ?? task.feature?.title ?? '—'}
+                        {task.est_mandays != null && ` · ${task.est_mandays} md`}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Reassign row */}
+                  {others.length > 0 && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <select
+                        value={toUserId[task.id] ?? ''}
+                        onChange={e => setToUserId(p => ({ ...p, [task.id]: e.target.value }))}
+                        className="flex-1 text-xs bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-300"
+                      >
+                        <option value="">Move to…</option>
+                        {others.map(d => (
+                          <option key={d.id} value={d.id}>{d.name} ({d.tasksAssigned - d.tasksDone} active)</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => reassign(task.id)}
+                        disabled={!toUserId[task.id] || reassigning === task.id}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 whitespace-nowrap"
+                      >
+                        {reassigning === task.id ? (
+                          <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <ArrowRightLeft className="w-3 h-3" />
+                        )}
+                        Move
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-slate-100 dark:border-navy-700 shrink-0 flex justify-end">
+          <button onClick={() => { onDone(); onClose() }} className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-100 dark:bg-navy-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-navy-600">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
-const DEV_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#14b8a6']
+// ── Workload Bar ───────────────────────────────────────────────────────────────
+function WorkloadBar({ remaining, max, onClick, isManager }: { remaining: number; max: number; onClick: () => void; isManager: boolean }) {
+  const pct = max > 0 ? (remaining / max) * 100 : 0
+  const barColor = pct <= 33 ? '#22c55e' : pct <= 66 ? '#f97316' : '#ef4444'
+  const label = pct <= 33 ? 'Light' : pct <= 66 ? 'Moderate' : 'Heavy'
+  const labelColor = pct <= 33 ? 'text-green-600 dark:text-green-400' : pct <= 66 ? 'text-orange-500 dark:text-orange-400' : 'text-red-500 dark:text-red-400'
 
+  return (
+    <div className={`flex items-center gap-2 min-w-[140px] ${isManager ? 'cursor-pointer group' : ''}`} onClick={isManager ? onClick : undefined} title={isManager ? 'Click to reassign tasks' : undefined}>
+      <div className="flex-1 h-2 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${Math.max(4, pct)}%`, background: barColor }}
+        />
+      </div>
+      <span className={`text-[10px] font-semibold shrink-0 ${labelColor}`}>{label}</span>
+      {isManager && (
+        <ArrowRightLeft className="w-3 h-3 text-slate-300 group-hover:text-blue-500 transition-colors shrink-0" />
+      )}
+    </div>
+  )
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function DeveloperAnalytics({ initialData, projectId }: Props) {
   const [devStats, setDevStats] = useState<DeveloperStat[]>(initialData ?? [])
   const [loading, setLoading] = useState(!initialData)
+  const [isManager, setIsManager] = useState(false)
+  const [reassignDev, setReassignDev] = useState<DeveloperStat | null>(null)
+
+  useEffect(() => {
+    // Check if current user is manager
+    fetch('/api/auth/session').then(r => r.json()).then(s => {
+      if ((s?.user as any)?.role === 'manager') setIsManager(true)
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (initialData) return
@@ -74,6 +241,13 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
         setLoading(false)
       })
   }, [projectId])
+
+  function refresh() {
+    const url = projectId
+      ? `/api/analytics/developers?project_id=${projectId}`
+      : '/api/analytics/developers'
+    fetch(url).then(r => r.json()).then(data => setDevStats(data.developers ?? []))
+  }
 
   if (loading) {
     return (
@@ -92,70 +266,62 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
     )
   }
 
-  // Build chart data: one row per week, one key per developer
   const weeks = devStats[0]?.weeklyTasksTrend.map((w) => w.week) ?? []
 
-  const tasksChartData: WeekPoint[] = weeks.map((week, wi) => {
-    const row: WeekPoint = { week }
+  const stackedData = weeks.map((week, wi) => {
+    const row: Record<string, string | number> = { week }
     devStats.forEach((dev) => {
-      row[dev.name] = dev.weeklyTasksTrend[wi]?.count ?? 0
+      const assigned = dev.weeklyTasksTrend[wi]?.count ?? 0
+      const completed = dev.weeklyCompletedTrend?.[wi]?.count ?? 0
+      row[`${dev.name}_done`] = completed
+      row[`${dev.name}_rem`] = Math.max(0, assigned - completed)
     })
     return row
   })
 
-  const timeChartData: WeekPoint[] = weeks.map((week, wi) => {
-    const row: WeekPoint = { week }
+  const timeChartData = weeks.map((week, wi) => {
+    const row: Record<string, string | number> = { week }
     devStats.forEach((dev) => {
       row[dev.name] = dev.weeklyTimeTrend[wi]?.hours ?? 0
     })
     return row
   })
 
+  // Workload: remaining = assigned - done
+  const maxRemaining = Math.max(...devStats.map(d => d.tasksAssigned - d.tasksDone), 1)
+
   return (
     <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-4 sm:p-6">
       <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-5">Developer Analytics</h2>
 
-      {/* 3-metric summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        {/* 1. Completed vs Total Tasks */}
+      {/* Charts row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        {/* Weekly Tasks Assigned vs Completed — stacked bar */}
         <div className="rounded-lg border border-slate-100 dark:border-navy-700 p-4 bg-slate-50 dark:bg-navy-900/50">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Completed vs Total Tasks</p>
-          <div className="space-y-2">
-            {devStats.map((dev) => {
-              const pct = dev.tasksAssigned > 0 ? Math.round((dev.tasksDone / dev.tasksAssigned) * 100) : 0
-              const color = pct >= 80 ? '#22c55e' : pct >= 40 ? '#f97316' : '#3b82f6'
-              return (
-                <div key={dev.id} className="flex items-center gap-2">
-                  <MiniCircle value={pct} color={color} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{dev.name}</p>
-                    <p className="text-xs text-slate-400">{dev.tasksDone}/{dev.tasksAssigned} tasks</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* 2. Weekly Tasks Assigned — Line Chart (4 weeks) */}
-        <div className="rounded-lg border border-slate-100 dark:border-navy-700 p-4 bg-slate-50 dark:bg-navy-900/50">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Tasks Assigned Trend</p>
-          <ResponsiveContainer width="100%" height={120}>
-            <LineChart data={tasksChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">
+            Weekly Tasks Assigned vs Completed
+          </p>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={stackedData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <XAxis dataKey="week" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ fontSize: 11 }} />
-              {devStats.map((dev, i) => (
-                <Line
-                  key={dev.id}
-                  type="monotone"
-                  dataKey={dev.name}
-                  stroke={DEV_COLORS[i % DEV_COLORS.length]}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                />
-              ))}
-            </LineChart>
+              <Tooltip
+                contentStyle={{ fontSize: 11 }}
+                formatter={((value: unknown, name: unknown) => {
+                  const n = String(name)
+                  const isDone = n.endsWith('_done')
+                  const devName = n.replace(/_done$|_rem$/, '')
+                  return [value, isDone ? `${devName} (completed)` : `${devName} (remaining)`]
+                }) as any}
+              />
+              {devStats.map((dev, i) => {
+                const color = DEV_COLORS[i % DEV_COLORS.length]
+                return [
+                  <Bar key={`${dev.id}_done`} dataKey={`${dev.name}_done`} stackId={dev.name} fill={color} radius={[0, 0, 0, 0]} name={`${dev.name}_done`} />,
+                  <Bar key={`${dev.id}_rem`} dataKey={`${dev.name}_rem`} stackId={dev.name} fill={lighten(color)} radius={[3, 3, 0, 0]} name={`${dev.name}_rem`} />,
+                ]
+              })}
+            </BarChart>
           </ResponsiveContainer>
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
             {devStats.map((dev, i) => (
@@ -164,25 +330,24 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
                 {dev.name}
               </span>
             ))}
+            <span className="flex items-center gap-1 text-xs text-slate-400 ml-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" />
+              remaining
+            </span>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Last 4 weeks</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Last 4 weeks · solid = completed, light = remaining</p>
         </div>
 
-        {/* 3. Weekly Time Spent — Bar Chart (4 weeks) */}
+        {/* Weekly Time Spent */}
         <div className="rounded-lg border border-slate-100 dark:border-navy-700 p-4 bg-slate-50 dark:bg-navy-900/50">
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Time Spent Trend (hrs)</p>
-          <ResponsiveContainer width="100%" height={120}>
+          <ResponsiveContainer width="100%" height={160}>
             <BarChart data={timeChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <XAxis dataKey="week" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
               <Tooltip contentStyle={{ fontSize: 11 }} />
               {devStats.map((dev, i) => (
-                <Bar
-                  key={dev.id}
-                  dataKey={dev.name}
-                  fill={DEV_COLORS[i % DEV_COLORS.length]}
-                  radius={[2, 2, 0, 0]}
-                />
+                <Bar key={dev.id} dataKey={dev.name} fill={DEV_COLORS[i % DEV_COLORS.length]} radius={[2, 2, 0, 0]} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -201,91 +366,79 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
       {/* Divider */}
       <div className="border-t border-slate-200 dark:border-navy-700 mb-4" />
 
-      {/* Workload balance */}
-      <div className="mb-5">
+      {/* Overall Workload Balance — table with workload bar */}
+      <div className="mb-2">
         <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">
           Overall Workload Balance
+          {isManager && <span className="ml-2 normal-case font-normal text-blue-500">· click bar to reassign tasks</span>}
         </p>
-        <div className="space-y-3">
-          {devStats.map((dev) => {
-            const maxTasks = Math.max(...devStats.map((d) => d.tasksAssigned), 1)
-            const workloadPct = (dev.tasksAssigned / maxTasks) * 100
-            const completionPct =
-              dev.tasksAssigned > 0
-                ? Math.min(100, (dev.tasksDone / dev.tasksAssigned) * 100)
-                : 0
-
-            return (
-              <div key={dev.id} className="flex items-center gap-3">
-                <div className="w-24 sm:w-32 shrink-0">
-                  <p className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{dev.name}</p>
-                </div>
-                <div className="flex-1 relative h-3 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
-                  <div
-                    className="absolute top-0 left-0 h-full bg-blue-200 dark:bg-blue-900/50 rounded-full"
-                    style={{ width: `${workloadPct}%` }}
-                  />
-                  <div
-                    className="absolute top-0 left-0 h-full bg-green-500 rounded-full transition-all"
-                    style={{ width: `${(completionPct / 100) * workloadPct}%` }}
-                  />
-                </div>
-                <div className="flex items-center gap-2 shrink-0 text-xs">
-                  <span className="text-green-600 dark:text-green-400 font-medium">{dev.tasksDone}✓</span>
-                  <span className="text-slate-400">/</span>
-                  <span className="text-slate-600 dark:text-slate-300">{dev.tasksAssigned}</span>
-                </div>
-              </div>
-            )
-          })}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-navy-700 text-left">
+                {['Developer', 'Assigned', 'Completed', 'In Progress', 'Est. Mandays', 'Time Spent', 'Workload'].map((h) => (
+                  <th key={h} className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-navy-700">
+              {devStats.map((dev) => {
+                const remaining = dev.tasksAssigned - dev.tasksDone
+                return (
+                  <tr key={dev.id} className="hover:bg-slate-50 dark:hover:bg-navy-700/30 transition-colors">
+                    <td className="px-3 py-3">
+                      <p className="font-medium text-slate-800 dark:text-white">{dev.name}</p>
+                      <p className="text-xs text-slate-400">{dev.email}</p>
+                    </td>
+                    <td className="px-3 py-3 text-slate-700 dark:text-slate-300 font-medium">{dev.tasksAssigned}</td>
+                    <td className="px-3 py-3">
+                      <span className={`font-medium ${dev.tasksDone > 0 ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>
+                        {dev.tasksDone}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`font-medium ${dev.tasksInProgress > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400'}`}>
+                        {dev.tasksInProgress}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
+                      {dev.estimatedMandays > 0 ? `${dev.estimatedMandays} md` : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
+                      {dev.totalSpentDays > 0 ? `${dev.totalSpentDays}d` : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-3 py-3">
+                      <WorkloadBar
+                        remaining={remaining}
+                        max={maxRemaining}
+                        onClick={() => setReassignDev(dev)}
+                        isManager={isManager}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Stats table */}
-      <div className="hidden sm:block overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 dark:border-navy-700 text-left">
-              {['Developer', 'Assigned', 'Done', 'In Progress', 'Est. Mandays', 'Time Spent'].map((h) => (
-                <th key={h} className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-navy-700">
-            {devStats.map((dev) => (
-              <tr key={dev.id} className="hover:bg-slate-50 dark:hover:bg-navy-700/30 transition-colors">
-                <td className="px-3 py-3">
-                  <p className="font-medium text-slate-800 dark:text-white">{dev.name}</p>
-                  <p className="text-xs text-slate-400">{dev.email}</p>
-                </td>
-                <td className="px-3 py-3 text-slate-700 dark:text-slate-300 font-medium">{dev.tasksAssigned}</td>
-                <td className="px-3 py-3">
-                  <span className={`font-medium ${dev.tasksDone > 0 ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>
-                    {dev.tasksDone}
-                  </span>
-                </td>
-                <td className="px-3 py-3">
-                  <span className={`font-medium ${dev.tasksInProgress > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400'}`}>
-                    {dev.tasksInProgress}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
-                  {dev.estimatedMandays > 0 ? `${dev.estimatedMandays} md` : <span className="text-slate-400">—</span>}
-                </td>
-                <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
-                  {dev.totalSpentDays > 0 ? `${dev.totalSpentDays}d` : <span className="text-slate-400">—</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
       <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
-        Time spent = sum of (task actual_end − actual_start). Delayed = tasks past feature planned end.
+        Time spent = sum of (task actual_end − actual_start). Workload = remaining active tasks relative to highest-loaded member.
       </p>
+
+      {/* Reassign modal */}
+      {reassignDev && (
+        <ReassignModal
+          dev={reassignDev}
+          allDevs={devStats}
+          projectId={projectId}
+          onClose={() => setReassignDev(null)}
+          onDone={refresh}
+        />
+      )}
     </div>
   )
 }

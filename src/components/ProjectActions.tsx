@@ -18,10 +18,11 @@ interface ProjectActionsProps {
     company_id?: number | null
   }
   isManager: boolean
+  openIssueCount?: number
   onIssueCreated?: () => void
 }
 
-export default function ProjectActions({ project, isManager, onIssueCreated }: ProjectActionsProps) {
+export default function ProjectActions({ project, isManager, openIssueCount = 0, onIssueCreated }: ProjectActionsProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
 
@@ -170,9 +171,14 @@ export default function ProjectActions({ project, isManager, onIssueCreated }: P
         )}
         <button
           onClick={openIssue}
-          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+          className="relative px-3 py-1.5 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
         >
           + Issue
+          {openIssueCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+              {openIssueCount}
+            </span>
+          )}
         </button>
         {isManager && (
           <button

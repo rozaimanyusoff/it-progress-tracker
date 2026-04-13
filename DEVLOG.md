@@ -11,6 +11,83 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-13 — Dashboard & Project Details: Overhaul UI + Analytics
+
+### Pembaikan Bug
+
+- **Dashboard "In Progress" count salah** — kiraan menggunakan raw `p.status` dari DB, bukan `computedStatus` yang dikira dari task progress. Diperbaiki dengan menggunakan `computedStatus` yang dikira server-side untuk semua statistik.
+- **Project badge tunjuk "Pending" walaupun ada progress** — sama seperti di atas; badge kini bergantung pada `computedStatus` bukan field DB.
+- **Members tidak boleh tambah module/deliverable/tasks** — gating `userRole === 'manager'` yang salah diletakkan pada butang "+ Module", "+ Add Deliverable", dan "+ Deliverable" dalam `DeliverableSection.tsx`. Kini semua ahli boleh tambah; Edit/Delete/Reorder kekal manager-only.
+
+### Pembaikan `src/app/api/analytics/developers/route.ts`
+
+- Filter `taskWhere` diperbetulkan — sebelum ini hanya memadankan tasks yang dipautkan via `feature.project_links`. Tasks yang dicipta melalui deliverable section (aliran kerja utama) menggunakan `deliverable_id` dan tidak kelihatan dalam analytics.
+- Diperbaiki dengan filter `OR`: `feature.project_links` **atau** `deliverable.project_id`.
+- Tambah `completed_at` ke dalam select task; tambah `weeklyCompletedTrend` menggunakan `COALESCE(completed_at, actual_end)`.
+
+### Komponen Baru
+
+**`src/components/DeliverableSidebar.tsx`**
+- Panel slide-in dari kanan, lebar `w-full sm:w-1/2`, dengan notch pill di bahagian atas
+- Tab terapung di tepi kanan (label menegak + ikon `Layers`)
+- Tutup dengan Escape / klik luar; kunci scroll body semasa terbuka
+- Render `DeliverableSection` secara lazy hanya apabila terbuka
+
+**`src/components/ProjectNavBar.tsx`**
+- Bar navigasi di bahagian atas halaman project details
+- Kiri: senarai pills project boleh-scroll (dot status, tajuk dipotong ≤120px, peratusan progress)
+- Kanan: pautan `← Back` ke `/dashboard`
+- Project semasa: pill biru penuh; yang lain: bordered, hover ke biru
+
+### Perubahan Komponen
+
+**`src/components/ProjectDetailCard.tsx`**
+- Pindahkan badge status project ke atas kad (sebelum baris tajuk)
+- Tambah tab paparan: **Gantt Chart** / **Burndown Chart** / **Milestone**
+- Tab Milestone: garis masa menegak deliverable disusun mengikut `planned_end`; tunjuk status badge, isu terbuka, peratusan task, tarikh planned/actual
+- Prop `openIssueCount` dihantar ke `ProjectActions` untuk badge merah
+- Tukar butang "Export PPTX" → **"Download Report"**
+
+**`src/components/ProjectActions.tsx`**
+- Tambah prop `openIssueCount?: number` (default 0)
+- Badge merah `absolute -top-1.5 -right-1.5` pada butang "+ Issue" apabila ada isu terbuka
+
+**`src/components/DeveloperAnalytics.tsx`**
+- Buang bahagian "Completed vs Total Tasks" (MiniCircle)
+- Chart "Tasks Assigned Trend" diganti dengan **stacked bar chart per assignee**: bar pepejal (completed) + bar separuh telus (remaining)
+- **Overall Workload Balance**: buang progress bar; gantikan kolum "Done" → "Completed"; tambah kolum **Workload** (bar mendatar hijau/oren/merah mengikut beban)
+- Manager boleh klik workload bar untuk buka `ReassignModal` — ambil tasks aktif via `GET /api/tasks/by-assignee`, pilih assignee baru, hantar `PUT /api/tasks/[id]`
+
+**`src/app/projects/[id]/page.tsx`**
+- Gantikan `<Link>← Back</Link>` dengan `<ProjectNavBar>` (termasuk pengiraan progress + computedStatus sibling projects)
+- Gantikan section inline Modules & Deliverables dengan `<DeliverableSidebar>`
+- Tambah `prisma.issue.count()` untuk `openIssueCount`, dihantar ke `ProjectDetailCard`
+
+### API Route Baru
+
+**`src/app/api/tasks/by-assignee/route.ts`**
+- `GET /api/tasks/by-assignee?user_id=X&project_id=Y`
+- Manager-only; kembalikan tasks aktif (bukan Done) untuk seorang assignee dalam sesebuah project
+- Filter OR untuk tasks berkaitan feature dan deliverable
+
+### Dashboard — Carta Bulanan + Grid Responsif
+
+**`src/app/dashboard/page.tsx`**
+- Gantikan query mingguan dengan dua query SQL bulanan selari:
+  - **Monthly Assigned**: kira task mengikut `DATE_TRUNC('month', created_at)`
+  - **Monthly Completed**: kira task `status = 'Done'` mengikut `COALESCE(completed_at, actual_end)`
+- Label bulan dijana per-project dari `start_date` hingga `deadline` (bukan tempoh tetap)
+- Data berbentuk `monthlyData: { month, assigned, completed }[]`
+
+**`src/app/dashboard/DashboardClient.tsx`**
+- Gantikan `WeeklyBar` (BarChart biru) dengan `MonthlyComboChart`:
+  - `ComposedChart` dari recharts
+  - **Bar hijau** = completed tasks; **Line oren** = assigned tasks
+- Tambah tarikh **Start** dan **Deadline** pada kad project (sebelum ini hanya Deadline)
+- Grid kad: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3` → **`grid-cols-2 md:grid-cols-3 xl:grid-cols-4`** (min 2, max 4 mengikut saiz skrin)
+
+---
+
 ## 2026-04-06 — Bugfix: Meeting Create 500 Error
 
 ### Masalah yang diselesaikan

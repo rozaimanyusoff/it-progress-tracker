@@ -1,19 +1,21 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import DeveloperAnalytics from '@/components/DeveloperAnalytics'
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface Project {
   id: number
   title: string
   description: string | null
   status: string
+  computedStatus: string
   deadline: string
   start_date: string
   assignees: { user: { id: number; name: string } }[]
   updates: { progress_pct: number; status: string; created_at: string }[]
   _count: { issues: number }
   computedProgress: number
+  monthlyData?: { month: string; assigned: number; completed: number }[]
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -32,7 +34,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function CircleProgress({ value }: { value: number }) {
-  const size = 52
+  const size = 56
   const strokeWidth = 5
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
@@ -51,15 +53,35 @@ function CircleProgress({ value }: { value: number }) {
   )
 }
 
+function MonthlyComboChart({ data }: { data: { month: string; assigned: number; completed: number }[] }) {
+  const hasData = data.some(d => d.assigned > 0 || d.completed > 0)
+  if (!hasData) {
+    return <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center py-1">No task data yet</p>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={56}>
+      <ComposedChart data={data} barSize={10} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+        <XAxis dataKey="month" tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+        <YAxis tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+        <Tooltip
+          contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
+          formatter={(v: unknown, name: unknown) => [`${v} tasks`, name === 'completed' ? 'Completed' : 'Assigned'] as [string, string]}
+        />
+        <Bar dataKey="completed" fill="#22c55e" radius={[3, 3, 0, 0]} />
+        <Line dataKey="assigned" type="monotone" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
 export default function DashboardClient({ projects, session }: { projects: Project[]; session: any }) {
   const isManager = session.user.role === 'manager'
-
   const [localProjects] = useState(projects)
 
   const stats = {
     total: localProjects.length,
-    inProgress: localProjects.filter(p => p.status === 'InProgress').length,
-    done: localProjects.filter(p => p.status === 'Done').length,
+    inProgress: localProjects.filter(p => p.computedStatus === 'InProgress').length,
+    done: localProjects.filter(p => p.computedStatus === 'Done').length,
     issues: localProjects.reduce((s, p) => s + p._count.issues, 0),
   }
 
@@ -72,9 +94,11 @@ export default function DashboardClient({ projects, session }: { projects: Proje
             {isManager ? 'All projects overview' : 'Your assigned projects'}
           </p>
         </div>
-        <Link href="/projects/new" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
-          + New Project
-        </Link>
+        {isManager && (
+          <Link href="/projects/new" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
+            + New Project
+          </Link>
+        )}
       </div>
 
       {/* Stats */}
@@ -92,62 +116,89 @@ export default function DashboardClient({ projects, session }: { projects: Proje
         ))}
       </div>
 
-      {/* Projects */}
-      <div className="rounded-xl border overflow-hidden bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700 mb-6">
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-navy-700">
-          <h2 className="font-semibold text-slate-900 dark:text-white">Projects</h2>
+      {/* Projects — card grid */}
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-900 dark:text-white">Projects</h2>
+        <span className="text-xs text-slate-400">{localProjects.length} project{localProjects.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {localProjects.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 px-6 py-12 text-center text-slate-400">
+          No projects found.
         </div>
-        <div className="divide-y divide-slate-100 dark:divide-navy-700">
-          {localProjects.length === 0 && (
-            <div className="px-6 py-12 text-center text-slate-400">No projects found.</div>
-          )}
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {localProjects.map(project => {
             const progress = project.computedProgress ?? 0
+            const monthlyData = project.monthlyData ?? []
             return (
-              <div key={project.id} className="px-4 sm:px-6 py-4 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="pt-0.5">
-                    <CircleProgress value={progress} />
-                  </div>
-
+              <div key={project.id} className="rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 flex flex-col overflow-hidden hover:shadow-md transition-shadow">
+                {/* Card header */}
+                <div className="p-4 flex items-start gap-3">
+                  <CircleProgress value={progress} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <Link href={`/projects/${project.id}`} className="font-medium text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm sm:text-base">
-                        {project.title}
-                      </Link>
-                      <StatusBadge status={project.status} />
-                    </div>
-                    {project.description && (
-                      <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm truncate mb-1">{project.description}</p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-slate-400 dark:text-slate-500">
-                      {project.assignees.length > 0 && (
-                        <span>Assignees: {project.assignees.map(a => a.user.name).join(', ')}</span>
-                      )}
-                      <span>Deadline: {new Date(project.deadline).toLocaleDateString()}</span>
-                      {project._count.issues > 0 && (
-                        <span className="text-red-500 dark:text-red-400">{project._count.issues} open issue(s)</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2 shrink-0">
                     <Link
                       href={`/projects/${project.id}`}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors whitespace-nowrap text-center"
+                      className="font-semibold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm leading-snug block truncate"
                     >
-                      View
+                      {project.title}
                     </Link>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <StatusBadge status={project.computedStatus} />
+                      {project._count.issues > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800">
+                          {project._count.issues} issue{project._count.issues > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                </div>
+
+                {/* Description */}
+                {project.description && (
+                  <p className="px-4 text-xs text-slate-500 dark:text-slate-400 line-clamp-2 -mt-1">{project.description}</p>
+                )}
+
+                {/* Assignees + Dates */}
+                <div className="px-4 pt-2 pb-1 text-[11px] text-slate-400 dark:text-slate-500 space-y-0.5">
+                  {project.assignees.length > 0 && (
+                    <p className="truncate">
+                      <span className="font-medium text-slate-500 dark:text-slate-400">Team: </span>
+                      {project.assignees.map(a => a.user.name).join(', ')}
+                    </p>
+                  )}
+                  <p>
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Start: </span>
+                    {new Date(project.start_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                  <p>
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Deadline: </span>
+                    {new Date(project.deadline).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* Monthly tasks combo chart */}
+                <div className="px-4 pt-2 pb-1">
+                  <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">
+                    Tasks (monthly)
+                  </p>
+                  <MonthlyComboChart data={monthlyData} />
+                </div>
+
+                {/* Footer */}
+                <div className="px-4 py-3 mt-auto border-t border-slate-100 dark:border-navy-700 flex justify-end">
+                  <Link
+                    href={`/projects/${project.id}`}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    View Project
+                  </Link>
                 </div>
               </div>
             )
           })}
         </div>
-      </div>
-
-      {/* Developer Analytics */}
-      <DeveloperAnalytics />
+      )}
     </div>
   )
 }

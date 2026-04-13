@@ -11,8 +11,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('project_id')
 
+  // Include tasks linked via feature OR via deliverable (kanban-created tasks land on deliverables)
   const taskWhere = projectId
-    ? { feature: { project_links: { some: { project_id: Number(projectId) } } } }
+    ? {
+        OR: [
+          { feature: { project_links: { some: { project_id: Number(projectId) } } } },
+          { deliverable: { project_id: Number(projectId) } },
+        ],
+      }
     : {}
 
   const featureAssignWhere = projectId
@@ -51,6 +57,7 @@ export async function GET(req: NextRequest) {
               status: true,
               actual_start: true,
               actual_end: true,
+              completed_at: true,
               created_at: true,
               est_mandays: true,
               feature: {
@@ -98,12 +105,21 @@ export async function GET(req: NextRequest) {
         return sum + diff / (1000 * 60 * 60 * 24)
       }, 0)
 
-    // 4-week trend: tasks assigned per week
+    // 4-week trend: tasks assigned per week (by created_at)
     const weeklyTasksTrend = weeks.map((w) => ({
       week: w.label,
       count: tasks.filter((t) => {
         const created = new Date(t.created_at)
         return created >= w.start && created < w.end
+      }).length,
+    }))
+
+    // 4-week trend: tasks completed per week (by completed_at or actual_end)
+    const weeklyCompletedTrend = weeks.map((w) => ({
+      week: w.label,
+      count: tasks.filter((t) => {
+        const completedDate = t.completed_at ? new Date(t.completed_at) : (t.actual_end ? new Date(t.actual_end) : null)
+        return t.status === 'Done' && completedDate && completedDate >= w.start && completedDate < w.end
       }).length,
     }))
 
@@ -130,6 +146,7 @@ export async function GET(req: NextRequest) {
       estimatedMandays,
       totalSpentDays: Math.round(totalSpentDays * 10) / 10,
       weeklyTasksTrend,
+      weeklyCompletedTrend,
       weeklyTimeTrend,
     }
   })
