@@ -13,6 +13,7 @@ interface Project {
   assignees: { user: { id: number; name: string } }[]
   updates: { progress_pct: number; status: string; created_at: string }[]
   _count: { issues: number }
+  computedProgress: number
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -101,7 +102,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
             <div className="px-6 py-12 text-center text-slate-400">No projects found.</div>
           )}
           {localProjects.map(project => {
-            const progress = project.updates[0]?.progress_pct ?? 0
+            const progress = project.computedProgress ?? 0
             return (
               <div key={project.id} className="px-4 sm:px-6 py-4 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
                 <div className="flex items-start gap-3 sm:gap-4">

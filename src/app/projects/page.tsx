@@ -11,7 +11,9 @@ type Project = {
   start_date: string; deadline: string
   health_status?: string | null
   assignees: { user: { id: number; name: string; email: string } }[]
+  updates: { progress_pct: number }[]
   _count: { issues: number }
+  computedProgress: number
 }
 type Feature = {
   id: number; title: string; description: string | null; mandays: number
@@ -98,12 +100,9 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {projects.map(p => {
-          const now = new Date()
           const deadline = new Date(p.deadline)
-          const start = new Date(p.start_date)
-          const totalDays = Math.max(1, (deadline.getTime() - start.getTime()) / 86400000)
-          const elapsed = Math.max(0, (now.getTime() - start.getTime()) / 86400000)
-          const progress = Math.min(100, Math.round((elapsed / totalDays) * 100))
+          const now = new Date()
+          const progress = p.computedProgress ?? 0
           const overdue = p.status !== 'Done' && deadline < now
 
           return (
