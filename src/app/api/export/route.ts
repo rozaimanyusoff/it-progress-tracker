@@ -53,7 +53,15 @@ export async function POST(req: NextRequest) {
         }),
       ])
 
-      return { project, modules, deliverables }
+      const mappedDeliverables = deliverables.map(d => ({
+        ...d,
+        tasks: d.tasks.map(t => ({
+          ...t,
+          assignees: t.assignees.map(a => a.user),
+        })),
+      }))
+
+      return { project, modules, deliverables: mappedDeliverables }
     })
   )
 
