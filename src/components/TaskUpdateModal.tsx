@@ -19,6 +19,8 @@ interface Props {
   projectTitle: string | null
   currentStatus: string
   reviewCount?: number
+  estMandays?: number | null
+  initialActualMandays?: number | null
   onClose: () => void
   onStatusChange: (taskId: number, newStatus: string) => void
 }
@@ -79,6 +81,8 @@ export default function TaskUpdateModal({
   projectTitle,
   currentStatus,
   reviewCount = 0,
+  estMandays,
+  initialActualMandays,
   onClose,
   onStatusChange,
 }: Props) {
@@ -93,6 +97,11 @@ export default function TaskUpdateModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState(currentStatus)
+  const [actualMandays, setActualMandays] = useState(
+    initialActualMandays != null ? String(initialActualMandays) : ''
+  )
+  const [savingMandays, setSavingMandays] = useState(false)
+  const [mandaysSaved, setMandaysSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Manager review state
@@ -127,8 +136,12 @@ export default function TaskUpdateModal({
   }
 
   async function handleSubmit(markComplete = false) {
-    if (markComplete && (!notes.trim() || files.length === 0)) {
-      setError('Please add a progress note and at least one attachment before submitting for review.')
+    if (markComplete && !notes.trim()) {
+      setError('Please add a progress note before submitting for review.')
+      return
+    }
+    if (markComplete && (!actualMandays || Number(actualMandays) <= 0)) {
+      setError('Actual mandays used is required before submitting for review.')
       return
     }
     if (!markComplete && !notes.trim() && files.length === 0) {
@@ -158,7 +171,12 @@ export default function TaskUpdateModal({
       const res = await fetch(`/api/tasks/${taskId}/updates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: notes.trim() || null, media_urls: mediaUrls, mark_complete: markComplete }),
+        body: JSON.stringify({
+          notes: notes.trim() || null,
+          media_urls: mediaUrls,
+          mark_complete: markComplete,
+          actual_mandays: markComplete && actualMandays ? Number(actualMandays) : undefined,
+        }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -244,6 +262,23 @@ export default function TaskUpdateModal({
       onStatusChange(taskId, newStatus)
     } finally {
       setReviewing(false)
+    }
+  }
+
+  async function saveActualMandays() {
+    if (!actualMandays || Number(actualMandays) <= 0) return
+    setSavingMandays(true)
+    setMandaysSaved(false)
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actual_mandays: Number(actualMandays) }),
+      })
+      setMandaysSaved(true)
+      setTimeout(() => setMandaysSaved(false), 2000)
+    } finally {
+      setSavingMandays(false)
     }
   }
 
@@ -392,6 +427,45 @@ export default function TaskUpdateModal({
 
             {!formLocked && (
               <>
+                {/* Mandays — above Note */}
+                {estMandays != null && (
+                  <>
+                    <div className="flex items-center gap-3 flex-wrap mb-3">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Est: <strong className="text-slate-700 dark:text-slate-200">{estMandays} md</strong>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">Actual used:</label>
+                        <input
+                          type="number"
+                          min="0.5"
+                          step="0.5"
+                          placeholder="0"
+                          value={actualMandays}
+                          onChange={e => { setActualMandays(e.target.value); setMandaysSaved(false) }}
+                          className="w-16 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-slate-400">md</span>
+                        {actualMandays && Number(actualMandays) > 0 && (
+                          <button
+                            onClick={saveActualMandays}
+                            disabled={savingMandays}
+                            className="px-2 py-1 text-xs bg-slate-600 hover:bg-slate-700 disabled:opacity-50 text-white rounded transition-colors"
+                          >
+                            {savingMandays ? '…' : mandaysSaved ? '✓' : 'Save'}
+                          </button>
+                        )}
+                        {actualMandays && Number(actualMandays) > Number(estMandays) && (
+                          <span className="text-xs text-amber-500 dark:text-amber-400 font-medium whitespace-nowrap">
+                            +{(Number(actualMandays) - Number(estMandays)).toFixed(1)} md over
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <hr className="border-slate-100 dark:border-navy-700 mb-3" />
+                  </>
+                )}
+
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                   {isManager ? 'Manager Note' : 'Progress Note'}
                 </label>

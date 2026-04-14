@@ -48,6 +48,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'feature_id or deliverable_id, and title are required' }, { status: 400 })
   }
 
+  // Mandays guard — required + budget cap when linked to deliverable
+  if (deliverable_id) {
+    if (est_mandays == null || Number(est_mandays) <= 0) {
+      return NextResponse.json({ error: 'Est. mandays is required when linked to a deliverable.' }, { status: 400 })
+    }
+    const deliv = await prisma.deliverable.findUnique({
+      where: { id: Number(deliverable_id) },
+      select: { mandays: true, tasks: { select: { est_mandays: true } } },
+    })
+    if (deliv && deliv.mandays > 0) {
+      const used = deliv.tasks.reduce((s, t) => s + (t.est_mandays ? Number(t.est_mandays) : 0), 0)
+      const remaining = deliv.mandays - used
+      if (Number(est_mandays) > remaining) {
+        return NextResponse.json({
+          error: `Est. mandays (${est_mandays} md) exceeds remaining budget (${remaining} of ${deliv.mandays} md available).`,
+        }, { status: 422 })
+      }
+    }
+  }
+
   // Managers can assign to anyone; members auto-assign to themselves + any additional partners
   const resolvedIds: number[] = user.role === 'manager'
     ? (assignee_ids ?? []).map(Number)

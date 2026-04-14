@@ -11,6 +11,131 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-14 — TeamKanban: Left/Right Arrow Buttons on Task Cards
+
+### Feature Baru
+
+**`src/components/TeamKanbanBoard.tsx`**
+- Tambah fungsi `moveTask(taskId, currentStatus, direction)` — sama dengan KanbanBoard, dengan permission checks:
+  - InReview tidak boleh kembali ke Todo
+  - Non-manager tidak boleh lompat ke InReview dari Todo
+  - Hanya manager boleh move ke Done
+  - Trigger StatusChangeModal untuk status yang perlukan popup (InProgress, InReview, Done, Blocked)
+- Tambah butang ← → di baris bawah setiap kad:
+  - ← : tunjuk jika bukan kolum pertama (Todo); manager-only jika di kolum Done
+  - → : tunjuk jika bukan kolum terakhir (Done); manager-only jika di kolum InReview (next = Done)
+  - Hanya tunjuk kepada manager atau member yang di-assign kepada task
+
+---
+
+## 2026-04-14 — Projects Page: Table View
+
+### UI Enhancement
+
+**`src/app/projects/page.tsx` — Senarai Projek (Table Layout)**
+- Gantikan card grid (`sm:grid-cols-2 xl:grid-cols-3`) dengan layout jadual div-based
+- `gridTemplateColumns: '2fr 1fr 160px 1fr 100px 110px 60px 72px'`
+- Kolum: Project (tajuk + deskripsi), Status + Health badge, Progress bar, Team avatars, Start, Deadline, Issues, butang View
+- Header baris: `bg-slate-50` rounded container dengan border
+- Row hover highlight; border separator antara baris kecuali baris terakhir
+- Deadline merah jika projek overdue; progress bar merah (overdue) / hijau (100%) / primary
+- Helper `fmtDate`: format `en-MY` (dd MMM yyyy)
+
+---
+
+## 2026-04-14 — TeamKanban: Manager Drag-and-Drop + Actual Mandays UI Revamp
+
+### Feature Baru
+
+**`src/components/TeamKanbanBoard.tsx` — Drag-and-Drop**
+- Import `DragDropContext, Droppable, Draggable, DropResult` dari `@hello-pangea/dnd`
+- `handleDragEnd`: manager boleh drag semua task ke mana-mana kolum; member hanya boleh drag task yang di-assign kepada mereka (kecuali ke kolum Done)
+- Grid bungkus dengan `<DragDropContext onDragEnd={handleDragEnd}>`
+- Kawasan kad: `<Droppable droppableId={col.id}>` dengan `isDraggingOver` highlight (`bg-blue-50/40`)
+- Setiap kad: `<Draggable draggableId={String(task.id)} index={index}>` dengan gaya drag (`ring-2 ring-blue-400 rotate-1 shadow-lg`)
+- Trigger popup status (InProgress, InReview, Done) semasa drag sama seperti klik butang
+
+**`src/components/TeamKanbanBoard.tsx` — Fix handleTaskAdded**
+- Bug: menambah raw POST response ke board state menyebabkan `TypeError: Cannot read properties of undefined (reading 'module')` di baris 782
+- Fix: `handleTaskAdded` kini memanggil `loadTasks()` semula daripada mengappend task mentah
+
+### UI Enhancement
+
+**`src/components/TaskUpdateModal.tsx` — Actual Mandays Section**
+- Pindahkan input actual mandays ke bahagian tersendiri **di atas** label Note textarea
+- `<hr>` separator antara bahagian mandays dan Note
+- Input sentiasa kelihatan bila `estMandays != null` (tidak lagi terhad kepada status tertentu)
+- Butang Save berasingan: tunjuk ✓ selepas berjaya simpan
+- Indicator "over": tunjuk "+X.X md over" jika actual > est
+- Lampiran (attachment) tidak lagi wajib untuk Submit for Review — hanya nota + actual mandays
+
+---
+
+## 2026-04-14 — Mandays Guard (Add Task) + Actual Mandays (Update Form)
+
+### Feature Baru
+
+**Schema: `actual_mandays` pada Task**
+- `prisma/schema.prisma` — tambah `actual_mandays Decimal? @db.Decimal(4,1)`
+- Migration: `20260414140130_add_task_actual_mandays`
+
+**API: GET `/api/deliverables/[id]`**
+- Return `{ id, title, mandays, used_mandays }` — budget deliverable + jumlah est_mandays task sedia ada
+
+**API: POST `/api/tasks` — Mandays Guard**
+- `est_mandays` wajib bila `deliverable_id` disertakan (> 0)
+- Jika `deliverable.mandays > 0`, validate: `used + new_est ≤ total` — return 422 jika melebihi
+
+**API: POST `/api/tasks/[id]/updates` — Actual Mandays**
+- Terima `actual_mandays` dalam body
+- Wajib bila `mark_complete=true` (submit for review) — return 400 jika tiada
+- Simpan ke `task.actual_mandays` semasa transisi InProgress → InReview
+
+**UI: AddTaskModal (`TeamKanbanBoard.tsx`)**
+- `delivBudget` state — fetch budget deliverable bila deliverableId berubah
+- Budget progress bar: hijau/amber/merah ikut % penggunaan; tunjuk "X.X md remaining" / "Exceeds by X.X md"
+- Est. Mandays label berubah kepada wajib (*) bila deliverable dipilih
+- Client-side validation sebelum submit
+
+**UI: TaskUpdateModal (`TaskUpdateModal.tsx`)**
+- Tambah prop `estMandays?: number | null`
+- Tambah state `actualMandays`
+- Bila status=InProgress & bukan manager: tunjuk input "Actual md used (est: X md)" bersebelahan butang Submit for Review
+- Validate sebelum submit: actualMandays wajib dan > 0
+
+**Boards: Wiring**
+- `TeamKanbanBoard.tsx` & `KanbanBoard.tsx` — pass `estMandays={activeTask.est_mandays}` ke TaskUpdateModal
+
+---
+
+## 2026-04-14 — TeamKanban: Add Task Modal XL 2-Column Layout
+
+### UI Enhancement
+
+**`src/components/TeamKanbanBoard.tsx` — AddTaskModal**
+- Modal diperbesarkan dari `max-w-lg` → `max-w-3xl`
+- Layout diubah kepada 2 kolum menggunakan `flex gap-5`:
+  - **Kiri**: Project, Module (conditional), Deliverable
+  - **Kanan**: Assignees, Due date + Priority (grid 2 kolum), Est. Mandays
+- **Full-width** di bawah: Preset tasks banner, Task Title, Description, butang action
+- Due date + Priority disusun sejajar dalam `grid grid-cols-2 gap-3`
+
+---
+
+## 2026-04-14 — Fix: Status Badge & Health Indicator Sync
+
+### Pembaikan Bug
+
+**Status badge tidak sinkron antara Dashboard dan Projects page**
+- `/api/projects/route.ts` — tambah `computedStatus` dalam response (sama dengan logik dashboard): `OnHold` → OnHold, progress ≥ 100 → Done, progress > 0 → InProgress, else → DB status
+- `src/app/projects/page.tsx` — badge status kini guna `p.computedStatus` bukan `p.status` mentah dari DB; type `Project` dikemaskini tambah `computedStatus: string`
+- Sebelum ini, projek dengan progress > 0 masih tunjuk "Pending" kerana API tidak return `computedStatus`
+
+**Dashboard project cards tiada health indicator**
+- `src/app/dashboard/DashboardClient.tsx` — tambah `health_status` ke interface `Project` dan render badge On Track / At Risk / Delayed / Overdue betul-betul selepas `StatusBadge`, sama seperti halaman `/projects`
+
+---
+
 ## 2026-04-14 — Planner: Edit Meeting + Sidebar Notification Counters
 
 ### Penambahan Feature

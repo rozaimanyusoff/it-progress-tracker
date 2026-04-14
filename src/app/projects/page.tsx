@@ -14,6 +14,7 @@ type Project = {
   updates: { progress_pct: number }[]
   _count: { issues: number }
   computedProgress: number
+  computedStatus: string
 }
 type Feature = {
   id: number; title: string; description: string | null; mandays: number
@@ -89,6 +90,9 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
     )
   }
 
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
+  const now = new Date()
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -98,84 +102,121 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
         </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {projects.map(p => {
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden">
+        {/* Table header */}
+        <div className="grid bg-slate-50 dark:bg-navy-900 border-b border-slate-200 dark:border-navy-700 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"
+          style={{ gridTemplateColumns: '2fr 1fr 160px 1fr 100px 110px 60px 72px' }}>
+          <span>Project</span>
+          <span>Status</span>
+          <span>Progress</span>
+          <span>Team</span>
+          <span>Start</span>
+          <span>Deadline</span>
+          <span>Issues</span>
+          <span></span>
+        </div>
+
+        {/* Rows */}
+        {projects.map((p, i) => {
           const deadline = new Date(p.deadline)
-          const now = new Date()
           const progress = p.computedProgress ?? 0
-          const overdue = p.status !== 'Done' && deadline < now
+          const overdue = p.computedStatus !== 'Done' && deadline < now
+          const isLast = i === projects.length - 1
 
           return (
             <div
               key={p.id}
-              onClick={() => router.push(`/projects/${p.id}`)}
-              className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-5 cursor-pointer hover:shadow-md hover:border-slate-300 dark:hover:border-navy-600 transition-all"
+              className={`grid items-center px-4 py-3 gap-3 hover:bg-slate-50 dark:hover:bg-navy-800/60 transition-colors ${!isLast ? 'border-b border-slate-100 dark:border-navy-700' : ''}`}
+              style={{ gridTemplateColumns: '2fr 1fr 160px 1fr 100px 110px 60px 72px' }}
             >
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <h3 className="font-semibold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">{p.title}</h3>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLOR[p.status] ?? STATUS_COLOR.Pending}`}>
-                    {STATUS_LABEL[p.status] ?? p.status}
-                  </span>
-                  {p.health_status && p.status !== 'Done' && (
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${p.health_status === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                        p.health_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                          p.health_status === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                            'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
-                      }`}>
-                      {p.health_status === 'on_track' ? '🟢 On Track' :
-                        p.health_status === 'at_risk' ? '🟡 At Risk' :
-                          p.health_status === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
-                    </span>
-                  )}
-                </div>
+              {/* Project title + description */}
+              <div className="min-w-0">
+                <p className="font-semibold text-sm text-slate-900 dark:text-white truncate leading-snug">{p.title}</p>
+                {p.description && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{p.description}</p>
+                )}
               </div>
 
-              {p.description && (
-                <p className="text-xs text-slate-400 line-clamp-2 mb-3">{p.description}</p>
-              )}
+              {/* Status + health */}
+              <div className="flex flex-col gap-1 items-start">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLOR[p.computedStatus] ?? STATUS_COLOR.Pending}`}>
+                  {STATUS_LABEL[p.computedStatus] ?? p.computedStatus}
+                </span>
+                {p.health_status && p.computedStatus !== 'Done' && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
+                    p.health_status === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    p.health_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                    p.health_status === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                    'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
+                  }`}>
+                    {p.health_status === 'on_track' ? '🟢 On Track' :
+                     p.health_status === 'at_risk' ? '🟡 At Risk' :
+                     p.health_status === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
+                  </span>
+                )}
+              </div>
 
-              <div className="mb-3">
-                <div className="flex justify-between text-xs text-slate-400 mb-1">
-                  <span>Progress</span>
-                  <span>{progress}%</span>
+              {/* Progress bar */}
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-500 dark:text-slate-400">{progress}%</span>
+                  {overdue && <span className="text-red-400 font-medium text-[10px]">Overdue</span>}
                 </div>
                 <div className="h-1.5 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${overdue ? 'bg-red-500' : 'bg-primary'}`}
+                    className={`h-full rounded-full transition-all ${overdue ? 'bg-red-500' : progress >= 100 ? 'bg-green-500' : 'bg-primary'}`}
                     style={{ width: `${progress}%` }}
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <div className="flex -space-x-1.5">
-                  {p.assignees.slice(0, 4).map(a => (
-                    <div
-                      key={a.user.id}
-                      className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800"
-                      title={a.user.name}
-                    >
-                      {a.user.name[0].toUpperCase()}
-                    </div>
-                  ))}
-                  {p.assignees.length > 4 && (
-                    <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-navy-600 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800">
-                      +{p.assignees.length - 4}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  {p._count.issues > 0 && (
-                    <span className="flex items-center gap-1 text-red-500">
-                      <span className="text-[10px]">⚠</span>{p._count.issues}
-                    </span>
-                  )}
-                  <span className={overdue ? 'text-red-400' : ''}>
-                    {overdue ? 'Overdue' : deadline.toLocaleDateString()}
-                  </span>
-                </div>
+              {/* Team avatars */}
+              <div className="flex -space-x-1.5">
+                {p.assignees.slice(0, 5).map(a => (
+                  <div
+                    key={a.user.id}
+                    title={a.user.name}
+                    className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800 shrink-0"
+                  >
+                    {a.user.name[0].toUpperCase()}
+                  </div>
+                ))}
+                {p.assignees.length > 5 && (
+                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-navy-600 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800 shrink-0">
+                    +{p.assignees.length - 5}
+                  </div>
+                )}
+                {p.assignees.length === 0 && (
+                  <span className="text-xs text-slate-300 dark:text-slate-600 italic">—</span>
+                )}
               </div>
+
+              {/* Start date */}
+              <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(p.start_date)}</span>
+
+              {/* Deadline */}
+              <span className={`text-xs whitespace-nowrap font-medium ${overdue ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                {fmtDate(p.deadline)}
+              </span>
+
+              {/* Issues */}
+              <div>
+                {p._count.issues > 0 ? (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-red-500">
+                    <span>⚠</span>{p._count.issues}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                )}
+              </div>
+
+              {/* Action */}
+              <button
+                onClick={() => router.push(`/projects/${p.id}`)}
+                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
+              >
+                View
+              </button>
             </div>
           )
         })}

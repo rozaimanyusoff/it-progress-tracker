@@ -17,6 +17,7 @@ interface Task {
   review_count: number
   due_date: string | null
   est_mandays: number | null
+  actual_mandays: number | null
   priority: string
   is_blocked: boolean
   blocked_reason: string | null
@@ -882,6 +883,8 @@ export default function KanbanBoard() {
             projectTitle={activeTask.project?.title ?? null}
             currentStatus={activeTask.status}
             reviewCount={activeTask.review_count}
+            estMandays={activeTask.est_mandays}
+            initialActualMandays={activeTask.actual_mandays}
             onClose={() => { setActiveTaskId(null); loadMyTasks() }}
             onStatusChange={handleStatusChange}
           />

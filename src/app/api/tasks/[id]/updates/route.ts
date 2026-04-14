@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const userId = Number((session.user as any).id)
   const userRole = (session.user as any).role
   const body = await req.json()
-  const { notes, media_urls = [], mark_complete, review_action } = body
+  const { notes, media_urls = [], mark_complete, review_action, actual_mandays } = body
 
   // Fetch current task
   const task = await prisma.task.findUnique({ where: { id: taskId }, include: { assignees: true } })
@@ -100,6 +100,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // ── Developer update ──────────────────────────────────────────────
   if (!task.assignees.some((a: any) => a.user_id === userId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Require actual_mandays when submitting for review
+  if (mark_complete && task.status === 'InProgress') {
+    if (actual_mandays == null || Number(actual_mandays) <= 0) {
+      return NextResponse.json({ error: 'Actual mandays used is required before submitting for review.' }, { status: 400 })
+    }
+  }
+
   // Determine new status
   let newStatus = task.status
   if (mark_complete && task.status === 'InProgress') {
@@ -127,13 +134,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       taskData.time_started_at = now
     }
 
-    // InProgress → InReview: accumulate elapsed time, stop timer
+    // InProgress → InReview: accumulate elapsed time, stop timer, save actual_mandays
     if (task.status === 'InProgress' && newStatus === 'InReview') {
       if (task.time_started_at) {
         const elapsed = Math.floor((now.getTime() - task.time_started_at.getTime()) / 1000)
         taskData.time_spent_seconds = (task.time_spent_seconds ?? 0) + elapsed
       }
       taskData.time_started_at = null
+      taskData.actual_mandays = actual_mandays
     }
 
     await prisma.task.update({ where: { id: taskId }, data: taskData })

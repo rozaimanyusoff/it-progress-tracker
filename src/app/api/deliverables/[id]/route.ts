@@ -3,6 +3,36 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+  const deliverable = await prisma.deliverable.findUnique({
+    where: { id: Number(id) },
+    select: {
+      id: true,
+      title: true,
+      mandays: true,
+      tasks: { select: { est_mandays: true } },
+    },
+  })
+
+  if (!deliverable) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const used_mandays = deliverable.tasks.reduce(
+    (sum, t) => sum + (t.est_mandays ? Number(t.est_mandays) : 0),
+    0
+  )
+
+  return NextResponse.json({
+    id: deliverable.id,
+    title: deliverable.title,
+    mandays: deliverable.mandays,
+    used_mandays,
+  })
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await getServerSession(authOptions)

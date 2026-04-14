@@ -339,6 +339,7 @@ model Task {
   created_at         DateTime      @default(now())
   due_date           DateTime?
   est_mandays        Decimal?      @db.Decimal(4, 1)
+  actual_mandays     Decimal?      @db.Decimal(4, 1)
   priority           TaskPriority  @default(medium)
   is_blocked         Boolean       @default(false)
   blocked_reason     String?       @db.VarChar(500)

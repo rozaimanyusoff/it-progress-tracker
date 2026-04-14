@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import TaskUpdateModal from './TaskUpdateModal'
 import { Trash2, X } from 'lucide-react'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
@@ -16,6 +17,7 @@ interface Task {
   assignees: { user: { id: number; name: string } }[]
   due_date: string | null
   est_mandays: number | null
+  actual_mandays: number | null
   priority: string
   is_blocked: boolean
   blocked_reason: string | null
@@ -30,7 +32,7 @@ interface Task {
 
 interface Project { id: number; title: string }
 interface Feature { id: number; title: string }
-interface Deliverable { id: number; title: string; planned_end: string | null }
+interface Deliverable { id: number; title: string; planned_end: string | null; mandays?: number }
 interface Module { id: number; title: string; features: Feature[] }
 interface Member { id: number; name: string }
 
@@ -61,6 +63,7 @@ function AddTaskModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
+  const [delivBudget, setDelivBudget] = useState<{ total: number; used: number } | null>(null)
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
 
@@ -94,15 +97,19 @@ function AddTaskModal({
     })
   }, [projectId, moduleId])
 
-  // Auto-fill due date from deliverable.planned_end + fetch preset tasks
+  // Auto-fill due date from deliverable.planned_end + fetch preset tasks + budget
   useEffect(() => {
-    if (!deliverableId) { setPresetTasks([]); return }
+    if (!deliverableId) { setPresetTasks([]); setDelivBudget(null); return }
     const deliv = deliverables.find(d => d.id === Number(deliverableId))
     if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
     fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
       .then(r => r.json())
       .then(data => setPresetTasks(Array.isArray(data) ? data : []))
       .catch(() => setPresetTasks([]))
+    fetch(`/api/deliverables/${deliverableId}`)
+      .then(r => r.json())
+      .then(data => setDelivBudget({ total: data.mandays ?? 0, used: data.used_mandays ?? 0 }))
+      .catch(() => setDelivBudget(null))
   }, [deliverableId])
 
   const selectedDeliverable = deliverables.find(d => d.id === Number(deliverableId))
@@ -114,6 +121,15 @@ function AddTaskModal({
     e.preventDefault()
     if (!deliverableId) { setError('Please select a deliverable.'); return }
     if (!title.trim()) { setError('Task title is required.'); return }
+    if (deliverableId && (!estMandays || Number(estMandays) <= 0)) {
+      setError('Est. mandays is required when linked to a deliverable.'); return
+    }
+    if (delivBudget && delivBudget.total > 0) {
+      const remaining = delivBudget.total - delivBudget.used
+      if (Number(estMandays) > remaining) {
+        setError(`Est. mandays exceeds remaining budget (${remaining.toFixed(1)} md available).`); return
+      }
+    }
     setSaving(true); setError('')
     const res = await fetch('/api/tasks', {
       method: 'POST',
@@ -139,50 +155,156 @@ function AddTaskModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Add Task</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 leading-none"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* 1. Project */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project *</label>
-            <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)}>
-              <option value="">Select project...</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
-          </div>
 
-          {/* 2. Module — conditional */}
-          {projectId && hasModules && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module</label>
-              <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setDeliverableId('') }}>
-                <option value="">Select module...</option>
-                <option value="__none__">— No module (project level) —</option>
-                {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
-              </select>
-              {moduleId === '__none__' && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  Best practice: assign deliverable to a module. Only select this if deliverable is project-level.
-                </p>
+          {/* ── Two-column section ─────────────────────────────────── */}
+          <div className="flex gap-5 items-start">
+
+            {/* LEFT — scope: project / module / deliverable */}
+            <div className="flex-1 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project *</label>
+                <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)}>
+                  <option value="">Select project...</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+
+              {projectId && hasModules && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module</label>
+                  <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setDeliverableId('') }}>
+                    <option value="">Select module...</option>
+                    <option value="__none__">— No module (project level) —</option>
+                    {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                  </select>
+                  {moduleId === '__none__' && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      Best practice: assign deliverable to a module. Only select this if deliverable is project-level.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {projectId && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
+                  <select className={inputClass} value={deliverableId} onChange={e => setDeliverableId(e.target.value)}>
+                    <option value="">Select deliverable...</option>
+                    {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+                  </select>
+                </div>
               )}
             </div>
-          )}
 
-          {/* 3. Deliverable */}
-          {projectId && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
-              <select className={inputClass} value={deliverableId} onChange={e => setDeliverableId(e.target.value)}>
-                <option value="">Select deliverable...</option>
-                {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-              </select>
+            {/* RIGHT — task properties: assignees / dates / priority / effort */}
+            <div className="flex-1 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assignees</label>
+                {members.length === 0 ? (
+                  <p className="text-xs text-slate-400">No members available</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {members.map(m => (
+                      <label
+                        key={m.id}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${
+                          assigneeIds.includes(m.id)
+                            ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+                            : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={assigneeIds.includes(m.id)}
+                          onChange={() => setAssigneeIds(prev => prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id])}
+                          className="sr-only"
+                        />
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-current/10 text-[10px] font-bold shrink-0">
+                          {m.name[0].toUpperCase()}
+                        </span>
+                        {m.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
+                  <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                  {dueDateExceeds && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                  <select className={inputClass} value={priority} onChange={e => setPriority(e.target.value)}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Est. Mandays {deliverableId ? <span className="text-red-500">*</span> : <span className="text-slate-400 font-normal">(optional)</span>}
+                </label>
+
+                {/* Budget indicator — only when deliverable has a budget */}
+                {deliverableId && delivBudget && delivBudget.total > 0 && (() => {
+                  const remaining = delivBudget.total - delivBudget.used
+                  const pending = Number(estMandays) || 0
+                  const afterAdd = delivBudget.used + pending
+                  const pct = Math.min(100, Math.round((afterAdd / delivBudget.total) * 100))
+                  const over = afterAdd > delivBudget.total
+                  return (
+                    <div className="mb-2 rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 px-3 py-2 text-xs space-y-1.5">
+                      <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                        <span>Deliverable budget</span>
+                        <span className={over ? 'text-red-500 font-semibold' : remaining <= 0 ? 'text-red-400' : 'text-slate-600 dark:text-slate-300'}>
+                          {afterAdd.toFixed(1)} / {delivBudget.total} md
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-green-500'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <p className={over ? 'text-red-500 font-medium' : 'text-slate-400 dark:text-slate-500'}>
+                        {over
+                          ? `Exceeds budget by ${(afterAdd - delivBudget.total).toFixed(1)} md`
+                          : `${remaining.toFixed(1)} md remaining after existing tasks`}
+                      </p>
+                    </div>
+                  )
+                })()}
+
+                {deliverableId && delivBudget && delivBudget.total === 0 && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">No budget defined for this deliverable — enter for tracking only.</p>
+                )}
+
+                <input
+                  type="number" min="0.5" step="0.5"
+                  className={`${inputClass} ${deliverableId && !estMandays ? 'border-amber-400 dark:border-amber-600 focus:ring-amber-500' : ''}`}
+                  placeholder="e.g. 1.5"
+                  value={estMandays}
+                  onChange={e => setEstMandays(e.target.value)}
+                />
+              </div>
             </div>
-          )}
+          </div>
 
-          {/* Preset tasks — shown when deliverable has matching template tasks */}
+          {/* ── Full-width: preset tasks ───────────────────────────── */}
           {deliverableId && presetTasks.length > 0 && (
             <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Preset tasks — click to use:</p>
@@ -202,85 +324,26 @@ function AddTaskModal({
             </div>
           )}
 
-          {/* 4. Task Title */}
+          {/* ── Full-width: title + description ───────────────────── */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Title *</label>
             <input className={inputClass} placeholder="e.g. Implement login endpoint" value={title} onChange={e => setTitle(e.target.value)} />
           </div>
 
-          {/* 5. Description */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description <span className="text-slate-400 font-normal">(optional)</span></label>
             <textarea className={`${inputClass} resize-none`} rows={2} value={description} onChange={e => setDescription(e.target.value)} />
           </div>
 
-          {/* 6. Assignees */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assignees</label>
-            {members.length === 0 ? (
-              <p className="text-xs text-slate-400">No members available</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {members.map(m => (
-                  <label
-                    key={m.id}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${
-                      assigneeIds.includes(m.id)
-                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={assigneeIds.includes(m.id)}
-                      onChange={() => setAssigneeIds(prev => prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id])}
-                      className="sr-only"
-                    />
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-current/10 text-[10px] font-bold shrink-0">
-                      {m.name[0].toUpperCase()}
-                    </span>
-                    {m.name}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 7. Due date */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
-            <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />
-            {dueDateExceeds && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Due date exceeds deliverable end date</p>
-            )}
-          </div>
-
-          {/* 8. Priority */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
-            <select className={inputClass} value={priority} onChange={e => setPriority(e.target.value)}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-          </div>
-
-          {/* 9. Est. Mandays */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays <span className="text-slate-400 font-normal">(optional)</span></label>
-            <input type="number" min="0.5" step="0.5" className={inputClass} placeholder="e.g. 1.5" value={estMandays} onChange={e => setEstMandays(e.target.value)} />
-          </div>
-
           {error && <p className="text-sm text-red-500">{error}</p>}
 
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-3 pt-1 border-t border-slate-100 dark:border-navy-700">
             <button type="submit" disabled={saving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm transition-colors">
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm transition-colors mt-3">
               {saving ? 'Adding...' : 'Add Task'}
             </button>
             <button type="button" onClick={onClose}
-              className="flex-1 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 py-2 rounded-lg text-sm">
+              className="flex-1 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 py-2 rounded-lg text-sm mt-3">
               Cancel
             </button>
           </div>
@@ -430,8 +493,8 @@ export default function TeamKanbanBoard() {
     return next
   }
 
-  function handleTaskAdded(task: Task) {
-    setBoard(prev => ({ ...prev, Todo: [...prev.Todo, task] }))
+  function handleTaskAdded(_task: Task) {
+    loadTasks()
   }
 
   async function handleDeleteTask(taskId: number, taskTitle: string) {
@@ -501,6 +564,57 @@ export default function TeamKanbanBoard() {
   function handlePopupConfirm(taskId: number, newStatus: string, opts: { actual_date?: string; blocked_reason?: string }) {
     setPendingStatus(null)
     doStatusUpdate(taskId, newStatus, opts)
+  }
+
+  async function handleDragEnd(result: DropResult) {
+    const { draggableId, destination, source } = result
+    if (!destination) return
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return
+
+    const taskId = Number(draggableId)
+    const newStatus = destination.droppableId
+
+    // Find the task to check permissions
+    const task = COLUMNS.flatMap(c => board[c.id]).find(t => t.id === taskId)
+    if (!task) return
+
+    // Non-managers can only drag their own assigned tasks
+    if (!isManager && !task.assignees.some(a => a.user.id === currentUserId)) return
+
+    // InReview cannot be dragged back to Todo
+    if (source.droppableId === 'InReview' && newStatus === 'Todo') return
+    // Non-managers cannot skip to InReview from Todo or move to Done
+    if (!isManager && newStatus === 'InReview' && source.droppableId !== 'InProgress') return
+    if (!isManager && newStatus === 'Done') return
+
+    const POPUP_STATUSES: StatusTarget[] = ['InProgress', 'InReview', 'Done', 'Blocked']
+    if (POPUP_STATUSES.includes(newStatus as StatusTarget)) {
+      setPendingStatus({ taskId, target: newStatus as StatusTarget })
+    } else {
+      doStatusUpdate(taskId, newStatus, {})
+    }
+  }
+
+  async function moveTask(taskId: number, currentStatus: string, direction: 'next' | 'prev') {
+    const colIds = COLUMNS.map(c => c.id)
+    const newIdx = colIds.indexOf(currentStatus) + (direction === 'next' ? 1 : -1)
+    if (newIdx < 0 || newIdx >= colIds.length) return
+    const newStatus = colIds[newIdx]
+
+    // InReview cannot go back to Todo
+    if (currentStatus === 'InReview' && newStatus === 'Todo') return
+    // Members cannot skip directly to InReview from Todo
+    if (!isManager && newStatus === 'InReview' && currentStatus !== 'InProgress') return
+    // Only managers can move to Done
+    if (newStatus === 'Done' && !isManager) return
+
+    const POPUP_STATUSES: StatusTarget[] = ['InProgress', 'InReview', 'Done', 'Blocked']
+    if (POPUP_STATUSES.includes(newStatus as StatusTarget)) {
+      setPendingStatus({ taskId, target: newStatus as StatusTarget })
+      return
+    }
+
+    await doStatusUpdate(taskId, newStatus, {})
   }
 
   return (
@@ -659,6 +773,7 @@ export default function TeamKanbanBoard() {
         {loading ? (
           <div className="flex items-center justify-center h-48 text-slate-400">Loading...</div>
         ) : (
+          <DragDropContext onDragEnd={handleDragEnd}>
           <div className="grid grid-cols-4 gap-4 items-start">
             {COLUMNS.map(col => (
               <div key={col.id} className="flex flex-col">
@@ -684,16 +799,26 @@ export default function TeamKanbanBoard() {
                 <div className="mb-3" />
 
                 {/* Cards */}
-                <div className="flex flex-col gap-2 min-h-32">
-                  {filteredBoard[col.id].length === 0 && (
+                <Droppable droppableId={col.id}>
+                  {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`flex flex-col gap-2 min-h-32 rounded-lg p-1 transition-colors ${snapshot.isDraggingOver ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
+                  >
+                  {filteredBoard[col.id].length === 0 && !snapshot.isDraggingOver && (
                     <div className="rounded-lg border-2 border-dashed border-slate-100 dark:border-navy-700 py-6 text-center text-xs text-slate-300 dark:text-slate-600">
                       No tasks
                     </div>
                   )}
-                  {filteredBoard[col.id].map(task => (
+                  {filteredBoard[col.id].map((task, index) => (
+                    <Draggable key={task.id} draggableId={String(task.id)} index={index}>
+                      {(provided, snapshot) => (
                     <div
-                      key={task.id}
-                      className={`rounded-lg p-3 shadow-sm hover:shadow-md transition-all ${reviewCardStyle(task)}`}
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : 'hover:shadow-md'}`}
                     >
                       <div className="flex items-start justify-between gap-1 mb-0.5">
                         <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
@@ -768,6 +893,30 @@ export default function TeamKanbanBoard() {
                           <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
                         )}
                         <div className="flex items-center gap-1 shrink-0">
+                          {/* ← → move buttons */}
+                          {(() => {
+                            const canInteract = isManager || task.assignees.some(a => a.user.id === currentUserId)
+                            const showPrev = canInteract && col.id !== 'Todo' && (isManager || col.id !== 'Done')
+                            const showNext = canInteract && col.id !== 'Done' && (isManager || col.id !== 'InReview')
+                            return (
+                              <>
+                                {showPrev && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); moveTask(task.id, col.id, 'prev') }}
+                                    className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700"
+                                    title="Move back"
+                                  >←</button>
+                                )}
+                                {showNext && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); moveTask(task.id, col.id, 'next') }}
+                                    className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700"
+                                    title="Move forward"
+                                  >→</button>
+                                )}
+                              </>
+                            )
+                          })()}
                           {task.status === 'Todo' && (isManager || task.assignees.some(a => a.user.id === currentUserId)) && (
                             <button
                               onClick={() => handleDeleteTask(task.id, task.title)}
@@ -799,11 +948,17 @@ export default function TeamKanbanBoard() {
                         </div>
                       </div>
                     </div>
+                      )}
+                    </Draggable>
                   ))}
-                </div>
+                  {provided.placeholder}
+                  </div>
+                  )}
+                </Droppable>
               </div>
             ))}
           </div>
+          </DragDropContext>
         )}
 
         {showAddModal && (
@@ -850,6 +1005,8 @@ export default function TeamKanbanBoard() {
             projectTitle={activeTask.context.project.title}
             currentStatus={activeTask.status}
             reviewCount={activeTask.review_count}
+            estMandays={activeTask.est_mandays}
+            initialActualMandays={activeTask.actual_mandays}
             onClose={() => { setActiveTaskId(null); loadTasks() }}
             onStatusChange={handleStatusChange}
           />

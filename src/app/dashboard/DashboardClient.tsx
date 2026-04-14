@@ -9,6 +9,7 @@ interface Project {
   description: string | null
   status: string
   computedStatus: string
+  health_status?: string | null
   deadline: string
   start_date: string
   assignees: { user: { id: number; name: string } }[]
@@ -145,6 +146,18 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                     </Link>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <StatusBadge status={project.computedStatus} />
+                      {project.health_status && project.computedStatus !== 'Done' && (
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
+                          project.health_status === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                          project.health_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                          project.health_status === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
+                        }`}>
+                          {project.health_status === 'on_track' ? '🟢 On Track' :
+                           project.health_status === 'at_risk' ? '🟡 At Risk' :
+                           project.health_status === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
+                        </span>
+                      )}
                       {project._count.issues > 0 && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800">
                           {project._count.issues} issue{project._count.issues > 1 ? 's' : ''}

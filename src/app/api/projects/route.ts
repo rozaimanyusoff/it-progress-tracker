@@ -46,7 +46,13 @@ export async function GET(req: NextRequest) {
     const computedProgress = stats && Number(stats.total) > 0
       ? Math.round(Number(stats.done) / Number(stats.total) * 100)
       : (p.updates[0]?.progress_pct ?? 0)
-    return { ...p, computedProgress }
+    const computedStatus = (() => {
+      if (p.status === 'OnHold') return 'OnHold'
+      if (computedProgress >= 100) return 'Done'
+      if (computedProgress > 0) return 'InProgress'
+      return p.status
+    })()
+    return { ...p, computedProgress, computedStatus }
   })
 
   return NextResponse.json(result)
