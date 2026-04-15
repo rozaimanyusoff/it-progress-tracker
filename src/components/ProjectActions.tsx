@@ -83,7 +83,7 @@ export default function ProjectActions({ project, isManager, openIssueCount = 0,
 
   useEffect(() => {
     if (isManager) {
-      fetch('/api/users').then(r => r.json()).then(setMembers)
+      fetch('/api/users?include_managers=true').then(r => r.json()).then(setMembers)
     }
   }, [isManager])
 
@@ -300,7 +300,7 @@ export default function ProjectActions({ project, isManager, openIssueCount = 0,
                   ))}
                 </div>
                 {editForm.assignee_ids.length > 0 && (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{editForm.assignee_ids.length} member(s) selected</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{editForm.assignee_ids.length} assignee(s) selected</p>
                 )}
               </div>
               <OrgSelect type="unit" label="Unit" value={editForm.unit_id} onChange={id => setEditForm(f => ({ ...f, unit_id: id }))} />
