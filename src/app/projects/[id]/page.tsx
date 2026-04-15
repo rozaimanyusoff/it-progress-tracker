@@ -152,6 +152,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           start_date: project.start_date.toISOString(),
           deadline: project.deadline.toISOString(),
           health_status: project.health_status,
+          unit_id: project.unit_id,
+          dept_id: project.dept_id,
+          company_id: project.company_id,
           assignees: project.assignees,
         }}
         isManager={(session.user as any).role === 'manager'}

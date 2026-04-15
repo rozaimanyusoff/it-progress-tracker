@@ -43,6 +43,9 @@ interface ProjectDetailCardProps {
       start_date: string
       deadline: string
       health_status?: string | null
+      unit_id?: number | null
+      dept_id?: number | null
+      company_id?: number | null
       assignees: { user: { id: number; name: string } }[]
    }
    isManager: boolean
@@ -199,6 +202,9 @@ export default function ProjectDetailCard({
                            status: project.status,
                            start_date: project.start_date,
                            deadline: project.deadline,
+                           unit_id: project.unit_id,
+                           dept_id: project.dept_id,
+                           company_id: project.company_id,
                            assignees: project.assignees,
                         }}
                         isManager={isManager}
