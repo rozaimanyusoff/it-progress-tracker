@@ -261,7 +261,7 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
     return (
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-6">
         <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-3">Developer Analytics</h2>
-        <p className="text-sm text-slate-400 text-center py-4">No active member accounts found.</p>
+        <p className="text-sm text-slate-400 text-center py-4">No active assignees found.</p>
       </div>
     )
   }

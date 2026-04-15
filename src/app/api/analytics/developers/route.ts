@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Role } from '@prisma/client'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -25,10 +26,13 @@ export async function GET(req: NextRequest) {
     ? { feature: { project_links: { some: { project_id: Number(projectId) } } } }
     : {}
 
-  // Members can only see their own analytics
+  // Managers: include all active assignees in the scoped project (including managers).
+  // Non-managers: only see their own analytics.
   const userWhere =
     user.role === 'manager'
-      ? { role: 'member' as const, is_active: true }
+      ? (projectId
+          ? { is_active: true, project_assignments: { some: { project_id: Number(projectId) } } }
+          : { is_active: true, role: { in: [Role.member, Role.manager] } })
       : { id: Number(user.id), is_active: true }
 
   const now = new Date()

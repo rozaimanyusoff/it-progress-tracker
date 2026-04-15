@@ -255,7 +255,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
 
   useEffect(() => {
     fetchAll()
-    fetch('/api/users').then(r => r.json()).then(setMembers)
+    fetch('/api/users?include_managers=true').then(r => r.json()).then(setMembers)
     fetch('/api/module-templates').then(r => r.json()).then((templates: any[]) => {
       if (!Array.isArray(templates)) return
       const opts: TemplateDeliverableOption[] = []
