@@ -1,11 +1,8 @@
 import type { Metadata } from 'next'
 // generateMetadata is used instead of static metadata export
-import { Inter } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 import { prisma } from '@/lib/prisma'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
@@ -58,7 +55,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <style>{`:root { ${cssVars} --p-hex: ${hex.bg}; --p-hex-hover: ${hex.hover}; }`}</style>
       </head>
-      <body className={inter.className}>
+      <body className="font-sans">
         <Providers>{children}</Providers>
       </body>
     </html>
