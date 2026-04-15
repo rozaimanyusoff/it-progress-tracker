@@ -241,7 +241,7 @@ function NewProjectTab({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('/api/users').then(r => r.json()).then(setMembers)
+    fetch('/api/users?include_managers=true').then(r => r.json()).then(setMembers)
   }, [])
 
   function toggleAssignee(id: number) {
@@ -308,7 +308,7 @@ function NewProjectTab({
               {members.length === 0 && <p className="px-4 py-3 text-sm text-slate-400">No members available.</p>}
             </div>
             {form.assignee_ids.length > 0 && (
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">{form.assignee_ids.length} member(s) selected</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">{form.assignee_ids.length} assignee(s) selected</p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-4">

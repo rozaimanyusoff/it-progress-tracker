@@ -23,7 +23,7 @@ export default function NewProjectPage() {
   const user = session?.user as any
 
   useEffect(() => {
-    fetch('/api/users').then(r => r.json()).then(setMembers)
+    fetch('/api/users?include_managers=true').then(r => r.json()).then(setMembers)
   }, [])
 
   function toggleAssignee(id: number) {
@@ -95,7 +95,7 @@ export default function NewProjectPage() {
                 )}
               </div>
               {form.assignee_ids.length > 0 && (
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">{form.assignee_ids.length} member(s) selected</p>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1.5">{form.assignee_ids.length} assignee(s) selected</p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4">
