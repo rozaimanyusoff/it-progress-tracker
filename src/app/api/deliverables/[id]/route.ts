@@ -41,16 +41,58 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { title, description, mandays, status, module_id, planned_start, planned_end, actual_start, actual_end, is_actual_override, order } = body
+  const { title, description, mandays, status, priority, planned_start, planned_end, actual_start, actual_end, is_actual_override, order } = body
+  const payloadKeys = Object.keys(body ?? {})
+  const isOrderOnlyUpdate = payloadKeys.length === 1 && payloadKeys[0] === 'order'
+  const safeTitle = title !== undefined ? String(title).trim() : undefined
+
+  if (!isOrderOnlyUpdate) {
+    const existing = await prisma.deliverable.findUnique({
+      where: { id: Number(id) },
+      select: {
+        title: true,
+        planned_start: true,
+        planned_end: true,
+        project: { select: { start_date: true, deadline: true } },
+      },
+    })
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    const nextTitle = safeTitle ?? existing.title
+    if (!nextTitle?.trim()) {
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
+    }
+
+    const nextPlannedStart = planned_start !== undefined
+      ? (planned_start ? new Date(planned_start) : null)
+      : existing.planned_start
+    const nextPlannedEnd = planned_end !== undefined
+      ? (planned_end ? new Date(planned_end) : null)
+      : existing.planned_end
+
+    if (!nextPlannedStart || !nextPlannedEnd) {
+      return NextResponse.json({ error: 'Planned Start and Planned End are required' }, { status: 400 })
+    }
+    if (isNaN(nextPlannedStart.getTime()) || isNaN(nextPlannedEnd.getTime())) {
+      return NextResponse.json({ error: 'Invalid planned date format' }, { status: 400 })
+    }
+    if (nextPlannedStart > nextPlannedEnd) {
+      return NextResponse.json({ error: 'Planned Start cannot be after Planned End' }, { status: 400 })
+    }
+    if (nextPlannedStart < existing.project.start_date || nextPlannedEnd > existing.project.deadline) {
+      return NextResponse.json({ error: 'Planned dates must be within project start and deadline' }, { status: 400 })
+    }
+  }
 
   const updated = await prisma.deliverable.update({
     where: { id: Number(id) },
     data: {
-      ...(title !== undefined && { title }),
+      ...(title !== undefined && { title: safeTitle }),
       ...(description !== undefined && { description: description || null }),
       ...(mandays !== undefined && { mandays: Number(mandays) }),
       ...(status !== undefined && { status }),
-      ...(module_id !== undefined && { module_id: module_id ? Number(module_id) : null }),
+      ...(priority !== undefined && { priority }),
+      module_id: null,
       ...(planned_start !== undefined && { planned_start: planned_start ? new Date(planned_start) : null }),
       ...(planned_end !== undefined && { planned_end: planned_end ? new Date(planned_end) : null }),
       ...(actual_start !== undefined && { actual_start: actual_start ? new Date(actual_start) : null }),

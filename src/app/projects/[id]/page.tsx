@@ -168,6 +168,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       {/* Modules & Deliverables — right slide-in sidebar */}
       <DeliverableSidebar
         projectId={project.id}
+        projectTitle={project.title}
         userRole={(session.user as any).role}
         projectStartDate={project.start_date.toISOString()}
         projectDeadline={project.deadline.toISOString()}

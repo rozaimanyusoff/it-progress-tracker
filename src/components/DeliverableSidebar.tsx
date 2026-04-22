@@ -6,12 +6,13 @@ import DeliverableSection from './DeliverableSection'
 
 interface Props {
   projectId: number
+  projectTitle: string
   userRole: string
   projectStartDate: string
   projectDeadline: string
 }
 
-export default function DeliverableSidebar({ projectId, userRole, projectStartDate, projectDeadline }: Props) {
+export default function DeliverableSidebar({ projectId, projectTitle, userRole, projectStartDate, projectDeadline }: Props) {
   const [open, setOpen] = useState(false)
 
   // Lock body scroll when open
@@ -37,14 +38,14 @@ export default function DeliverableSidebar({ projectId, userRole, projectStartDa
       <button
         onClick={() => setOpen(true)}
         className="fixed right-0 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white py-4 px-2.5 rounded-l-xl shadow-lg transition-colors group"
-        title="Open Modules & Deliverables"
+        title="Open Deliverables & Tasks"
       >
         <Layers className="w-4 h-4" />
         <span
           className="text-[10px] font-semibold tracking-wide uppercase"
           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
         >
-          Modules & Tasks
+          Deliverables
         </span>
       </button>
 
@@ -69,7 +70,7 @@ export default function DeliverableSidebar({ projectId, userRole, projectStartDa
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-navy-700 shrink-0">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-blue-500" />
-            <h2 className="font-semibold text-slate-900 dark:text-white text-sm">Modules &amp; Deliverables</h2>
+            <h2 className="font-semibold text-slate-900 dark:text-white text-sm">Deliverables &amp; Tasks</h2>
           </div>
           <button
             onClick={() => setOpen(false)}
@@ -85,6 +86,7 @@ export default function DeliverableSidebar({ projectId, userRole, projectStartDa
           {open && (
             <DeliverableSection
               projectId={projectId}
+              projectTitle={projectTitle}
               userRole={userRole}
               projectStartDate={projectStartDate}
               projectDeadline={projectDeadline}

@@ -677,7 +677,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
             <div className="space-y-2 py-1">
               {presetTasks.length > 0 && (
                 <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset tasks — click to use:</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset title suggestions — click to use:</p>
                   <div className="flex flex-wrap gap-1.5">
                     {presetTasks.map((t, i) => (
                       <button

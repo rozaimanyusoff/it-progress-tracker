@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import AppLayout from '@/components/Layout'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -33,7 +32,7 @@ type ModuleTemplate = {
   deliverables: TemplateDeliverable[]
 }
 
-const TABS = ['Projects', 'New Project', 'Features', 'Deliverables'] as const
+const TABS = ['Projects', 'New Project', 'Features', 'Task Categories'] as const
 type Tab = typeof TABS[number]
 
 const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -474,8 +473,6 @@ type DelivDraft = { name: string; type: DelivType; tasks: TaskDraft[] }
 function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
   const [templates, setTemplates] = useState<ModuleTemplate[]>([])
   const [loading, setLoading] = useState(false)
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
-  const [expandedDeliverables, setExpandedDeliverables] = useState<Record<number, boolean>>({})
 
   // Create form
   const [showForm, setShowForm] = useState(false)
@@ -493,36 +490,27 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
   const [editIcon, setEditIcon] = useState('')
   const [editDesc, setEditDesc] = useState('')
 
-  // Inline task editing within edit mode
-  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
-  const [taskEditName, setTaskEditName] = useState('')
-  const [taskEditMd, setTaskEditMd] = useState('')
-  const [addingToDelivId, setAddingToDelivId] = useState<number | null>(null)
+  // Task actions within edit mode
+  const [taskActionMenuId, setTaskActionMenuId] = useState<number | null>(null)
+  const [taskEditModal, setTaskEditModal] = useState<{ id: number; name: string; md: string } | null>(null)
+  const [addTaskModal, setAddTaskModal] = useState<{ deliverableId: number; deliverableName: string } | null>(null)
   const [newTaskName, setNewTaskName] = useState('')
   const [newTaskMd, setNewTaskMd] = useState('')
   const [taskSaving, setTaskSaving] = useState(false)
+  const [draftTaskModal, setDraftTaskModal] = useState<{ draftIndex: number; categoryName: string } | null>(null)
+  const [draftTaskName, setDraftTaskName] = useState('')
+  const [draftTaskMd, setDraftTaskMd] = useState('')
 
   function fetchTemplates() {
     setLoading(true)
     fetch('/api/module-templates').then(r => r.json()).then(data => {
       const list: ModuleTemplate[] = Array.isArray(data) ? data : []
       setTemplates(list)
-      const exp: Record<number, boolean> = {}
-      list.forEach(t => { exp[t.id] = true })
-      setExpanded(exp)
       setLoading(false)
     })
   }
 
   useEffect(() => { fetchTemplates() }, [])
-
-  function toggleTemplate(id: number) {
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
-  }
-
-  function toggleDeliverable(id: number) {
-    setExpandedDeliverables(prev => ({ ...prev, [id]: !prev[id] }))
-  }
 
   // ── Deliverable drafts helpers ────────────────────────────────
   function addDelivRow() {
@@ -534,19 +522,9 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
   function updateDeliv(i: number, patch: Partial<DelivDraft>) {
     setDelivDrafts(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
   }
-  function addTaskRow(di: number) {
-    setDelivDrafts(prev => prev.map((d, idx) => idx === di
-      ? { ...d, tasks: [...d.tasks, { name: '', est_mandays: '' }] }
-      : d))
-  }
   function removeTaskRow(di: number, ti: number) {
     setDelivDrafts(prev => prev.map((d, idx) => idx === di
       ? { ...d, tasks: d.tasks.filter((_, j) => j !== ti) }
-      : d))
-  }
-  function updateTask(di: number, ti: number, patch: Partial<TaskDraft>) {
-    setDelivDrafts(prev => prev.map((d, idx) => idx === di
-      ? { ...d, tasks: d.tasks.map((t, j) => j === ti ? { ...t, ...patch } : t) }
       : d))
   }
 
@@ -613,9 +591,12 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
 
   // ── Task CRUD (within edit mode) ─────────────────────────────
   function startEditTask(task: TemplateTask) {
-    setEditingTaskId(task.id)
-    setTaskEditName(task.name)
-    setTaskEditMd(task.est_mandays != null ? String(task.est_mandays) : '')
+    setTaskActionMenuId(null)
+    setTaskEditModal({
+      id: task.id,
+      name: task.name,
+      md: task.est_mandays != null ? String(task.est_mandays) : '',
+    })
   }
 
   async function saveTaskEdit(taskId: number) {
@@ -623,10 +604,13 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
     const res = await fetch(`/api/template-tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: taskEditName, est_mandays: taskEditMd !== '' ? Number(taskEditMd) : null }),
+      body: JSON.stringify({
+        name: taskEditModal?.name ?? '',
+        est_mandays: taskEditModal && taskEditModal.md !== '' ? Number(taskEditModal.md) : null,
+      }),
     })
     setTaskSaving(false)
-    if (res.ok) { setEditingTaskId(null); fetchTemplates() }
+    if (res.ok) { setTaskEditModal(null); fetchTemplates() }
     else showToast('error', 'Failed to update task')
   }
 
@@ -646,8 +630,24 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
       body: JSON.stringify({ template_deliverable_id: delivId, name: newTaskName, est_mandays: newTaskMd !== '' ? Number(newTaskMd) : null }),
     })
     setTaskSaving(false)
-    if (res.ok) { setAddingToDelivId(null); setNewTaskName(''); setNewTaskMd(''); fetchTemplates() }
+    if (res.ok) { setAddTaskModal(null); setNewTaskName(''); setNewTaskMd(''); fetchTemplates() }
     else showToast('error', 'Failed to add task')
+  }
+
+  function addDraftTask(draftIndex: number) {
+    if (!draftTaskName.trim()) return
+    setDelivDrafts(prev => prev.map((d, idx) => idx === draftIndex
+      ? {
+        ...d,
+        tasks: [
+          ...d.tasks,
+          { name: draftTaskName.trim(), est_mandays: draftTaskMd.trim() },
+        ],
+      }
+      : d))
+    setDraftTaskModal(null)
+    setDraftTaskName('')
+    setDraftTaskMd('')
   }
 
   // ── Delete ────────────────────────────────────────────────────
@@ -662,7 +662,7 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
     <div>
       <div className="flex items-center gap-3 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400 flex-1">
-          Module templates with pre-defined deliverables and tasks.
+          Template library with pre-defined task categories and tasks.
         </p>
         <button
           onClick={() => setShowForm(v => !v)}
@@ -695,8 +695,8 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
             {/* Deliverables */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className={labelClass}>Deliverables</label>
-                <button type="button" onClick={addDelivRow} className="text-xs text-blue-500 hover:text-blue-700">+ Add deliverable</button>
+                <label className={labelClass}>Task Categories</label>
+                <button type="button" onClick={addDelivRow} className="text-xs text-blue-500 hover:text-blue-700">+ Add category</button>
               </div>
               <div className="space-y-3">
                 {delivDrafts.map((d, di) => (
@@ -713,31 +713,39 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
                         className={inputClass}
                         value={d.name}
                         onChange={e => updateDeliv(di, { name: e.target.value })}
-                        placeholder="Deliverable name, e.g. Backend API"
+                        placeholder="Task category name, e.g. Backend API"
                       />
                       <button type="button" onClick={() => removeDelivRow(di)} className="text-red-400 hover:text-red-600 text-xs shrink-0 px-1">✕</button>
                     </div>
-                    {/* Tasks */}
-                    <div className="ml-2 space-y-1.5">
-                      {d.tasks.map((t, ti) => (
-                        <div key={ti} className="flex gap-2 items-center">
-                          <input
-                            className={`${inputClass} flex-1`}
-                            value={t.name}
-                            onChange={e => updateTask(di, ti, { name: e.target.value })}
-                            placeholder="Task name"
-                          />
-                          <input
-                            type="number" step="0.5" min="0"
-                            className={`${inputClass} w-20`}
-                            value={t.est_mandays}
-                            onChange={e => updateTask(di, ti, { est_mandays: e.target.value })}
-                            placeholder="md"
-                          />
-                          <button type="button" onClick={() => removeTaskRow(di, ti)} className="text-red-400 hover:text-red-600 text-xs shrink-0 px-1">✕</button>
+                    <div className="ml-2 space-y-2">
+                      {d.tasks.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {d.tasks.map((t, ti) => (
+                            <span
+                              key={ti}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 text-xs text-slate-700 dark:text-slate-300"
+                            >
+                              <span>{t.name}</span>
+                              <span className="text-slate-400">{t.est_mandays ? `expected ${t.est_mandays} md` : 'expected —'}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeTaskRow(di, ti)}
+                                className="text-slate-400 hover:text-red-500"
+                                aria-label="Remove draft task"
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
                         </div>
-                      ))}
-                      <button type="button" onClick={() => addTaskRow(di)} className="text-xs text-blue-500 hover:text-blue-700">+ task</button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setDraftTaskModal({ draftIndex: di, categoryName: d.name || `Category ${di + 1}` })}
+                        className="text-xs text-blue-500 hover:text-blue-700"
+                      >
+                        + Add task
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -783,7 +791,7 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
                 <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
-                <button type="button" onClick={() => { setEditingId(null); setEditingTaskId(null); setAddingToDelivId(null) }} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
+                <button type="button" onClick={() => { setEditingId(null); setTaskEditModal(null); setTaskActionMenuId(null); setAddTaskModal(null) }} className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg">
                   Cancel
                 </button>
               </div>
@@ -792,7 +800,7 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
             {/* Deliverables + tasks editor */}
             {editingTpl && editingTpl.deliverables.length > 0 && (
               <div className="space-y-3 pt-1">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Deliverables & Tasks</p>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Task Categories & Tasks</p>
                 {editingTpl.deliverables.map(d => (
                   <div key={d.id} className="rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 overflow-hidden">
                     {/* Deliverable header */}
@@ -801,88 +809,54 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
                       <span className="text-sm font-medium text-slate-800 dark:text-white flex-1">{d.name}</span>
                       <button
                         type="button"
-                        onClick={() => { setAddingToDelivId(d.id); setNewTaskName(''); setNewTaskMd('') }}
+                        onClick={() => { setAddTaskModal({ deliverableId: d.id, deliverableName: d.name }); setNewTaskName(''); setNewTaskMd('') }}
                         className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                       >
                         + Add task
                       </button>
                     </div>
 
-                    {/* Task list */}
-                    <div className="divide-y divide-slate-100 dark:divide-navy-700">
-                      {d.tasks.map(task => (
-                        <div key={task.id} className="flex items-center gap-2 px-3 py-1.5">
-                          {editingTaskId === task.id ? (
-                            <>
-                              <input
-                                className={`${inputClass} flex-1 text-xs py-1`}
-                                value={taskEditName}
-                                onChange={e => setTaskEditName(e.target.value)}
-                                autoFocus
-                              />
-                              <input
-                                type="number" min="0.5" step="0.5"
-                                className={`${inputClass} w-16 text-xs py-1`}
-                                placeholder="md"
-                                value={taskEditMd}
-                                onChange={e => setTaskEditMd(e.target.value)}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => saveTaskEdit(task.id)}
-                                disabled={taskSaving}
-                                className="text-xs px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
-                              >
-                                Save
-                              </button>
-                              <button type="button" onClick={() => setEditingTaskId(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
-                            </>
-                          ) : (
-                            <>
-                              <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" />
-                              <span className="flex-1 text-xs text-slate-700 dark:text-slate-300">{task.name}</span>
-                              {task.est_mandays != null && (
-                                <span className="text-xs text-slate-400 shrink-0">{task.est_mandays}d</span>
+                    {/* Task badges */}
+                    <div className="p-3 border-t border-slate-100 dark:border-navy-700">
+                      {d.tasks.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {d.tasks.map(task => (
+                            <div key={task.id} className="relative group">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 text-xs text-slate-700 dark:text-slate-300">
+                                <span>{task.name}</span>
+                                <span className="text-slate-400">{task.est_mandays != null ? `${task.est_mandays} md` : '—'}</span>
+                                <button
+                                  type="button"
+                                  className="ml-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => setTaskActionMenuId(prev => prev === task.id ? null : task.id)}
+                                  aria-label="Task options"
+                                >
+                                  ⋯
+                                </button>
+                              </span>
+                              {taskActionMenuId === task.id && (
+                                <div className="absolute right-0 top-8 z-20 w-28 rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg py-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditTask(task)}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-navy-700"
+                                  >
+                                    Update
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setTaskActionMenuId(null); deleteTask(task.id) }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                               )}
-                              <button type="button" onClick={() => startEditTask(task)} className="text-xs text-slate-400 hover:text-blue-600 px-1">✎</button>
-                              <button type="button" onClick={() => deleteTask(task.id)} className="text-xs text-slate-400 hover:text-red-500 px-1">✕</button>
-                            </>
-                          )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-
-                      {/* Add task inline form */}
-                      {addingToDelivId === d.id && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50/50 dark:bg-blue-900/10">
-                          <input
-                            className={`${inputClass} flex-1 text-xs py-1`}
-                            placeholder="Task name *"
-                            value={newTaskName}
-                            onChange={e => setNewTaskName(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && addTask(d.id)}
-                            autoFocus
-                          />
-                          <input
-                            type="number" min="0.5" step="0.5"
-                            className={`${inputClass} w-16 text-xs py-1`}
-                            placeholder="md"
-                            value={newTaskMd}
-                            onChange={e => setNewTaskMd(e.target.value)}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => addTask(d.id)}
-                            disabled={taskSaving || !newTaskName.trim()}
-                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
-                          >
-                            Add
-                          </button>
-                          <button type="button" onClick={() => setAddingToDelivId(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
-                        </div>
-                      )}
-
-                      {d.tasks.length === 0 && addingToDelivId !== d.id && (
-                        <p className="px-3 py-2 text-xs text-slate-400 italic">No tasks — click "+ Add task" to add one.</p>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">No tasks — click "+ Add task" to add one.</p>
                       )}
                     </div>
                   </div>
@@ -895,7 +869,7 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
 
       {loading && <p className="text-slate-400 text-sm py-8 text-center">Loading...</p>}
       {!loading && templates.length === 0 && (
-        <p className="text-slate-400 text-sm py-8 text-center">No deliverable templates yet.</p>
+        <p className="text-slate-400 text-sm py-8 text-center">No task category templates yet.</p>
       )}
       {!loading && templates.length > 0 && (
         <div className="space-y-3">
@@ -905,7 +879,7 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
               <div key={tpl.id} className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl overflow-hidden">
                 {/* Template header */}
                 <div className="flex items-center gap-3 px-5 py-4">
-                  <button onClick={() => toggleTemplate(tpl.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     <span className="text-2xl leading-none">{tpl.icon ?? '📦'}</span>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-slate-900 dark:text-white text-sm">{tpl.display_name}</p>
@@ -914,58 +888,237 @@ function DeliverablesTab({ showToast }: { showToast: (t: 'success' | 'error', m:
                       )}
                     </div>
                     <span className="text-xs text-slate-400 shrink-0">
-                      {tpl.deliverables.length} deliverable{tpl.deliverables.length !== 1 ? 's' : ''} · {totalTasks} task{totalTasks !== 1 ? 's' : ''}
+                      {tpl.deliverables.length} {tpl.deliverables.length === 1 ? 'category' : 'categories'} · {totalTasks} task{totalTasks !== 1 ? 's' : ''}
                     </span>
-                    {expanded[tpl.id]
-                      ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-                      : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
-                  </button>
+                  </div>
                   <div className="flex gap-1 shrink-0">
                     <button onClick={() => openEdit(tpl)} className="text-xs px-2 py-1 border border-slate-200 dark:border-navy-600 rounded hover:bg-slate-50 dark:hover:bg-navy-700 text-slate-600 dark:text-slate-300">Edit</button>
                     <button onClick={() => handleDelete(tpl.id, tpl.display_name)} className="text-xs px-2 py-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500">Delete</button>
                   </div>
                 </div>
 
-                {/* Deliverables */}
-                {expanded[tpl.id] && (
-                  <div className="border-t border-slate-100 dark:border-navy-700 divide-y divide-slate-100 dark:divide-navy-700">
+                <div className="border-t border-slate-100 dark:border-navy-700 p-4 space-y-3">
+                  <div className="space-y-2">
                     {tpl.deliverables.map(d => (
-                      <div key={d.id}>
-                        <button
-                          onClick={() => toggleDeliverable(d.id)}
-                          className="w-full flex items-center gap-2.5 px-5 py-2.5 hover:bg-slate-50 dark:hover:bg-navy-700/40 transition-colors text-left"
-                        >
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${TYPE_BADGE[d.type] ?? TYPE_BADGE.frontend}`}>
+                      <div
+                        key={d.id}
+                        className="rounded-lg border border-slate-100 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/30 p-3"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${TYPE_BADGE[d.type] ?? TYPE_BADGE.frontend}`}>
                             {d.type}
                           </span>
-                          <span className="flex-1 text-sm font-medium text-slate-800 dark:text-white">{d.name}</span>
-                          <span className="text-xs text-slate-400 shrink-0">{d.tasks.length} task{d.tasks.length !== 1 ? 's' : ''}</span>
-                          {expandedDeliverables[d.id]
-                            ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                        </button>
+                          <span className="text-sm font-medium text-slate-800 dark:text-white flex-1">{d.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setAddTaskModal({ deliverableId: d.id, deliverableName: d.name }); setNewTaskName(''); setNewTaskMd('') }}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            + Add task
+                          </button>
+                        </div>
 
-                        {/* Tasks */}
-                        {expandedDeliverables[d.id] && d.tasks.length > 0 && (
-                          <div className="px-5 pb-3 space-y-1.5 bg-slate-50 dark:bg-navy-900/30">
+                        {d.tasks.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
                             {d.tasks.map(task => (
-                              <div key={task.id} className="flex items-center gap-2 text-xs">
-                                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0 ml-1" />
-                                <span className="flex-1 text-slate-700 dark:text-slate-300">{task.name}</span>
-                                {task.est_mandays != null && (
-                                  <span className="text-slate-400 shrink-0">{task.est_mandays}d</span>
+                              <div key={task.id} className="relative group">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 text-xs text-slate-700 dark:text-slate-200">
+                                  <span>{task.name}</span>
+                                  <span className="text-slate-400">
+                                    expected {task.est_mandays != null ? `${task.est_mandays} md` : '—'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="ml-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => setTaskActionMenuId(prev => prev === task.id ? null : task.id)}
+                                    aria-label="Task options"
+                                  >
+                                    ⋯
+                                  </button>
+                                </span>
+                                {taskActionMenuId === task.id && (
+                                  <div className="absolute right-0 top-8 z-20 w-28 rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditTask(task)}
+                                      className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-navy-700"
+                                    >
+                                      Update
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setTaskActionMenuId(null); deleteTask(task.id) }}
+                                      className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             ))}
                           </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">No tasks in this category.</p>
                         )}
                       </div>
                     ))}
                   </div>
-                )}
+                </div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {addTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 shadow-xl p-5">
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">Add Task</h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Category: <span className="font-medium text-slate-700 dark:text-slate-300">{addTaskModal.deliverableName}</span>
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className={labelClass}>Task Name *</label>
+                <input
+                  className={inputClass}
+                  value={newTaskName}
+                  onChange={e => setNewTaskName(e.target.value)}
+                  placeholder="e.g. Implement list endpoint"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Expected Mandays</label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  className={inputClass}
+                  value={newTaskMd}
+                  onChange={e => setNewTaskMd(e.target.value)}
+                  placeholder="e.g. 1.5"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => setAddTaskModal(null)}
+                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => addTask(addTaskModal.deliverableId)}
+                disabled={taskSaving || !newTaskName.trim()}
+                className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {taskSaving ? 'Adding...' : 'Add Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {taskEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 shadow-xl p-5">
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">Update Task</h4>
+            <div className="space-y-3">
+              <div>
+                <label className={labelClass}>Task Name *</label>
+                <input
+                  className={inputClass}
+                  value={taskEditModal.name}
+                  onChange={e => setTaskEditModal(prev => prev ? { ...prev, name: e.target.value } : prev)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Expected Mandays</label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  className={inputClass}
+                  value={taskEditModal.md}
+                  onChange={e => setTaskEditModal(prev => prev ? { ...prev, md: e.target.value } : prev)}
+                  placeholder="e.g. 1.5"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => setTaskEditModal(null)}
+                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => saveTaskEdit(taskEditModal.id)}
+                disabled={taskSaving || !taskEditModal.name.trim()}
+                className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {taskSaving ? 'Saving...' : 'Update Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {draftTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 shadow-xl p-5">
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">Add Task</h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Category: <span className="font-medium text-slate-700 dark:text-slate-300">{draftTaskModal.categoryName}</span>
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className={labelClass}>Task Name *</label>
+                <input
+                  className={inputClass}
+                  value={draftTaskName}
+                  onChange={e => setDraftTaskName(e.target.value)}
+                  placeholder="e.g. Implement list endpoint"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Expected Mandays</label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  className={inputClass}
+                  value={draftTaskMd}
+                  onChange={e => setDraftTaskMd(e.target.value)}
+                  placeholder="e.g. 1.5"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => setDraftTaskModal(null)}
+                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => addDraftTask(draftTaskModal.draftIndex)}
+                disabled={!draftTaskName.trim()}
+                className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                Add Task
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1019,7 +1172,7 @@ export default function ProjectsPage() {
       {activeTab === 'Projects' && <ProjectsTab onNewProject={() => setActiveTab('New Project')} />}
       {activeTab === 'New Project' && <NewProjectTab showToast={showToast} onCreated={() => setActiveTab('Projects')} />}
       {activeTab === 'Features' && <FeaturesTab showToast={showToast} />}
-      {activeTab === 'Deliverables' && <DeliverablesTab showToast={showToast} />}
+      {activeTab === 'Task Categories' && <DeliverablesTab showToast={showToast} />}
     </AppLayout>
   )
 }

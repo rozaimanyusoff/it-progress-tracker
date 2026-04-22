@@ -291,17 +291,8 @@ function DeliverableRow({
   )
 }
 
-export default function GanttChart({ project, deliverables, modules, embedded }: Props) {
-  const [collapsedModules, setCollapsedModules] = useState<Set<number>>(new Set())
+export default function GanttChart({ project, deliverables, modules: _modules, embedded }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('week')
-
-  function toggleModule(id: number) {
-    setCollapsedModules(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
 
   const deadline = new Date(project.deadline)
 
@@ -321,18 +312,6 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
   const deadlineLeft = dateToPercent(deadline, rangeStart, totalDays)
 
   const LABEL_W = 240
-
-  // Group deliverables by module_id
-  const deliverablesByModule = new Map<number, GanttDeliverable[]>()
-  const ungrouped: GanttDeliverable[] = []
-  for (const d of deliverables) {
-    if (d.module_id) {
-      if (!deliverablesByModule.has(d.module_id)) deliverablesByModule.set(d.module_id, [])
-      deliverablesByModule.get(d.module_id)!.push(d)
-    } else {
-      ungrouped.push(d)
-    }
-  }
 
   const totalTasks = deliverables.reduce((s, d) => s + d.tasks.length, 0)
 
@@ -377,7 +356,7 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
           {/* Header ticks */}
           <div className="flex border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900">
             <div className="shrink-0 flex items-end px-3 pb-2 text-xs font-medium text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-navy-700" style={{ width: LABEL_W }}>
-              Module / Deliverable / Task
+              Deliverable / Task
             </div>
             <div className={`flex-1 relative ${viewMode === 'week' ? 'h-20' : 'h-10'}`}>
               {ticks.map((tick, i) => (
@@ -406,116 +385,22 @@ export default function GanttChart({ project, deliverables, modules, embedded }:
             </div>
           </div>
 
-          {/* Modules with their deliverables */}
-          {modules.map(mod => {
-            const modDeliverables = deliverablesByModule.get(mod.id) ?? []
-            if (modDeliverables.length === 0) return null
-            const isCollapsed = collapsedModules.has(mod.id)
-            const doneTasks = modDeliverables.reduce((s, d) => s + d.tasks.filter(t => t.status === 'Done').length, 0)
-            const totalModTasks = modDeliverables.reduce((s, d) => s + d.tasks.length, 0)
-
-            return (
-              <div key={mod.id}>
-                {/* Module header row */}
-                <div className="flex border-b border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-900/20">
-                  <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-r border-blue-200 dark:border-blue-900/50" style={{ width: LABEL_W }}>
-                    <button onClick={() => toggleModule(mod.id)} className="text-blue-400 hover:text-blue-600 text-xs w-4 shrink-0">
-                      {isCollapsed ? '▶' : '▼'}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-blue-900 dark:text-blue-200 truncate">{mod.title}</p>
-                      <p className="text-xs text-blue-400">{modDeliverables.length} deliverable{modDeliverables.length !== 1 ? 's' : ''} · {doneTasks}/{totalModTasks} tasks done</p>
-                    </div>
-                  </div>
-                  {/* Module span bar: planned (from module dates) + actual (from deliverable span) */}
-                  <div className="flex-1 relative" style={{ height: 44 }}>
-                    {(() => {
-                      // Planned bar — from module's own start_date / end_date
-                      const plannedS = mod.start_date ? barStyle(new Date(mod.start_date), mod.end_date ? new Date(mod.end_date) : null, rangeStart, totalDays) : null
-
-                      // Actual bar — span across deliverables actual dates
-                      const actualStarts = modDeliverables.map(d => d.actual_start).filter(Boolean).map(s => new Date(s!).getTime())
-                      const actualEnds = modDeliverables.map(d => d.actual_end).filter(Boolean).map(e => new Date(e!).getTime())
-                      const allDelivDone = modDeliverables.every(d => d.status === 'Done')
-                      const actualSpanStart = actualStarts.length > 0 ? new Date(Math.min(...actualStarts)) : null
-                      const actualSpanEnd = actualEnds.length > 0 && allDelivDone ? new Date(Math.max(...actualEnds)) : null
-                      const actualS = actualSpanStart ? barStyle(actualSpanStart, actualSpanEnd, rangeStart, totalDays, today) : null
-                      const actualColor = allDelivDone
-                        ? (actualSpanEnd && deadline && actualSpanEnd <= deadline ? 'bg-green-500' : 'bg-red-500')
-                        : 'bg-blue-400'
-
-                      if (!plannedS && !actualS) return <div className="absolute inset-0 flex items-center pl-3"><span className="text-xs text-slate-300 dark:text-slate-600 italic">Not started</span></div>
-                      return (
-                        <>
-                          {plannedS && (
-                            <div
-                              className="absolute bg-slate-300 dark:bg-slate-600 rounded-sm"
-                              style={{ ...plannedS, top: 9, height: 8 }}
-                              title={`Planned: ${mod.start_date ? new Date(mod.start_date).toLocaleDateString() : '—'} → ${mod.end_date ? new Date(mod.end_date).toLocaleDateString() : '—'}`}
-                            />
-                          )}
-                          {actualS && (
-                            <div
-                              className={`absolute ${actualColor} rounded-sm opacity-70`}
-                              style={{ ...actualS, top: 23, height: 10 }}
-                              title={`Actual: ${actualSpanStart!.toLocaleDateString()} → ${actualSpanEnd ? actualSpanEnd.toLocaleDateString() : 'ongoing'}`}
-                            />
-                          )}
-                        </>
-                      )
-                    })()}
-                    {todayLeft >= 0 && todayLeft <= 100 && <div className="absolute top-0 bottom-0 w-px bg-blue-500 opacity-40 z-10" style={{ left: `${todayLeft}%` }} />}
-                    {deadlineLeft >= 0 && deadlineLeft <= 100 && <div className="absolute top-0 bottom-0 z-10" style={{ left: `${deadlineLeft}%`, width: 1, borderLeft: '1px dashed #94a3b8' }} />}
-                  </div>
-                </div>
-
-                {/* Deliverables inside module */}
-                {!isCollapsed && modDeliverables.map(d => (
-                  <DeliverableRow
-                    key={d.id}
-                    deliverable={d}
-                    deadline={deadline}
-                    rangeStart={rangeStart}
-                    totalDays={totalDays}
-                    todayLeft={todayLeft}
-                    deadlineLeft={deadlineLeft}
-                    indent
-                  />
-                ))}
-              </div>
-            )
-          })}
-
-          {/* Ungrouped deliverables */}
-          {ungrouped.length > 0 && (
-            <>
-              {modules.length > 0 && (
-                <div className="flex border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/50">
-                  <div className="shrink-0 px-3 py-2 border-r border-slate-200 dark:border-navy-700 text-xs font-medium text-slate-500 dark:text-slate-400" style={{ width: LABEL_W }}>
-                    Ungrouped
-                  </div>
-                  <div className="flex-1" />
-                </div>
-              )}
-              {ungrouped.map(d => (
-                <DeliverableRow
-                  key={d.id}
-                  deliverable={d}
-                  deadline={deadline}
-                  rangeStart={rangeStart}
-                  totalDays={totalDays}
-                  todayLeft={todayLeft}
-                  deadlineLeft={deadlineLeft}
-                />
-              ))}
-            </>
-          )}
+          {deliverables.map(d => (
+              <DeliverableRow
+                key={d.id}
+                deliverable={d}
+                deadline={deadline}
+                rangeStart={rangeStart}
+                totalDays={totalDays}
+                todayLeft={todayLeft}
+                deadlineLeft={deadlineLeft}
+              />
+            ))}
 
           {/* Footer */}
           <div className="flex border-t border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900">
             <div className="shrink-0 px-3 py-2 text-xs text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-navy-700" style={{ width: LABEL_W }}>
               {deliverables.length} deliverable{deliverables.length !== 1 ? 's' : ''} · {totalTasks} task{totalTasks !== 1 ? 's' : ''}
-              {modules.length > 0 && ` · ${modules.length} module${modules.length !== 1 ? 's' : ''}`}
             </div>
             <div className="flex-1 py-2 px-3">
               <span className="text-xs text-slate-400 dark:text-slate-500">

@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import FeatureTaskList from './FeatureTaskList'
-import ModuleTemplateModal from './ModuleTemplateModal'
-import { Pencil, Trash2, X, Bookmark } from 'lucide-react'
+import { Pencil, Trash2, X } from 'lucide-react'
 
-interface Task { status: string; est_mandays?: number | null; _count?: { issues: number } }
-
-const TASK_PROGRESS_WEIGHT: Record<string, number> = {
-  Todo: 0, InProgress: 50, InReview: 80, Done: 100, Blocked: 0,
+interface Task {
+  status: string
+  est_mandays?: number | null
+  _count?: { issues: number }
 }
 
 interface Deliverable {
@@ -16,6 +15,7 @@ interface Deliverable {
   title: string
   description?: string | null
   mandays: number
+  priority?: string
   status: string
   order: number
   planned_start?: string | null
@@ -28,30 +28,25 @@ interface Deliverable {
   _count?: { issues: number }
 }
 
-interface Module {
-  id: number
-  title: string
-  description?: string | null
-  start_date?: string | null
-  end_date?: string | null
-  order: number
-}
-
 interface Member {
   id: number
   name: string
 }
 
-interface TemplateDeliverableOption {
-  name: string
-  templateName: string
-}
-
 interface Props {
   projectId: number
+  projectTitle: string
   userRole: string
   projectStartDate: string
   projectDeadline: string
+}
+
+const TASK_PROGRESS_WEIGHT: Record<string, number> = {
+  Todo: 0,
+  InProgress: 50,
+  InReview: 80,
+  Done: 100,
+  Blocked: 0,
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -60,13 +55,57 @@ const STATUS_BADGE: Record<string, string> = {
   Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   OnHold: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
 }
+
 const STATUS_LABELS: Record<string, string> = {
-  Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
+  Pending: 'Pending',
+  InProgress: 'In Progress',
+  Done: 'Done',
+  OnHold: 'On Hold',
+}
+
+const BLANK_DELIVERABLE_FORM = {
+  title: '',
+  description: '',
+  mandays: '1',
+  priority: 'medium',
+  status: 'Pending',
+  planned_start: '',
+  planned_end: '',
+  actual_start: '',
+  actual_end: '',
+  is_actual_override: false,
+}
+
+const PRIORITY_BADGE: Record<string, string> = {
+  low: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  high: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 }
 
 function fmt(dateStr?: string | null) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function toInputDate(iso?: string | null) {
+  if (!iso) return ''
+  return iso.slice(0, 10)
+}
+
+function countWorkdays(start: string, end: string): number {
+  const s = new Date(start)
+  const e = new Date(end)
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) return 1
+
+  let count = 0
+  const cur = new Date(s)
+  while (cur <= e) {
+    const day = cur.getDay()
+    if (day !== 0 && day !== 6) count++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return Math.max(1, count)
 }
 
 function taskProgress(tasks: Task[]) {
@@ -78,7 +117,17 @@ function taskProgress(tasks: Task[]) {
 }
 
 function DeliverableCard({
-  deliverable, userRole, members, expandedId, setExpandedId, onEdit, onDelete, onMoveUp, onMoveDown, canMoveUp, canMoveDown,
+  deliverable,
+  userRole,
+  members,
+  expandedId,
+  setExpandedId,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
 }: {
   deliverable: Deliverable
   userRole: string
@@ -107,6 +156,9 @@ function DeliverableCard({
               <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[deliverable.status]}`}>
                 {STATUS_LABELS[deliverable.status]}
               </span>
+              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${PRIORITY_BADGE[deliverable.priority ?? 'medium']}`}>
+                {deliverable.priority ?? 'medium'}
+              </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">{deliverable.mandays} md</span>
               {openIssueCount > 0 && (
                 <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Open issues">
@@ -114,9 +166,11 @@ function DeliverableCard({
                 </span>
               )}
             </div>
+
             {deliverable.description && (
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{deliverable.description}</p>
             )}
+
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-400">
               <span>
                 Planned:{' '}
@@ -134,6 +188,7 @@ function DeliverableCard({
                   : <span className="italic">Not started</span>}
               </span>
             </div>
+
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 h-1.5 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
                 <div
@@ -144,6 +199,7 @@ function DeliverableCard({
               <span className="text-xs text-slate-400 whitespace-nowrap">{done}/{total} tasks</span>
             </div>
           </div>
+
           <div className="flex items-center gap-1.5 shrink-0">
             {userRole === 'manager' && (
               <>
@@ -178,6 +234,7 @@ function DeliverableCard({
           </div>
         </div>
       </div>
+
       {isExpanded && (
         <div className="px-4 pb-4 border-t border-slate-100 dark:border-navy-700 pt-3">
           <FeatureTaskList
@@ -193,102 +250,64 @@ function DeliverableCard({
   )
 }
 
-function countWorkdays(start: string, end: string): number {
-  const s = new Date(start), e = new Date(end)
-  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) return 1
-  let count = 0
-  const cur = new Date(s)
-  while (cur <= e) {
-    const day = cur.getDay()
-    if (day !== 0 && day !== 6) count++
-    cur.setDate(cur.getDate() + 1)
-  }
-  return Math.max(1, count)
-}
-
-const BLANK_DELIVERABLE_FORM = { title: '', description: '', mandays: '1', status: 'Pending', module_id: '', planned_start: '', planned_end: '', actual_start: '', actual_end: '', is_actual_override: false }
-const BLANK_MODULE_FORM = { title: '', description: '', start_date: '', end_date: '' }
-
-function toInputDate(iso?: string | null) {
-  if (!iso) return ''
-  return iso.slice(0, 10) // 'YYYY-MM-DD'
-}
-
-export default function DeliverableSection({ projectId, userRole, projectStartDate, projectDeadline }: Props) {
+export default function DeliverableSection({ projectId, projectTitle, userRole, projectStartDate, projectDeadline }: Props) {
   const projMin = toInputDate(projectStartDate)
   const projMax = toInputDate(projectDeadline)
-  const [modules, setModules] = useState<Module[]>([])
+
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [expandedModules, setExpandedModules] = useState<Set<number | 'ungrouped'>>(new Set(['ungrouped']))
 
-  // Deliverable modal
   const [showDelivModal, setShowDelivModal] = useState(false)
   const [editingDeliv, setEditingDeliv] = useState<Deliverable | null>(null)
   const [delivForm, setDelivForm] = useState(BLANK_DELIVERABLE_FORM)
   const [delivSaving, setDelivSaving] = useState(false)
   const [delivError, setDelivError] = useState('')
-  const [delivRecords, setDeliverableRecords] = useState<TemplateDeliverableOption[]>([])
-  const [titleIsCustom, setTitleIsCustom] = useState(false)
 
-  // Template modal (add new module via template picker)
-  const [showTemplateModal, setShowTemplateModal] = useState(false)
-
-  // Module modal (edit existing module only)
-  const [showModuleModal, setShowModuleModal] = useState(false)
-  const [editingModule, setEditingModule] = useState<Module | null>(null)
-  const [moduleForm, setModuleForm] = useState(BLANK_MODULE_FORM)
-  const [moduleSaving, setModuleSaving] = useState(false)
-
-  // Save-as-template modal
-  const [saveAsTemplateModule, setSaveAsTemplateModule] = useState<Module | null>(null)
-  const [saveAsTemplateName, setSaveAsTemplateName] = useState('')
-  const [saveAsTemplateSaving, setSaveAsTemplateSaving] = useState(false)
-  const [saveAsTemplateError, setSaveAsTemplateError] = useState('')
-
-  // Delete confirmation
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'module' | 'deliverable'; id: number; title: string } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+
+  const [showHelp, setShowHelp] = useState(false)
+  const [showTitleHelp, setShowTitleHelp] = useState(false)
+  const helpRef = useRef<HTMLDivElement>(null)
+  const titleHelpRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchAll()
     fetch('/api/users?include_managers=true').then(r => r.json()).then(setMembers)
-    fetch('/api/module-templates').then(r => r.json()).then((templates: any[]) => {
-      if (!Array.isArray(templates)) return
-      const opts: TemplateDeliverableOption[] = []
-      templates.forEach(tpl => {
-        (tpl.deliverables ?? []).forEach((d: any) => {
-          if (!opts.some(o => o.name === d.name)) {
-            opts.push({ name: d.name, templateName: tpl.display_name })
-          }
-        })
-      })
-      setDeliverableRecords(opts)
-    })
   }, [projectId])
+
+  useEffect(() => {
+    if (!showHelp) return
+    function handleClick(e: MouseEvent) {
+      if (helpRef.current && !helpRef.current.contains(e.target as Node)) setShowHelp(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showHelp])
+
+  useEffect(() => {
+    if (!showTitleHelp) return
+    function handleClick(e: MouseEvent) {
+      if (titleHelpRef.current && !titleHelpRef.current.contains(e.target as Node)) setShowTitleHelp(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showTitleHelp])
 
   async function fetchAll() {
     setLoading(true)
-    const [modData, delivData] = await Promise.all([
-      fetch(`/api/modules?project_id=${projectId}`).then(r => r.json()),
-      fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()),
-    ])
-    setModules(modData)
+    const delivData = await fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json())
     setDeliverables(delivData)
-    const ids = new Set<number | 'ungrouped'>(['ungrouped', ...modData.map((m: Module) => m.id)])
-    setExpandedModules(ids)
     setLoading(false)
   }
 
-  // ── Deliverable CRUD ──────────────────────────────────────────
-  function openAddDeliv(moduleId?: number) {
+  function openAddDeliv() {
     setEditingDeliv(null)
-    setDelivForm({ ...BLANK_DELIVERABLE_FORM, module_id: moduleId?.toString() ?? '' })
+    setDelivForm(BLANK_DELIVERABLE_FORM)
     setDelivError('')
-    setTitleIsCustom(false)
     setShowDelivModal(true)
   }
 
@@ -298,8 +317,8 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
       title: d.title,
       description: d.description ?? '',
       mandays: d.mandays.toString(),
+      priority: d.priority ?? 'medium',
       status: d.status,
-      module_id: d.module_id?.toString() ?? '',
       planned_start: toInputDate(d.planned_start),
       planned_end: toInputDate(d.planned_end),
       actual_start: toInputDate(d.actual_start),
@@ -307,24 +326,39 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
       is_actual_override: d.is_actual_override ?? false,
     })
     setDelivError('')
-    setTitleIsCustom(!delivRecords.some(r => r.name === d.title))
     setShowDelivModal(true)
   }
 
   async function saveDeliv() {
-    if (!delivForm.title.trim()) { setDelivError('Title is required'); return }
-    if (delivForm.planned_start && delivForm.planned_end && delivForm.planned_start > delivForm.planned_end) {
-      setDelivError('Start date cannot be after end date'); return
+    const title = delivForm.title.trim()
+    if (!title) {
+      setDelivError('Title is required')
+      return
     }
+    if (!delivForm.planned_start || !delivForm.planned_end) {
+      setDelivError('Planned Start and Planned End are required')
+      return
+    }
+    if (delivForm.planned_start > delivForm.planned_end) {
+      setDelivError('Start date cannot be after end date')
+      return
+    }
+    if (delivForm.planned_start < projMin || delivForm.planned_end > projMax) {
+      setDelivError('Planned dates must be within project start and deadline')
+      return
+    }
+
     setDelivSaving(true)
     setDelivError('')
+
     const datePayload = {
       planned_start: delivForm.planned_start || null,
       planned_end: delivForm.planned_end || null,
     }
+
     try {
       if (editingDeliv) {
-        const actPayload: any = {}
+        const actPayload: Record<string, unknown> = {}
         if (delivForm.actual_start) {
           actPayload.actual_start = delivForm.actual_start
           actPayload.is_actual_override = true
@@ -334,20 +368,20 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
           actPayload.is_actual_override = true
         }
         if (!delivForm.actual_start && !delivForm.actual_end && editingDeliv.is_actual_override) {
-          // PM cleared the override fields — reset to auto
           actPayload.actual_start = null
           actPayload.actual_end = null
           actPayload.is_actual_override = false
         }
+
         const res = await fetch(`/api/deliverables/${editingDeliv.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: delivForm.title,
+            title,
             description: delivForm.description,
             mandays: Number(delivForm.mandays),
+            priority: delivForm.priority,
             status: delivForm.status,
-            module_id: delivForm.module_id ? Number(delivForm.module_id) : null,
             ...datePayload,
             ...actPayload,
           }),
@@ -358,15 +392,16 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: delivForm.title,
+            title,
             description: delivForm.description,
             mandays: Number(delivForm.mandays),
-            module_id: delivForm.module_id ? Number(delivForm.module_id) : null,
+            priority: delivForm.priority,
             ...datePayload,
           }),
         })
         if (!res.ok) throw new Error((await res.json()).error)
       }
+
       setShowDelivModal(false)
       fetchAll()
     } catch (err: any) {
@@ -378,16 +413,34 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
 
   function deleteDeliv(id: number, title: string) {
     setDeleteError('')
-    setDeleteConfirm({ type: 'deliverable', id, title })
+    setDeleteConfirm({ id, title })
   }
 
-  async function moveDeliverable(group: Deliverable[], index: number, direction: 'up' | 'down') {
-    const sorted = [...group].sort((a, b) => a.order - b.order)
+  async function confirmDelete() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    setDeleteError('')
+
+    const res = await fetch(`/api/deliverables/${deleteConfirm.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      setDeliverables(prev => prev.filter(d => d.id !== deleteConfirm.id))
+      setDeleteConfirm(null)
+    } else {
+      const data = await res.json().catch(() => ({}))
+      setDeleteError(data.error || 'Delete failed')
+    }
+
+    setDeleting(false)
+  }
+
+  async function moveDeliverable(index: number, direction: 'up' | 'down') {
+    const sorted = [...deliverables].sort((a, b) => a.order - b.order)
     const targetIndex = direction === 'up' ? index - 1 : index + 1
     if (targetIndex < 0 || targetIndex >= sorted.length) return
+
     const a = sorted[index]
     const b = sorted[targetIndex]
-    // Swap orders
+
     await Promise.all([
       fetch(`/api/deliverables/${a.id}`, {
         method: 'PUT',
@@ -400,6 +453,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
         body: JSON.stringify({ order: a.order }),
       }),
     ])
+
     setDeliverables(prev =>
       prev.map(d => {
         if (d.id === a.id) return { ...d, order: b.order }
@@ -409,190 +463,41 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
     )
   }
 
-  // ── Module CRUD ───────────────────────────────────────────────
-  function openAddModule() {
-    setShowTemplateModal(true)
-  }
-
-  function handleTemplateCreated(module: any, newDeliverables: any[]) {
-    setShowTemplateModal(false)
-    setModules(prev => [...prev, module])
-    setDeliverables(prev => [...prev, ...newDeliverables])
-    setExpandedModules(prev => new Set([...prev, module.id]))
-  }
-
-  async function saveModuleAsTemplate() {
-    if (!saveAsTemplateModule || !saveAsTemplateName.trim()) return
-    setSaveAsTemplateSaving(true)
-    setSaveAsTemplateError('')
-    try {
-      const res = await fetch(`/api/modules/${saveAsTemplateModule.id}/save-as-template`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: saveAsTemplateName.trim() }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to save template')
-      }
-      setSaveAsTemplateModule(null)
-      setSaveAsTemplateName('')
-    } catch (e: any) {
-      setSaveAsTemplateError(e.message)
-    } finally {
-      setSaveAsTemplateSaving(false)
-    }
-  }
-
-  function openEditModule(m: Module) {
-    setEditingModule(m)
-    setModuleForm({
-      title: m.title,
-      description: m.description ?? '',
-      start_date: toInputDate(m.start_date),
-      end_date: toInputDate(m.end_date),
-    })
-    setShowModuleModal(true)
-  }
-
-  async function saveModule() {
-    if (!moduleForm.title.trim()) return
-    if (moduleForm.start_date && moduleForm.end_date && moduleForm.start_date > moduleForm.end_date) return
-    setModuleSaving(true)
-    const payload = {
-      title: moduleForm.title,
-      description: moduleForm.description,
-      start_date: moduleForm.start_date || null,
-      end_date: moduleForm.end_date || null,
-    }
-    if (editingModule) {
-      const res = await fetch(`/api/modules/${editingModule.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        const updated = await res.json()
-        setModules(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m))
-      }
-    } else {
-      const res = await fetch('/api/modules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, ...payload }),
-      })
-      if (res.ok) {
-        const created = await res.json()
-        setModules(prev => [...prev, created])
-        setExpandedModules(prev => new Set([...prev, created.id]))
-      }
-    }
-    setModuleSaving(false)
-    setShowModuleModal(false)
-  }
-
-  function deleteModule(id: number, title: string) {
-    setDeleteError('')
-    setDeleteConfirm({ type: 'module', id, title })
-  }
-
-  async function confirmDelete() {
-    if (!deleteConfirm) return
-    setDeleting(true)
-    setDeleteError('')
-    const url = deleteConfirm.type === 'module'
-      ? `/api/modules/${deleteConfirm.id}`
-      : `/api/deliverables/${deleteConfirm.id}`
-    const res = await fetch(url, { method: 'DELETE' })
-    if (res.ok) {
-      if (deleteConfirm.type === 'module') {
-        setModules(prev => prev.filter(m => m.id !== deleteConfirm.id))
-      } else {
-        setDeliverables(prev => prev.filter(d => d.id !== deleteConfirm.id))
-      }
-      setDeleteConfirm(null)
-    } else {
-      const data = await res.json().catch(() => ({}))
-      setDeleteError(data.error || 'Delete failed')
-    }
-    setDeleting(false)
-  }
-
-  function toggleGroup(key: number | 'ungrouped') {
-    setExpandedModules(prev => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }
-
-  const [showHelp, setShowHelp] = useState(false)
-  const helpRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!showHelp) return
-    function handleClick(e: MouseEvent) {
-      if (helpRef.current && !helpRef.current.contains(e.target as Node)) setShowHelp(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [showHelp])
-
-  const ungrouped = deliverables.filter(d => !d.module_id)
-
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const sortedDeliverables = [...deliverables].sort((a, b) => a.order - b.order)
 
   return (
     <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Modules & Deliverables</h2>          {/* Help popover */}
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Deliverables &amp; Tasks</h2>
+
           <div className="relative" ref={helpRef}>
             <button
               onClick={() => setShowHelp(v => !v)}
               className="w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center border border-blue-400 dark:border-blue-500 text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-              aria-label="Modules and Deliverables help"
+              aria-label="Deliverables and tasks help"
             >
               ?
             </button>
+
             {showHelp && (
               <div className="absolute left-0 top-7 z-50 w-80 rounded-xl border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-xl p-4 text-xs text-slate-600 dark:text-slate-300 space-y-3">
                 <div className="absolute -top-2 left-3 w-3 h-3 rotate-45 bg-white dark:bg-navy-800 border-l border-t border-slate-200 dark:border-navy-600" />
 
                 <div>
-                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What are Modules?</p>
-                  <p className="leading-relaxed">A <strong>Module</strong> is a high-level phase or workstream that groups related deliverables together. Think of it as a chapter — it organises work into logical stages (e.g. &ldquo;Phase 1: Discovery&rdquo;, &ldquo;Backend Setup&rdquo;).</p>
-                  <p className="mt-1 leading-relaxed text-slate-400 dark:text-slate-500 italic">Example: A data migration project may have modules like &ldquo;Source Analysis&rdquo;, &ldquo;ETL Pipeline&rdquo;, and &ldquo;UAT&rdquo;.</p>
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">Project Structure</p>
+                  <p className="leading-relaxed"><strong>Project → Deliverable → Task</strong></p>
                 </div>
 
                 <div>
-                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What are Deliverables?</p>
-                  <p className="leading-relaxed">A <strong>Deliverable</strong> is a concrete output or milestone under a module. It has planned/actual dates, mandays effort, and a status. Deliverables appear on the Gantt chart.</p>
-                  <p className="mt-1 leading-relaxed text-slate-400 dark:text-slate-500 italic">Example: &ldquo;Prepare backup storage&rdquo;, &ldquo;Setup repository infrastructure&rdquo;.</p>
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What is a Deliverable?</p>
+                  <p className="leading-relaxed">A deliverable is a concrete outcome under a project. It has planned/actual dates, effort (mandays), and status for management-level tracking.</p>
                 </div>
 
                 <div>
-                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What are Tasks?</p>
-                  <p className="leading-relaxed">A <strong>Task</strong> is a granular unit of work under a deliverable. Tasks have assignees, actual start/end dates, and drive the progress % on the burndown chart.</p>
-                  <p className="mt-1 leading-relaxed text-slate-400 dark:text-slate-500 italic">Example: &ldquo;Configure S3 bucket&rdquo;, &ldquo;Test restore procedure&rdquo;.</p>
-                </div>
-
-                <div className="border-t border-slate-100 dark:border-navy-700 pt-2">
-                  <p className="font-semibold text-slate-800 dark:text-white mb-1">Deliverable vs Task</p>
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead>
-                      <tr className="text-slate-400 dark:text-slate-500">
-                        <th className="text-left pb-1 pr-2">Deliverable</th>
-                        <th className="text-left pb-1">Task</th>
-                      </tr>
-                    </thead>
-                    <tbody className="space-y-1">
-                      <tr><td className="pr-2 py-0.5">Visible on Gantt chart</td><td>Drives burndown chart</td></tr>
-                      <tr><td className="pr-2 py-0.5">Has planned dates &amp; mandays</td><td>Has assignee &amp; actual dates</td></tr>
-                      <tr><td className="pr-2 py-0.5">1 deliverable → many tasks</td><td>Smallest tracked unit</td></tr>
-                      <tr><td className="pr-2 py-0.5">Manager-level tracking</td><td>Developer-level tracking</td></tr>
-                    </tbody>
-                  </table>
+                  <p className="font-semibold text-slate-800 dark:text-white mb-1">What is a Task?</p>
+                  <p className="leading-relaxed">A task is a smaller execution unit inside a deliverable. Tasks carry assignee, due date, and daily execution status.</p>
                 </div>
 
                 <button
@@ -603,228 +508,109 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                 </button>
               </div>
             )}
-          </div>          {!loading && (
-            <div className="flex items-center gap-1.5">
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                {modules.length} module{modules.length !== 1 ? 's' : ''}
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
-                {deliverables.length} deliverable{deliverables.length !== 1 ? 's' : ''}
-              </span>
-            </div>
+          </div>
+
+          {!loading && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+              {deliverables.length} deliverable{deliverables.length !== 1 ? 's' : ''}
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={openAddModule} className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg border border-slate-200 dark:border-navy-600">
-            + Module
-          </button>
-          <button onClick={() => openAddDeliv()} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
-            + Add Deliverable
-          </button>
-        </div>
+
+        <button onClick={openAddDeliv} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
+          + Add Deliverable
+        </button>
       </div>
 
       {loading ? (
         <p className="text-sm text-slate-500 py-4 text-center">Loading...</p>
+      ) : sortedDeliverables.length === 0 ? (
+        <p className="text-sm text-slate-400 py-4 text-center">No deliverables yet. Click &quot;+ Add Deliverable&quot; to create one.</p>
       ) : (
-        <div className="space-y-4">
-          {/* Module groups */}
-          {modules.map(mod => {
-            const modDeliverables = deliverables.filter(d => d.module_id === mod.id)
-            const isOpen = expandedModules.has(mod.id)
-            const doneTasks = modDeliverables.reduce((s, d) => s + d.tasks.filter(t => t.status === 'Done').length, 0)
-            const totalTasks = modDeliverables.reduce((s, d) => s + d.tasks.length, 0)
-
-            return (
-              <div key={mod.id} className="border border-blue-200 dark:border-blue-900/50 rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-900/20">
-                  <button onClick={() => toggleGroup(mod.id)} className="flex items-center gap-2 flex-1 text-left min-w-0">
-                    <span className="text-xs text-blue-400 shrink-0">{isOpen ? '▼' : '▶'}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-200 text-blue-800 dark:bg-blue-800/50 dark:text-blue-200 uppercase tracking-wide shrink-0">Module</span>
-                        <span className="font-semibold text-sm text-blue-900 dark:text-blue-200 truncate">{mod.title}</span>
-                        {mod.description && <span className="text-xs text-blue-500 dark:text-blue-400 truncate hidden sm:inline">{mod.description}</span>}
-                      </div>
-                      {(mod.start_date || mod.end_date) && (
-                        <p className="text-xs text-blue-400 mt-0.5">
-                          {mod.start_date ? fmt(mod.start_date) : '—'} → {mod.end_date ? fmt(mod.end_date) : '—'}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-xs text-blue-400 mr-2 shrink-0 whitespace-nowrap">
-                      {modDeliverables.length} deliverable(s) · {doneTasks}/{totalTasks} tasks
-                    </span>
-                  </button>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => { openAddDeliv(mod.id); setExpandedModules(prev => new Set([...prev, mod.id])) }}
-                      className="text-xs px-2 py-1 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300"
-                    >
-                      + Deliverable
-                    </button>
-                    {userRole === 'manager' && (
-                      <>
-                        <button
-                          onClick={() => { setSaveAsTemplateModule(mod); setSaveAsTemplateName(mod.title); setSaveAsTemplateError('') }}
-                          className="p-1 border border-indigo-200 dark:border-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400"
-                          title="Save as template"
-                        >
-                          <Bookmark className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => deleteModule(mod.id, mod.title)} className="p-1 border border-red-200 dark:border-red-900 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400" title="Delete module">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {isOpen && (
-                  <div className="p-3 space-y-2">
-                    {modDeliverables.length === 0 ? (
-                      <p className="text-xs text-slate-400 py-2 text-center">
-                        No deliverables in this module yet.{' '}
-                        <button onClick={() => openAddDeliv(mod.id)} className="ml-1 text-blue-500 hover:underline">Add one</button>
-                      </p>
-                    ) : (
-                      (() => {
-                        const sortedModDelivs = [...modDeliverables].sort((a, b) => a.order - b.order)
-                        return sortedModDelivs.map((d, idx) => (
-                          <DeliverableCard
-                            key={d.id}
-                            deliverable={d}
-                            userRole={userRole}
-                            members={members}
-                            expandedId={expandedId}
-                            setExpandedId={setExpandedId}
-                            onEdit={openEditDeliv}
-                            onDelete={deleteDeliv}
-                            canMoveUp={idx > 0}
-                            canMoveDown={idx < sortedModDelivs.length - 1}
-                            onMoveUp={() => moveDeliverable(sortedModDelivs, idx, 'up')}
-                            onMoveDown={() => moveDeliverable(sortedModDelivs, idx, 'down')}
-                          />
-                        ))
-                      })()
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Ungrouped deliverables */}
-          {(ungrouped.length > 0 || modules.length === 0) && (
-            <div className="border border-slate-200 dark:border-navy-700 rounded-xl overflow-hidden">
-              {modules.length > 0 && (
-                <div className="flex items-center px-4 py-3 bg-slate-50 dark:bg-navy-900/50">
-                  <button onClick={() => toggleGroup('ungrouped')} className="flex items-center gap-2 flex-1 text-left">
-                    <span className="text-xs text-slate-400">{expandedModules.has('ungrouped') ? '▼' : '▶'}</span>
-                    <span className="font-medium text-sm text-slate-600 dark:text-slate-300">Without Module</span>
-                    <span className="text-xs text-slate-400 ml-2">{ungrouped.length} deliverable(s)</span>
-                  </button>
-                </div>
-              )}
-              {(modules.length === 0 || expandedModules.has('ungrouped')) && (
-                <div className="p-3 space-y-2">
-                  {ungrouped.length === 0 ? (
-                    <p className="text-sm text-slate-400 py-4 text-center">
-                      No deliverables yet. Click &quot;+ Add Deliverable&quot; to create one.
-                    </p>
-                  ) : (
-                    (() => {
-                      const sortedUngrouped = [...ungrouped].sort((a, b) => a.order - b.order)
-                      return sortedUngrouped.map((d, idx) => (
-                        <DeliverableCard
-                          key={d.id}
-                          deliverable={d}
-                          userRole={userRole}
-                          members={members}
-                          expandedId={expandedId}
-                          setExpandedId={setExpandedId}
-                          onEdit={openEditDeliv}
-                          onDelete={deleteDeliv}
-                          canMoveUp={idx > 0}
-                          canMoveDown={idx < sortedUngrouped.length - 1}
-                          onMoveUp={() => moveDeliverable(sortedUngrouped, idx, 'up')}
-                          onMoveDown={() => moveDeliverable(sortedUngrouped, idx, 'down')}
-                        />
-                      ))
-                    })()
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+        <div className="space-y-2">
+          {sortedDeliverables.map((d, idx) => (
+            <DeliverableCard
+              key={d.id}
+              deliverable={d}
+              userRole={userRole}
+              members={members}
+              expandedId={expandedId}
+              setExpandedId={setExpandedId}
+              onEdit={openEditDeliv}
+              onDelete={deleteDeliv}
+              canMoveUp={idx > 0}
+              canMoveDown={idx < sortedDeliverables.length - 1}
+              onMoveUp={() => moveDeliverable(idx, 'up')}
+              onMoveDown={() => moveDeliverable(idx, 'down')}
+            />
+          ))}
         </div>
       )}
 
-      {/* ── Deliverable Modal ── */}
       {showDelivModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                {editingDeliv ? 'Edit Deliverable' : 'New Deliverable'}
+                {editingDeliv ? 'Edit Deliverable' : `New Deliverable ${projectTitle}`}
               </h2>
-              <button onClick={() => setShowDelivModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="w-4 h-4" /></button>
+              <button onClick={() => setShowDelivModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-4 h-4" />
+              </button>
             </div>
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
-                {!titleIsCustom ? (
-                  <select
-                    className={inputClass}
-                    value={delivForm.title}
-                    onChange={e => {
-                      if (e.target.value === '__new__') {
-                        setTitleIsCustom(true)
-                        setDelivForm({ ...delivForm, title: '' })
-                      } else {
-                        setDelivForm({ ...delivForm, title: e.target.value })
-                      }
-                    }}
-                  >
-                    <option value="">-- Select deliverable --</option>
-                    {delivRecords.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
-                    <option value="__new__">＋ Add new title...</option>
-                  </select>
-                ) : (
-                  <div className="flex gap-2">
-                    <input
-                      className={inputClass}
-                      value={delivForm.title}
-                      onChange={e => setDelivForm({ ...delivForm, title: e.target.value })}
-                      placeholder="e.g. Dashboard, User Management"
-                      autoFocus
-                    />
-                    {delivRecords.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => { setTitleIsCustom(false); setDelivForm({ ...delivForm, title: '' }) }}
-                        className="shrink-0 text-xs px-2 py-1 border border-slate-300 dark:border-navy-600 rounded text-slate-500 hover:bg-slate-50 dark:hover:bg-navy-700"
-                      >
-                        Library
-                      </button>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Title *</label>
+                  <div className="relative" ref={titleHelpRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowTitleHelp(v => !v)}
+                      className="w-5 h-5 text-sm font-bold flex items-center justify-center text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
+                      aria-label="Deliverable title examples"
+                    >
+                      ?
+                    </button>
+
+                    {showTitleHelp && (
+                      <div className="absolute left-0 top-6 z-50 w-80 rounded-xl border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-xl p-3 text-xs text-slate-600 dark:text-slate-300">
+                        <p className="font-semibold text-slate-800 dark:text-white mb-1">Deliverable examples (project terms)</p>
+                        <ul className="list-disc ml-4 space-y-1">
+                          <li>Backend API Integration</li>
+                          <li>Data Migration Dry Run</li>
+                          <li>UAT Completion &amp; Sign-Off</li>
+                          <li>Dashboard Release v1</li>
+                        </ul>
+                      </div>
                     )}
                   </div>
-                )}
+                </div>
+
+                <input
+                  className={inputClass}
+                  value={delivForm.title}
+                  onChange={e => setDelivForm({ ...delivForm, title: e.target.value })}
+                  placeholder="e.g. Dashboard Release v1"
+                  autoFocus
+                />
+                <p className="mt-1 text-[11px] text-slate-400">Preset titles are now available during task creation.</p>
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
                 <textarea className={`${inputClass} resize-none`} rows={2} value={delivForm.description} onChange={e => setDelivForm({ ...delivForm, description: e.target.value })} />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned Start</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned Start *</label>
                   <input
-                    type="date" className={inputClass}
+                    type="date"
+                    className={inputClass}
                     value={delivForm.planned_start}
-                    min={projMin} max={delivForm.planned_end || projMax}
+                    min={projMin}
+                    max={delivForm.planned_end || projMax}
                     onChange={e => {
                       const start = e.target.value
                       const mandays = start && delivForm.planned_end ? String(countWorkdays(start, delivForm.planned_end)) : delivForm.mandays
@@ -833,11 +619,13 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned End</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned End *</label>
                   <input
-                    type="date" className={inputClass}
+                    type="date"
+                    className={inputClass}
                     value={delivForm.planned_end}
-                    min={delivForm.planned_start || projMin} max={projMax}
+                    min={delivForm.planned_start || projMin}
+                    max={projMax}
                     onChange={e => {
                       const end = e.target.value
                       const mandays = delivForm.planned_start && end ? String(countWorkdays(delivForm.planned_start, end)) : delivForm.mandays
@@ -846,7 +634,7 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                   />
                 </div>
               </div>
-              {/* PM Actual Date Override — only visible when editing */}
+
               {editingDeliv && userRole === 'manager' && (
                 <div className="rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50/40 dark:bg-blue-900/10 p-3">
                   <div className="flex items-center justify-between mb-2">
@@ -862,51 +650,66 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                       </button>
                     )}
                   </div>
+
                   {editingDeliv.is_actual_override && (
                     <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">📌 Dates manually set by PM</p>
                   )}
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">Actual Start</label>
-                      <input type="date" className={inputClass} value={delivForm.actual_start}
-                        onChange={e => setDelivForm(f => ({ ...f, actual_start: e.target.value }))} />
+                      <input
+                        type="date"
+                        className={inputClass}
+                        value={delivForm.actual_start}
+                        onChange={e => setDelivForm(f => ({ ...f, actual_start: e.target.value }))}
+                      />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">Actual End</label>
-                      <input type="date" className={inputClass} value={delivForm.actual_end}
-                        onChange={e => setDelivForm(f => ({ ...f, actual_end: e.target.value }))} />
+                      <input
+                        type="date"
+                        className={inputClass}
+                        value={delivForm.actual_end}
+                        onChange={e => setDelivForm(f => ({ ...f, actual_end: e.target.value }))}
+                      />
                     </div>
                   </div>
                 </div>
               )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
                   <input type="number" min="1" className={inputClass} value={delivForm.mandays} onChange={e => setDelivForm({ ...delivForm, mandays: e.target.value })} />
+                  <p className="mt-1 text-[11px] text-slate-400">Auto-calculation from Planned Start/End excludes weekends.</p>
                 </div>
-                {editingDeliv && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
-                    <select className={inputClass} value={delivForm.status} onChange={e => setDelivForm({ ...delivForm, status: e.target.value })}>
-                      <option value="Pending">Pending</option>
-                      <option value="InProgress">In Progress</option>
-                      <option value="Done">Done</option>
-                      <option value="OnHold">On Hold</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-              {modules.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module (optional)</label>
-                  <select className={inputClass} value={delivForm.module_id} onChange={e => setDelivForm({ ...delivForm, module_id: e.target.value })}>
-                    <option value="">Without Module</option>
-                    {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority *</label>
+                  <select className={inputClass} value={delivForm.priority} onChange={e => setDelivForm({ ...delivForm, priority: e.target.value })}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              {editingDeliv && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
+                  <select className={inputClass} value={delivForm.status} onChange={e => setDelivForm({ ...delivForm, status: e.target.value })}>
+                    <option value="Pending">Pending</option>
+                    <option value="InProgress">In Progress</option>
+                    <option value="Done">Done</option>
+                    <option value="OnHold">On Hold</option>
                   </select>
                 </div>
               )}
+
               {delivError && <p className="text-sm text-red-500">{delivError}</p>}
             </div>
+
             <div className="flex justify-end gap-3 pt-4">
               <button onClick={() => setShowDelivModal(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700">Cancel</button>
               <button onClick={saveDeliv} disabled={delivSaving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
@@ -917,26 +720,18 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
         </div>
       )}
 
-      {/* ── Delete Confirmation Modal ── */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-              Delete {deleteConfirm.type === 'module' ? 'Module' : 'Deliverable'}
-            </h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Delete Deliverable</h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
               Are you sure you want to delete <strong className="text-slate-800 dark:text-white">{deleteConfirm.title}</strong>?
             </p>
-            {deleteConfirm.type === 'module' ? (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
-                Module cannot be deleted if it has deliverables or linked features.
-              </p>
-            ) : (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
-                Deliverable cannot be deleted if it has tasks.
-              </p>
-            )}
+            <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+              Deliverable cannot be deleted if it has tasks.
+            </p>
             {deleteError && <p className="text-sm text-red-500 mb-3">{deleteError}</p>}
+
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => { setDeleteConfirm(null); setDeleteError('') }}
@@ -951,106 +746,6 @@ export default function DeliverableSection({ projectId, userRole, projectStartDa
                 className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Module Modal (edit only) ── */}
-      {showModuleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Edit Module</h2>
-              <button onClick={() => setShowModuleModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
-                <input className={inputClass} value={moduleForm.title} onChange={e => setModuleForm({ ...moduleForm, title: e.target.value })} placeholder="e.g. Leave Management, Payroll" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
-                <textarea className={`${inputClass} resize-none`} rows={2} value={moduleForm.description} onChange={e => setModuleForm({ ...moduleForm, description: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Start Date</label>
-                  <input
-                    type="date" className={inputClass}
-                    value={moduleForm.start_date}
-                    min={projMin} max={moduleForm.end_date || projMax}
-                    onChange={e => setModuleForm({ ...moduleForm, start_date: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">End Date</label>
-                  <input
-                    type="date" className={inputClass}
-                    value={moduleForm.end_date}
-                    min={moduleForm.start_date || projMin} max={projMax}
-                    onChange={e => setModuleForm({ ...moduleForm, end_date: e.target.value })}
-                  />
-                </div>
-              </div>
-              {moduleForm.start_date && moduleForm.end_date && moduleForm.start_date > moduleForm.end_date && (
-                <p className="text-sm text-red-500">Start date cannot be after end date</p>
-              )}
-              <p className="text-xs text-slate-400">Dates must be within the project duration: {projMin} → {projMax}</p>
-            </div>
-            <div className="flex justify-end gap-3 mt-5">
-              <button onClick={() => setShowModuleModal(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50">Cancel</button>
-              <button onClick={saveModule} disabled={moduleSaving || !moduleForm.title.trim() || !!(moduleForm.start_date && moduleForm.end_date && moduleForm.start_date > moduleForm.end_date)} className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
-                {moduleSaving ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Template Modal (new module) ── */}
-      {showTemplateModal && (
-        <ModuleTemplateModal
-          projectId={projectId}
-          members={members}
-          projectStartDate={projectStartDate}
-          projectDeadline={projectDeadline}
-          onClose={() => setShowTemplateModal(false)}
-          onCreated={handleTemplateCreated}
-        />
-      )}
-
-      {/* ── Save as Template Modal ── */}
-      {saveAsTemplateModule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Save as Template</h2>
-              <button onClick={() => setSaveAsTemplateModule(null)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-              Save <strong className="text-slate-700 dark:text-slate-200">{saveAsTemplateModule.title}</strong> and its deliverables as a reusable template.
-            </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Template Name *</label>
-              <input
-                className={inputClass}
-                value={saveAsTemplateName}
-                onChange={e => setSaveAsTemplateName(e.target.value)}
-                placeholder="e.g. Leave Application Module"
-                autoFocus
-              />
-            </div>
-            {saveAsTemplateError && <p className="text-sm text-red-500 mb-3">{saveAsTemplateError}</p>}
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setSaveAsTemplateModule(null)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700">Cancel</button>
-              <button
-                onClick={saveModuleAsTemplate}
-                disabled={saveAsTemplateSaving || !saveAsTemplateName.trim()}
-                className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-50"
-              >
-                {saveAsTemplateSaving ? 'Saving...' : 'Save Template'}
               </button>
             </div>
           </div>

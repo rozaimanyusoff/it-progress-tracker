@@ -37,9 +37,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const projectId = Number(id)
   const body = await req.json()
-  const { title, description, mandays, module_id, planned_start, planned_end } = body
+  const { title, description, mandays, planned_start, planned_end, priority } = body
 
-  if (!title) return NextResponse.json({ error: 'title is required' }, { status: 400 })
+  const trimmedTitle = String(title ?? '').trim()
+  if (!trimmedTitle) return NextResponse.json({ error: 'Title is required' }, { status: 400 })
+  if (!planned_start || !planned_end) {
+    return NextResponse.json({ error: 'Planned Start and Planned End are required' }, { status: 400 })
+  }
+
+  const plannedStartDate = new Date(planned_start)
+  const plannedEndDate = new Date(planned_end)
+  if (isNaN(plannedStartDate.getTime()) || isNaN(plannedEndDate.getTime())) {
+    return NextResponse.json({ error: 'Invalid planned date format' }, { status: 400 })
+  }
+  if (plannedStartDate > plannedEndDate) {
+    return NextResponse.json({ error: 'Planned Start cannot be after Planned End' }, { status: 400 })
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { start_date: true, deadline: true },
+  })
+  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  if (plannedStartDate < project.start_date || plannedEndDate > project.deadline) {
+    return NextResponse.json({ error: 'Planned dates must be within project start and deadline' }, { status: 400 })
+  }
 
   const maxOrder = await prisma.deliverable.aggregate({
     where: { project_id: projectId },
@@ -50,12 +72,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const deliverable = await prisma.deliverable.create({
     data: {
       project_id: projectId,
-      module_id: module_id ? Number(module_id) : null,
-      title,
+      module_id: null,
+      title: trimmedTitle,
       description: description || null,
       mandays: Number(mandays) || 0,
-      planned_start: planned_start ? new Date(planned_start) : null,
-      planned_end: planned_end ? new Date(planned_end) : null,
+      priority: priority || 'medium',
+      planned_start: plannedStartDate,
+      planned_end: plannedEndDate,
       order: nextOrder,
     },
   })

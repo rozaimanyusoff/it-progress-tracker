@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { feature_id, deliverable_id, title, description, assignee_ids, due_date, est_mandays, priority } = body
 
-  if ((!feature_id && !deliverable_id) || !title) {
-    return NextResponse.json({ error: 'feature_id or deliverable_id, and title are required' }, { status: 400 })
+  if (!title) {
+    return NextResponse.json({ error: 'title is required' }, { status: 400 })
   }
 
   // Mandays guard — required + budget cap when linked to deliverable
@@ -69,11 +69,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Managers can assign to anyone; members auto-assign to themselves + any additional partners
-  const resolvedIds: number[] = user.role === 'manager'
+  let resolvedIds: number[] = user.role === 'manager'
     ? (assignee_ids ?? []).map(Number)
     : [Number(user.id), ...((assignee_ids ?? []).map(Number).filter((id: number) => id !== Number(user.id)))]
+  if (!feature_id && !deliverable_id && resolvedIds.length === 0) {
+    // Ensure standalone tasks still show up for creator when no explicit assignee is selected.
+    resolvedIds = [Number(user.id)]
+  }
 
-  const whereClause = feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }
+  const whereClause = feature_id
+    ? { feature_id: Number(feature_id) }
+    : deliverable_id
+      ? { deliverable_id: Number(deliverable_id) }
+      : { feature_id: null, deliverable_id: null }
 
   const maxOrderResult = await prisma.task.aggregate({
     where: whereClause,
@@ -81,21 +89,28 @@ export async function POST(req: NextRequest) {
   })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
-  // Auto-inherit due_date from deliverable.planned_end if not provided
+  // Linked tasks always inherit predefined values from deliverable.
+  // Standalone tasks can define due date / priority manually.
   let resolvedDueDate: Date | null = null
-  if (due_date) {
-    resolvedDueDate = new Date(due_date)
-  } else if (deliverable_id) {
+  let resolvedPriority: string = priority || 'medium'
+  if (deliverable_id) {
     const deliv = await prisma.deliverable.findUnique({
       where: { id: Number(deliverable_id) },
-      select: { planned_end: true },
+      select: { planned_end: true, priority: true },
     })
     resolvedDueDate = deliv?.planned_end ?? null
+    resolvedPriority = deliv?.priority ?? 'medium'
+  } else if (due_date) {
+    resolvedDueDate = new Date(due_date)
   }
+
+  const relationData: { feature_id?: number; deliverable_id?: number } = {}
+  if (feature_id) relationData.feature_id = Number(feature_id)
+  if (deliverable_id) relationData.deliverable_id = Number(deliverable_id)
 
   const task = await prisma.task.create({
     data: {
-      ...(feature_id ? { feature_id: Number(feature_id) } : { deliverable_id: Number(deliverable_id) }),
+      ...relationData,
       title,
       description: description || null,
       order: nextOrder,
@@ -103,7 +118,7 @@ export async function POST(req: NextRequest) {
       status: 'Todo',
       due_date: resolvedDueDate,
       est_mandays: est_mandays != null ? est_mandays : null,
-      priority: priority || 'medium',
+      priority: resolvedPriority as any,
       assignees: resolvedIds.length > 0
         ? { create: resolvedIds.map(uid => ({ user_id: uid })) }
         : undefined,

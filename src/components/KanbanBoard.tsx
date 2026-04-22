@@ -32,9 +32,7 @@ interface Task {
 type BoardState = Record<string, Task[]>
 
 interface Project { id: number; title: string }
-interface Feature { id: number; title: string; module_id: number | null }
 interface Deliverable { id: number; title: string; planned_end: string | null }
-interface Module { id: number; title: string; features: Feature[] }
 
 const PRIORITY_BADGE: Record<string, string> = {
   low: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300',
@@ -108,12 +106,10 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
   const [projects, setProjects] = useState<Project[]>([])
-  const [modules, setModules] = useState<Module[]>([])
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [allUsers, setAllUsers] = useState<{ id: number; name: string }[]>([])
   const [partnerIds, setPartnerIds] = useState<number[]>([])
   const [projectId, setProjectId] = useState('')
-  const [moduleId, setModuleId] = useState('') // '' = unset, '__none__' = project-level
   const [deliverableId, setDeliverableId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -125,7 +121,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
-  const hasModules = modules.length > 0
 
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then((data: any[]) =>
@@ -137,23 +132,16 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   }, [])
 
   useEffect(() => {
-    if (!projectId) { setModules([]); setDeliverables([]); setModuleId(''); setDeliverableId(''); return }
-    fetch(`/api/modules?project_id=${projectId}`).then(r => r.json()).then((modData: any[]) => {
-      setModules(modData)
-      setModuleId(''); setDeliverableId('')
+    if (!projectId) {
+      setDeliverables([])
+      setDeliverableId('')
+      return
+    }
+    fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
+      setDeliverables(data.map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
+      setDeliverableId('')
     })
   }, [projectId])
-
-  useEffect(() => {
-    setDeliverableId('')
-    if (!projectId) return
-    fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
-      let filtered = data
-      if (moduleId === '__none__') filtered = data.filter((d: any) => !d.module_id)
-      else if (moduleId) filtered = data.filter((d: any) => d.module_id === Number(moduleId))
-      setDeliverables(filtered.map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
-    })
-  }, [projectId, moduleId])
 
   useEffect(() => {
     if (!deliverableId) { setPresetTasks([]); return }
@@ -172,7 +160,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (hasModules && !moduleId) { setError('Please select a module.'); return }
     if (!deliverableId) { setError('Please select a deliverable.'); return }
     if (!title.trim()) { setError('Task title is required.'); return }
     setSaving(true); setError('')
@@ -217,24 +204,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
             </select>
           </div>
 
-          {/* 2. Module — conditional */}
-          {projectId && hasModules && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module</label>
-              <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setDeliverableId('') }}>
-                <option value="">Select module...</option>
-                <option value="__none__">— No module (project level) —</option>
-                {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
-              </select>
-              {moduleId === '__none__' && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  Best practice: assign deliverable to a module. Only select this if deliverable is project-level.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* 3. Deliverable */}
+          {/* 2. Deliverable */}
           {projectId && (
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
@@ -248,7 +218,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
           {/* Preset tasks — shown when deliverable has matching template tasks */}
           {deliverableId && presetTasks.length > 0 && (
             <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Preset tasks — click to use:</p>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Preset title suggestions — click to use:</p>
               <div className="flex flex-wrap gap-1.5">
                 {presetTasks.map((t, i) => (
                   <button

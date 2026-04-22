@@ -11,6 +11,72 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-23 — Structure Revision: Project > Deliverable > Tasks + Task Preset UX
+
+### Diubah
+
+**Struktur kerja projek**
+- Struktur dalaman diperkemas kepada `Project > Deliverable > Tasks` (module linkage tidak lagi digunakan pada flow baru).
+- Paparan dan flow berkaitan deliverable/task diselaras untuk model baru.
+
+**Deliverable (Project Details)**
+- `New Deliverable` title kini paparkan nama projek: `New Deliverable <project name>`.
+- Field `Title`, `Planned Start`, `Planned End` dijadikan mandatory dengan validasi tarikh.
+- Tambah ikon `?` (lebih besar, tanpa border) pada `Title` untuk popover contoh deliverable.
+- Notis pada `Est. Mandays` dikemas kini (exclude weekend).
+- `Est. Mandays * (exclude weekend)` disingkatkan kepada `Est. Mandays *`.
+- Tambah `priority` pada deliverable (level project details) dan boleh set masa create/edit.
+
+**Add Task (Team Kanban)**
+- Header ditukar kepada `Add Task by <currently creating as>`.
+- Label assignees ditukar ke `Add Partners`.
+- `Task Title` ditukar kepada `Task Category`.
+- `Description` dijadikan mandatory dan kemudian direname kepada `Specific Task/scope`.
+- Helper/questionnaire ditambah pada field utama (Project, Deliverable, Partners, Task Category, Specific Task/scope, Est. Mandays).
+- `Create new deliverable` dari dropdown Deliverable kini guna popover form (bukan inline block).
+- `Est. Mandays` diposisikan semula bawah `Add Partners`.
+- Task preset flow ditukar:
+  - `task preset` sebagai link pada label Task Category.
+  - Klik link toggle popover yang paparkan task category + sample tasks.
+  - Klik category isi category; klik sample task isi `TaskName (Category)`.
+  - Hover task badge highlight border untuk kebolehlihatan.
+- Placeholder/helper `Specific Task/scope` kini dinamik ikut task category terpilih.
+- Bila `Est. Mandays` diisi, paparkan cadangan `Suggested start date` berdasarkan due date.
+- Field `Est. Mandays` untuk standalone (`No Project Link`) dikekalkan tersedia (tanpa deliverable budget meter).
+
+**Task Category & Tasks Library (Projects tab)**
+- Tab `Deliverables` ditukar kepada `Task Categories`.
+- Library/preset list ditukar daripada accordion kepada senarai category row dengan task badges.
+- Unit paparan effort ditukar daripada `d` kepada `md`.
+- Dalam mode edit template:
+  - category tidak boleh rename/remove,
+  - tasks boleh add/update/delete.
+- Add task dalam category menggunakan modal form.
+- Task badge ada menu hover `...` dengan tindakan `Update/Delete`.
+
+### Ditambah
+
+**Database & migration**
+- Kolum baru `priority` pada model `Deliverable` (`TaskPriority`, default `medium`).
+- Migration data untuk detach deliverables legacy dari module:
+  - set `Deliverable.module_id = NULL` bagi rekod sedia ada.
+
+**API behavior**
+- `POST /api/projects/[id]/deliverables` sokong `priority` dan enforce validasi tarikh + title.
+- `PUT /api/deliverables/[id]` sokong update `priority`.
+- `POST /api/tasks`:
+  - task linked deliverable inherit `due_date` + `priority` dari deliverable (predefined/locked di UI),
+  - standalone task boleh define due date/priority sendiri.
+- `GET /api/deliverables/[id]/preset-tasks` diperkaya dengan category `type` + `samples` task untuk popover preset.
+
+### Diperbaiki
+
+- Konsistensi validation antara frontend/backend untuk deliverable mandatory fields.
+- Budget guard `Est. Mandays` untuk linked deliverable dipaparkan lebih jelas di UI.
+- Multiple UX mismatch kecil pada Add Task (positioning field, helper text, preset behavior) diselaraskan.
+
+---
+
 ## 2026-04-14 — TeamKanban: Left/Right Arrow Buttons on Task Cards
 
 ### Feature Baru

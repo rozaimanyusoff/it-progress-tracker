@@ -22,21 +22,71 @@ interface Task {
   is_blocked: boolean
   blocked_reason: string | null
   context: {
-    type: 'feature' | 'deliverable'
+    type: 'feature' | 'deliverable' | 'standalone'
     id: number
     title: string
     module: { id: number; title: string } | null
-    project: { id: number; title: string }
+    project: { id: number; title: string } | null
   }
 }
 
 interface Project { id: number; title: string }
 interface Feature { id: number; title: string }
-interface Deliverable { id: number; title: string; planned_end: string | null; mandays?: number }
-interface Module { id: number; title: string; features: Feature[] }
+interface Deliverable { id: number; title: string; planned_end: string | null; priority?: string; mandays?: number }
 interface Member { id: number; name: string }
 
 type BoardState = Record<string, Task[]>
+
+const CATEGORY_TYPE_BADGE: Record<string, string> = {
+  database: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  backend: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  frontend: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  testing: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  documentation: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
+}
+
+function buildScopePlaceholder(taskCategory: string): string {
+  const c = taskCategory.toLowerCase().trim()
+  if (!c) return 'Describe exact scope and expected output for the selected task category.'
+  if (c.includes('list') || c.includes('table')) {
+    return 'Table apa yang dibina? Nyatakan columns, filters, sorting, pagination, dan data source.'
+  }
+  if (c.includes('api') || c.includes('endpoint')) {
+    return 'Endpoint apa? Nyatakan route, request/response, validation, auth, dan error handling.'
+  }
+  if (c.includes('form')) {
+    return 'Form apa? Nyatakan fields, validation, submit flow, dan success/error behavior.'
+  }
+  if (c.includes('dashboard') || c.includes('widget') || c.includes('chart')) {
+    return 'Widget/metric apa? Nyatakan data source, filter, aggregation, dan update behavior.'
+  }
+  if (c.includes('report') || c.includes('export')) {
+    return 'Report/export apa? Nyatakan format, filter range, layout, dan expected output.'
+  }
+  if (c.includes('test') || c.includes('qa') || c.includes('uat')) {
+    return 'Scenario test apa? Nyatakan scope, test data, expected result, dan pass criteria.'
+  }
+  return `Nyatakan skop spesifik untuk "${taskCategory}" termasuk output dan acceptance criteria.`
+}
+
+function suggestStartDateFromDue(dueDate: string, estMandays: string): string | null {
+  const end = new Date(dueDate)
+  if (isNaN(end.getTime())) return null
+  const md = Number(estMandays)
+  if (!Number.isFinite(md) || md <= 0) return null
+
+  // Round effort to full working days for planning suggestion.
+  let remaining = Math.max(1, Math.ceil(md)) - 1
+  const cur = new Date(end)
+  cur.setHours(0, 0, 0, 0)
+
+  while (remaining > 0) {
+    cur.setDate(cur.getDate() - 1)
+    const day = cur.getDay()
+    if (day !== 0 && day !== 6) remaining--
+  }
+  return cur.toISOString().slice(0, 10)
+}
 
 // ── Add Task Modal ────────────────────────────────────────────────
 function AddTaskModal({
@@ -48,12 +98,22 @@ function AddTaskModal({
   onClose: () => void
   onAdded: (task: Task) => void
 }) {
-  const [modules, setModules] = useState<Module[]>([])
+  const { data: session } = useSession()
+  const creatorName = (session?.user as any)?.name ?? 'Current User'
+  const creatorRole = (session?.user as any)?.role === 'manager' ? 'Manager' : 'Team Member'
+  const CREATE_NEW_DELIVERABLE = '__create_new__'
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [projectId, setProjectId] = useState('')
-  const [moduleId, setModuleId] = useState('') // '' = no module selected, '__none__' = project-level
   const [deliverableId, setDeliverableId] = useState('')
+  const [showCreateDeliverable, setShowCreateDeliverable] = useState(false)
+  const [newDeliverableTitle, setNewDeliverableTitle] = useState('')
+  const [newDeliverableStart, setNewDeliverableStart] = useState('')
+  const [newDeliverableEnd, setNewDeliverableEnd] = useState('')
+  const [newDeliverableMandays, setNewDeliverableMandays] = useState('1')
+  const [newDeliverablePriority, setNewDeliverablePriority] = useState('medium')
+  const [creatingDeliverable, setCreatingDeliverable] = useState(false)
+  const [newDeliverableError, setNewDeliverableError] = useState('')
   const [assigneeIds, setAssigneeIds] = useState<number[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -62,65 +122,128 @@ function AddTaskModal({
   const [estMandays, setEstMandays] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
+  const [presetTasks, setPresetTasks] = useState<Array<{
+    name: string
+    est_mandays: number | null
+    type?: string
+    samples?: { name: string; est_mandays: number | null }[]
+  }>>([])
+  const [showTaskPresetPopover, setShowTaskPresetPopover] = useState(false)
   const [delivBudget, setDelivBudget] = useState<{ total: number; used: number } | null>(null)
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
-
-  const hasModules = modules.length > 0
+  const scopePlaceholder = buildScopePlaceholder(title)
+  const suggestedStartDate = dueDate && estMandays ? suggestStartDateFromDue(dueDate, estMandays) : null
 
   useEffect(() => {
     fetch('/api/users').then(r => r.json()).then(setMembers)
   }, [])
 
   useEffect(() => {
-    setModules([]); setDeliverables([]); setModuleId(''); setDeliverableId('')
+    setDeliverables([])
+    setDeliverableId('')
+    setShowCreateDeliverable(false)
+    setNewDeliverableTitle('')
+    setNewDeliverableStart('')
+    setNewDeliverableEnd('')
+    setNewDeliverableMandays('1')
+    setNewDeliverablePriority('medium')
+    setNewDeliverableError('')
     if (!projectId) return
-    fetch(`/api/modules?project_id=${projectId}`).then(r => r.json()).then((modData: any[]) => {
-      setModules(modData)
+    fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
+      setDeliverables(data.map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        planned_end: d.planned_end ?? null,
+        priority: d.priority ?? 'medium',
+      })))
     })
   }, [projectId])
 
+  // Auto-fill due date/priority from selected deliverable and fetch task category presets.
   useEffect(() => {
-    setDeliverableId('')
-    if (!projectId) return
-    const params = new URLSearchParams()
-    // filter deliverables by module or project-level
-    fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
-      if (moduleId === '__none__') {
-        setDeliverables(data.filter((d: any) => !d.module_id).map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
-      } else if (moduleId) {
-        setDeliverables(data.filter((d: any) => d.module_id === Number(moduleId)).map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
-      } else {
-        setDeliverables(data.map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
-      }
-    })
-  }, [projectId, moduleId])
+    const hasDeliverable = Boolean(deliverableId)
+    if (hasDeliverable) {
+      const deliv = deliverables.find(d => d.id === Number(deliverableId))
+      if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
+      else setDueDate('')
+      setPriority(deliv?.priority ?? 'medium')
+    } else {
+      setDelivBudget(null)
+      setShowTaskPresetPopover(false)
+    }
 
-  // Auto-fill due date from deliverable.planned_end + fetch preset tasks + budget
-  useEffect(() => {
-    if (!deliverableId) { setPresetTasks([]); setDelivBudget(null); return }
-    const deliv = deliverables.find(d => d.id === Number(deliverableId))
-    if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
-    fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
+    // Route currently returns global preset categories (id ignored by endpoint),
+    // so we can still offer "select from task preset" in standalone mode.
+    fetch(`/api/deliverables/${hasDeliverable ? deliverableId : '0'}/preset-tasks`)
       .then(r => r.json())
-      .then(data => setPresetTasks(Array.isArray(data) ? data : []))
+      .then(data => {
+        const presets = Array.isArray(data) ? data : []
+        setPresetTasks(presets)
+        setShowTaskPresetPopover(false)
+      })
       .catch(() => setPresetTasks([]))
-    fetch(`/api/deliverables/${deliverableId}`)
-      .then(r => r.json())
-      .then(data => setDelivBudget({ total: data.mandays ?? 0, used: data.used_mandays ?? 0 }))
-      .catch(() => setDelivBudget(null))
+
+    if (hasDeliverable) {
+      fetch(`/api/deliverables/${deliverableId}`)
+        .then(r => r.json())
+        .then(data => setDelivBudget({ total: data.mandays ?? 0, used: data.used_mandays ?? 0 }))
+        .catch(() => setDelivBudget(null))
+    }
   }, [deliverableId])
 
-  const selectedDeliverable = deliverables.find(d => d.id === Number(deliverableId))
-  const delivPlannedEnd = selectedDeliverable?.planned_end ? new Date(selectedDeliverable.planned_end) : null
-  const dueDateVal = dueDate ? new Date(dueDate) : null
-  const dueDateExceeds = delivPlannedEnd && dueDateVal && dueDateVal > delivPlannedEnd
+  async function handleCreateDeliverable() {
+    if (!projectId) return
+    const cleanTitle = newDeliverableTitle.trim()
+    if (!cleanTitle) { setNewDeliverableError('Deliverable title is required.'); return }
+    if (!newDeliverableStart || !newDeliverableEnd) { setNewDeliverableError('Planned Start and Planned End are required.'); return }
+    if (newDeliverableStart > newDeliverableEnd) { setNewDeliverableError('Planned Start cannot be after Planned End.'); return }
+
+    setCreatingDeliverable(true)
+    setNewDeliverableError('')
+    try {
+      const res = await fetch(`/api/projects/${projectId}/deliverables`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cleanTitle,
+          mandays: Number(newDeliverableMandays) || 1,
+          priority: newDeliverablePriority,
+          planned_start: newDeliverableStart,
+          planned_end: newDeliverableEnd,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create deliverable')
+
+      const created = {
+        id: data.id,
+        title: data.title,
+        planned_end: data.planned_end ?? null,
+        priority: data.priority ?? newDeliverablePriority,
+      }
+      setDeliverables(prev => [...prev, created])
+      setDeliverableId(String(created.id))
+      setShowCreateDeliverable(false)
+      setDueDate(created.planned_end ? created.planned_end.slice(0, 10) : '')
+      setPriority(created.priority ?? 'medium')
+      setNewDeliverableTitle('')
+      setNewDeliverableStart('')
+      setNewDeliverableEnd('')
+      setNewDeliverableMandays('1')
+      setNewDeliverablePriority('medium')
+    } catch (e: any) {
+      setNewDeliverableError(e.message || 'Failed to create deliverable')
+    } finally {
+      setCreatingDeliverable(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!deliverableId) { setError('Please select a deliverable.'); return }
-    if (!title.trim()) { setError('Task title is required.'); return }
+    if (projectId && !deliverableId) { setError('Please select a deliverable.'); return }
+    if (!title.trim()) { setError('Task category is required.'); return }
+    if (!description.trim()) { setError('Task description is required.'); return }
     if (deliverableId && (!estMandays || Number(estMandays) <= 0)) {
       setError('Est. mandays is required when linked to a deliverable.'); return
     }
@@ -131,18 +254,23 @@ function AddTaskModal({
       }
     }
     setSaving(true); setError('')
+    const payload: Record<string, unknown> = {
+      title: title.trim(),
+      description: description.trim(),
+      assignee_ids: assigneeIds,
+      est_mandays: estMandays ? Number(estMandays) : null,
+    }
+    if (deliverableId) {
+      payload.deliverable_id = Number(deliverableId)
+    } else {
+      payload.due_date = dueDate || null
+      payload.priority = priority
+    }
+
     const res = await fetch('/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deliverable_id: Number(deliverableId),
-        title: title.trim(),
-        description: description.trim() || null,
-        assignee_ids: assigneeIds,
-        due_date: dueDate || null,
-        priority,
-        est_mandays: estMandays ? Number(estMandays) : null,
-      }),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) {
       setError((await res.json()).error || 'Failed to create task')
@@ -157,7 +285,10 @@ function AddTaskModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Add Task</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+            Add Task by <span className="text-blue-600 dark:text-blue-400">{creatorName}</span>{' '}
+            <span className="text-sm font-medium text-slate-400 dark:text-slate-500">({creatorRole})</span>
+          </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 leading-none"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -165,47 +296,155 @@ function AddTaskModal({
           {/* ── Two-column section ─────────────────────────────────── */}
           <div className="flex gap-5 items-start">
 
-            {/* LEFT — scope: project / module / deliverable */}
+            {/* LEFT — scope: project / deliverable */}
             <div className="flex-1 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project *</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project</label>
                 <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)}>
-                  <option value="">Select project...</option>
+                  <option value="">No Project Link (Standalone)</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                 </select>
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Guide: Link project if this task contributes to a tracked deliverable budget and timeline.</p>
               </div>
 
-              {projectId && hasModules && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Module</label>
-                  <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setDeliverableId('') }}>
-                    <option value="">Select module...</option>
-                    <option value="__none__">— No module (project level) —</option>
-                    {modules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+              {projectId && (
+                <div className="relative">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
+                  <select
+                    className={inputClass}
+                    value={deliverableId}
+                    onChange={e => {
+                      const next = e.target.value
+                      if (next === CREATE_NEW_DELIVERABLE) {
+                        setDeliverableId('')
+                        setShowCreateDeliverable(true)
+                        setPresetTasks([])
+                        setDelivBudget(null)
+                        return
+                      }
+                      setShowCreateDeliverable(false)
+                      setDeliverableId(next)
+                    }}
+                  >
+                    <option value="">Select deliverable...</option>
+                    {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+                    <option value={CREATE_NEW_DELIVERABLE}>+ Create new...</option>
                   </select>
-                  {moduleId === '__none__' && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                      Best practice: assign deliverable to a module. Only select this if deliverable is project-level.
-                    </p>
+                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Question: Which deliverable outcome will this task move forward?</p>
+                  {showCreateDeliverable && (
+                    <div className="absolute left-0 right-0 mt-2 z-30 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 shadow-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Create New Deliverable</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCreateDeliverable(false)
+                            setNewDeliverableError('')
+                            setNewDeliverablePriority('medium')
+                          }}
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
+                        >
+                          Close
+                        </button>
+                      </div>
+                      <input
+                        className={inputClass}
+                        placeholder="Deliverable title"
+                        value={newDeliverableTitle}
+                        onChange={e => setNewDeliverableTitle(e.target.value)}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="date"
+                          className={inputClass}
+                          value={newDeliverableStart}
+                          onChange={e => setNewDeliverableStart(e.target.value)}
+                        />
+                        <input
+                          type="date"
+                          className={inputClass}
+                          value={newDeliverableEnd}
+                          onChange={e => setNewDeliverableEnd(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        className={inputClass}
+                        placeholder="Est. mandays"
+                        value={newDeliverableMandays}
+                        onChange={e => setNewDeliverableMandays(e.target.value)}
+                      />
+                      <select
+                        className={inputClass}
+                        value={newDeliverablePriority}
+                        onChange={e => setNewDeliverablePriority(e.target.value)}
+                      >
+                        <option value="low">Low priority</option>
+                        <option value="medium">Medium priority</option>
+                        <option value="high">High priority</option>
+                        <option value="critical">Critical priority</option>
+                      </select>
+                      {newDeliverableError && <p className="text-xs text-red-500">{newDeliverableError}</p>}
+                      <button
+                        type="button"
+                        onClick={handleCreateDeliverable}
+                        disabled={creatingDeliverable}
+                        className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+                      >
+                        {creatingDeliverable ? 'Creating...' : 'Create & Select'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
 
-              {projectId && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
-                  <select className={inputClass} value={deliverableId} onChange={e => setDeliverableId(e.target.value)}>
-                    <option value="">Select deliverable...</option>
-                    {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-                  </select>
+              {!projectId && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
+                    <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                    <select className={inputClass} value={priority} onChange={e => setPriority(e.target.value)}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
                 </div>
+              )}
+
+              {deliverableId && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable due date</label>
+                      <input type="date" className={`${inputClass} opacity-80`} value={dueDate} readOnly disabled />
+                      <p className="text-xs text-slate-400 mt-1">Predefined from selected deliverable</p>
+                    </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                    <select className={`${inputClass} opacity-80`} value={priority} disabled>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                      <p className="text-xs text-slate-400 mt-1">Predefined for linked deliverable task</p>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
             {/* RIGHT — task properties: assignees / dates / priority / effort */}
             <div className="flex-1 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assignees</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Add Partners</label>
+                <p className="mb-1 text-xs text-slate-400 dark:text-slate-500">Question: Who should collaborate or co-own this task with you?</p>
                 {members.length === 0 ? (
                   <p className="text-xs text-slate-400">No members available</p>
                 ) : (
@@ -235,104 +474,170 @@ function AddTaskModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {deliverableId && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
-                  <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />
-                  {dueDateExceeds && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Est. Mandays <span className="text-red-500">*</span>
+                  </label>
+                  <p className="mb-1 text-xs text-slate-400 dark:text-slate-500">Guide: Estimate effort for this scope only, not the full deliverable.</p>
+
+                  {/* Budget indicator — only when deliverable has a budget */}
+                  {delivBudget && delivBudget.total > 0 && (() => {
+                    const remaining = delivBudget.total - delivBudget.used
+                    const pending = Number(estMandays) || 0
+                    const afterAdd = delivBudget.used + pending
+                    const pct = Math.min(100, Math.round((afterAdd / delivBudget.total) * 100))
+                    const over = afterAdd > delivBudget.total
+                    return (
+                      <div className="mb-2 rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 px-3 py-2 text-xs space-y-1.5">
+                        <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                          <span>Deliverable budget</span>
+                          <span className={over ? 'text-red-500 font-semibold' : remaining <= 0 ? 'text-red-400' : 'text-slate-600 dark:text-slate-300'}>
+                            {afterAdd.toFixed(1)} / {delivBudget.total} md
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-green-500'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <p className={over ? 'text-red-500 font-medium' : 'text-slate-400 dark:text-slate-500'}>
+                          {over
+                            ? `Exceeds budget by ${(afterAdd - delivBudget.total).toFixed(1)} md`
+                            : `${remaining.toFixed(1)} md remaining after existing tasks`}
+                        </p>
+                      </div>
+                    )
+                  })()}
+
+                  {delivBudget && delivBudget.total === 0 && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">No budget defined for this deliverable — enter for tracking only.</p>
+                  )}
+
+                  <input
+                    type="number" min="0.5" step="0.5"
+                    className={`${inputClass} ${!estMandays ? 'border-amber-400 dark:border-amber-600 focus:ring-amber-500' : ''}`}
+                    placeholder="e.g. 1.5"
+                    value={estMandays}
+                    onChange={e => setEstMandays(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                    Guide: `1 md` = 1 working day effort. Use `0.5 md` (~half day), `1 md` (full day), `2 md` (about 2 working days).
+                  </p>
+                  {suggestedStartDate && (
+                    <p className="mt-1 text-xs text-blue-600 dark:text-blue-300">
+                      Suggested start date (based on due date): {new Date(suggestedStartDate).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
                   )}
                 </div>
+              )}
+
+              {!projectId && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
-                  <select className={inputClass} value={priority} onChange={e => setPriority(e.target.value)}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Est. Mandays
+                  </label>
+                  <input
+                    type="number" min="0.5" step="0.5"
+                    className={inputClass}
+                    placeholder="e.g. 1.5"
+                    value={estMandays}
+                    onChange={e => setEstMandays(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                    Guide: `1 md` = 1 working day effort. Use `0.5 md` (~half day), `1 md` (full day), `2 md` (about 2 working days).
+                  </p>
+                  {suggestedStartDate && (
+                    <p className="mt-1 text-xs text-blue-600 dark:text-blue-300">
+                      Suggested start date (based on due date): {new Date(suggestedStartDate).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Est. Mandays {deliverableId ? <span className="text-red-500">*</span> : <span className="text-slate-400 font-normal">(optional)</span>}
-                </label>
-
-                {/* Budget indicator — only when deliverable has a budget */}
-                {deliverableId && delivBudget && delivBudget.total > 0 && (() => {
-                  const remaining = delivBudget.total - delivBudget.used
-                  const pending = Number(estMandays) || 0
-                  const afterAdd = delivBudget.used + pending
-                  const pct = Math.min(100, Math.round((afterAdd / delivBudget.total) * 100))
-                  const over = afterAdd > delivBudget.total
-                  return (
-                    <div className="mb-2 rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 px-3 py-2 text-xs space-y-1.5">
-                      <div className="flex justify-between text-slate-500 dark:text-slate-400">
-                        <span>Deliverable budget</span>
-                        <span className={over ? 'text-red-500 font-semibold' : remaining <= 0 ? 'text-red-400' : 'text-slate-600 dark:text-slate-300'}>
-                          {afterAdd.toFixed(1)} / {delivBudget.total} md
-                        </span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-green-500'}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <p className={over ? 'text-red-500 font-medium' : 'text-slate-400 dark:text-slate-500'}>
-                        {over
-                          ? `Exceeds budget by ${(afterAdd - delivBudget.total).toFixed(1)} md`
-                          : `${remaining.toFixed(1)} md remaining after existing tasks`}
-                      </p>
-                    </div>
-                  )
-                })()}
-
-                {deliverableId && delivBudget && delivBudget.total === 0 && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">No budget defined for this deliverable — enter for tracking only.</p>
-                )}
-
-                <input
-                  type="number" min="0.5" step="0.5"
-                  className={`${inputClass} ${deliverableId && !estMandays ? 'border-amber-400 dark:border-amber-600 focus:ring-amber-500' : ''}`}
-                  placeholder="e.g. 1.5"
-                  value={estMandays}
-                  onChange={e => setEstMandays(e.target.value)}
-                />
-              </div>
+              )}
             </div>
           </div>
-
-          {/* ── Full-width: preset tasks ───────────────────────────── */}
-          {deliverableId && presetTasks.length > 0 && (
-            <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Preset tasks — click to use:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {presetTasks.map((t, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => { setTitle(t.name); if (t.est_mandays != null) setEstMandays(String(t.est_mandays)) }}
-                    className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                  >
-                    {t.name}
-                    {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* ── Full-width: title + description ───────────────────── */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Title *</label>
-            <input className={inputClass} placeholder="e.g. Implement login endpoint" value={title} onChange={e => setTitle(e.target.value)} />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Task Category *{' '}
+              {presetTasks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowTaskPresetPopover(v => !v)}
+                  className="text-blue-600 dark:text-blue-300 hover:underline font-normal"
+                >
+                  or task preset
+                </button>
+              )}
+            </label>
+            {presetTasks.length > 0 && showTaskPresetPopover && (
+              <div className="mb-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3 max-h-64 overflow-y-auto">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Task preset catalog (click category to use):</p>
+                <div className="space-y-2">
+                  {presetTasks.map((p, i) => (
+                    <div
+                      key={i}
+                      className="w-full text-left rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {p.type && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_TYPE_BADGE[p.type] ?? CATEGORY_TYPE_BADGE.frontend}`}>
+                            {p.type}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTitle(p.name)
+                            setShowTaskPresetPopover(false)
+                          }}
+                          className="text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300"
+                        >
+                          {p.name}
+                        </button>
+                      </div>
+                      {p.samples && p.samples.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {p.samples.map((s, si) => (
+                            <button
+                              key={si}
+                              type="button"
+                              onClick={() => {
+                                setTitle(`${s.name} (${p.name})`)
+                                if (s.est_mandays != null) setEstMandays(String(s.est_mandays))
+                                setShowTaskPresetPopover(false)
+                              }}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[11px] text-slate-500 dark:text-slate-400 transition-colors"
+                            >
+                              <span>{s.name}</span>
+                              <span>{s.est_mandays != null ? `${s.est_mandays} md` : '—'}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <input className={inputClass} placeholder="e.g. Backend API - User Authentication" value={title} onChange={e => setTitle(e.target.value)} />
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Questionnaire: What exactly will be built? Use “Category - Specific Scope”.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description <span className="text-slate-400 font-normal">(optional)</span></label>
-            <textarea className={`${inputClass} resize-none`} rows={2} value={description} onChange={e => setDescription(e.target.value)} />
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Task/scope *</label>
+            <textarea
+              className={`${inputClass} resize-none`}
+              rows={2}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder={scopePlaceholder}
+            />
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              Guide based on selected category: {scopePlaceholder}
+            </p>
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -847,12 +1152,20 @@ export default function TeamKanbanBoard() {
                         <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.context.module.title}</p>
                       )}
                       <div className="flex items-center gap-1 mt-0.5">
-                        <span className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable' ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'}`}>
-                          {task.context.type === 'deliverable' ? 'Deliv' : 'Feat'}
+                        <span
+                          className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${
+                            task.context.type === 'deliverable'
+                              ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
+                              : task.context.type === 'feature'
+                                ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          {task.context.type === 'deliverable' ? 'Deliv' : task.context.type === 'feature' ? 'Feat' : 'Task'}
                         </span>
                         <p className="text-xs text-blue-600 dark:text-blue-400 truncate">{task.context.title}</p>
                       </div>
-                      <p className="text-xs text-slate-400 truncate">{task.context.project.title}</p>
+                      <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
 
                       {/* Timer */}
                       {(() => {
@@ -1002,7 +1315,7 @@ export default function TeamKanbanBoard() {
             taskTitle={activeTask.title}
             moduleTitle={activeTask.context.module?.title ?? null}
             featureTitle={activeTask.context.title}
-            projectTitle={activeTask.context.project.title}
+            projectTitle={activeTask.context.project?.title ?? 'No Project Link'}
             currentStatus={activeTask.status}
             reviewCount={activeTask.review_count}
             estMandays={activeTask.est_mandays}

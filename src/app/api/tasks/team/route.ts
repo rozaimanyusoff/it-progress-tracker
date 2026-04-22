@@ -24,25 +24,36 @@ export async function GET(req: NextRequest) {
     select: { id: true },
   })
   const projectIds = projects.map((p: { id: number }) => p.id)
-
-  if (projectIds.length === 0) return NextResponse.json([])
+  const orConditions: any[] = []
+  if (projectIds.length > 0) {
+    orConditions.push(
+      {
+        feature: {
+          project_links: { some: { project_id: { in: projectIds } } },
+          ...(featureId ? { id: Number(featureId) } : {}),
+        },
+      },
+      {
+        deliverable: {
+          project_id: { in: projectIds },
+        },
+      }
+    )
+  }
+  if (!projectId) {
+    // Include standalone tasks (no project link) assigned to current user.
+    orConditions.push({
+      feature_id: null,
+      deliverable_id: null,
+      assignees: { some: { user_id: Number(user.id) } },
+    })
+  }
+  if (orConditions.length === 0) return NextResponse.json([])
 
   const tasks = await prisma.task.findMany({
     where: {
       is_predefined: false,
-      OR: [
-        {
-          feature: {
-            project_links: { some: { project_id: { in: projectIds } } },
-            ...(featureId ? { id: Number(featureId) } : {}),
-          },
-        },
-        {
-          deliverable: {
-            project_id: { in: projectIds },
-          },
-        },
-      ],
+      OR: orConditions,
     },
     include: {
       feature: {
@@ -86,14 +97,26 @@ export async function GET(req: NextRequest) {
         },
       }
     }
+    if (t.deliverable) {
+      return {
+        ...t,
+        context: {
+          type: 'deliverable' as const,
+          id: t.deliverable.id,
+          title: t.deliverable.title,
+          module: t.deliverable.module ?? null,
+          project: t.deliverable.project,
+        },
+      }
+    }
     return {
       ...t,
       context: {
-        type: 'deliverable' as const,
-        id: t.deliverable!.id,
-        title: t.deliverable!.title,
-        module: t.deliverable!.module ?? null,
-        project: t.deliverable!.project,
+        type: 'standalone' as const,
+        id: t.id,
+        title: 'Standalone Task',
+        module: null,
+        project: null,
       },
     }
   })
