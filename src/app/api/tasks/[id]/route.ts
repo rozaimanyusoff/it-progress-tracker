@@ -161,6 +161,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.description !== undefined) updateData.description = body.description || null
   if (body.order !== undefined) updateData.order = Number(body.order)
   if (body.due_date !== undefined) updateData.due_date = body.due_date ? new Date(body.due_date) : null
+  if (body.actual_start !== undefined) updateData.actual_start = body.actual_start ? new Date(body.actual_start) : null
   if (body.est_mandays !== undefined) updateData.est_mandays = body.est_mandays != null ? body.est_mandays : null
   if (body.actual_mandays !== undefined) updateData.actual_mandays = body.actual_mandays != null ? body.actual_mandays : null
   if (body.priority !== undefined) updateData.priority = body.priority

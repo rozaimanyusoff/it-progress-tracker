@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           title: true,
+          mandays: true,
           project: { select: { id: true, title: true } },
           module:  { select: { id: true, title: true } },
         },
@@ -82,12 +83,60 @@ export async function GET(req: NextRequest) {
     orderBy: [{ status: 'asc' }, { order: 'asc' }],
   })
 
+  const taskIds = tasks.map(t => t.id)
+  const deliverableIds = Array.from(new Set(tasks.map(t => t.deliverable_id).filter((id): id is number => id != null)))
+
+  const createLogs = taskIds.length > 0
+    ? await prisma.auditLog.findMany({
+        where: {
+          target_type: 'Task',
+          action: 'CREATE',
+          target_id: { in: taskIds },
+        },
+        select: {
+          target_id: true,
+          created_at: true,
+          user: { select: { name: true } },
+        },
+        orderBy: { created_at: 'asc' },
+      })
+    : []
+  const creatorByTaskId = new Map<number, string>()
+  for (const log of createLogs) {
+    if (!creatorByTaskId.has(log.target_id)) {
+      creatorByTaskId.set(log.target_id, log.user.name)
+    }
+  }
+
+  const usedMandaysRows = deliverableIds.length > 0
+    ? await prisma.task.groupBy({
+        by: ['deliverable_id'],
+        where: { deliverable_id: { in: deliverableIds }, is_predefined: false },
+        _sum: { est_mandays: true },
+      })
+    : []
+  const usedMandaysByDeliverable = new Map<number, number>()
+  for (const row of usedMandaysRows) {
+    if (row.deliverable_id != null) {
+      usedMandaysByDeliverable.set(row.deliverable_id, Number(row._sum.est_mandays ?? 0))
+    }
+  }
+
   // Normalize to a common context shape for the Kanban
   const normalized = tasks.map(t => {
+    const creatorName = creatorByTaskId.get(t.id) ?? null
+    const deliverableBudgetMandays = t.deliverable ? Number(t.deliverable.mandays ?? 0) : null
+    const deliverableUsedMandays = t.deliverable_id != null
+      ? Number(usedMandaysByDeliverable.get(t.deliverable_id) ?? 0)
+      : null
+
     if (t.feature) {
       const link = t.feature.project_links[0]
       return {
         ...t,
+        created_by_name: creatorName,
+        deliverable_budget_mandays: deliverableBudgetMandays,
+        deliverable_used_mandays: deliverableUsedMandays,
         context: {
           type: 'feature' as const,
           id: t.feature.id,
@@ -100,6 +149,9 @@ export async function GET(req: NextRequest) {
     if (t.deliverable) {
       return {
         ...t,
+        created_by_name: creatorName,
+        deliverable_budget_mandays: deliverableBudgetMandays,
+        deliverable_used_mandays: deliverableUsedMandays,
         context: {
           type: 'deliverable' as const,
           id: t.deliverable.id,
@@ -111,6 +163,9 @@ export async function GET(req: NextRequest) {
     }
     return {
       ...t,
+      created_by_name: creatorName,
+      deliverable_budget_mandays: null,
+      deliverable_used_mandays: null,
       context: {
         type: 'standalone' as const,
         id: t.id,

@@ -11,6 +11,81 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-23 — Kanban/Review UX + Backdated Date Integrity + Developer Analytics Timeline
+
+### Diubah
+
+**Kanban filters & task cards**
+- Team Kanban: filter `Project` ditukar daripada dropdown kepada project chips (gaya Project Details), `Priority` filter dikekalkan.
+- Aksi card `Todo`: buang butang delete, gantikan aksi update kepada ikon pencil (edit task).
+- Header/title card diseragamkan supaya `Specific Scope` digunakan sebagai tajuk utama.
+- Timer pada card `InProgress` dibuang; fokus kepada metadata tarikh/status.
+- Paparan `Started` date dipaparkan pada card `InProgress`.
+
+**Task update & review modal**
+- Header modal disusun semula untuk paparkan metadata: `Specific Scope` (title), `Deliverable + Project`, `Due Date`, `Budget`, `Defined MD`, `Started On`, `Completed On`, `MD Utilized`, `Created By`.
+- Label/teks form ditukar:
+  - `Manager Note` → `Progress Note`,
+  - mesej prompt lebih friendly untuk tracking progress task owner.
+- Tambah `Update Option`: `Keep Current Status`, `Completed & For Review`, `Blocked`, `Resume`.
+- Jika `Blocked`, `blocker note` diwajibkan.
+- Jika `Completed & For Review`, paparkan dan validasi:
+  - `Started on` (editable untuk backdated),
+  - `Completed on` (editable untuk backdated),
+  - `MD utilized` (dikira auto dari working days started→completed/current).
+- Susun atur field progress disemak semula (gap/positioning) untuk kebolehbacaan.
+- Form `Edit Task` guna semula form yang sama seperti `Add Task` (prefill + update).
+
+### Ditambah
+
+**Status transition context**
+- `StatusChangeModal` (contoh Todo → InProgress) diperkaya dengan metadata tugas:
+  - task name/scope,
+  - linked deliverable & project,
+  - created by,
+  - due date,
+  - budget,
+  - defined mandays.
+
+**Manager review history visibility**
+- `GET /api/tasks/[id]/updates` kini gabungkan:
+  - `task_updates`,
+  - event `task_history` untuk `to_status = InReview`.
+- `Update History` kini memaparkan event status jelas `Moved to review (dd/mm/yyyy)` untuk audit bila creator/reviewer orang sama.
+
+**Developer analytics controls**
+- `Developer Analytics` API menyokong parameter `weeks` dan `offset_weeks` untuk paging timeline.
+- UI analytics tambah kawalan timeline: `4w/8w/12w/24w`, `Older`, `Newer`, `Project Start`, `Latest`.
+- X-axis mingguan dipaparkan sebagai julat tarikh (cth `09 Apr - 15 Apr`) bukan `W1..W4`.
+
+**Data correction tooling**
+- Script baru: `scripts/fix-backdated-completion-dates.ts`
+  - cari task `Done` yang completion date tertindih,
+  - pulihkan `actual_end`/`completed_at` daripada `task_history.actual_date` (InReview),
+  - recalc deliverable/project actual dates.
+- Command npm baru:
+  - `npm run db:fix:completion-dates` (dry-run),
+  - `npm run db:fix:completion-dates -- --apply` (apply fix).
+
+### Diperbaiki
+
+**Backdated completion date tidak lagi tertindih**
+- Flow manager review `approve` tidak lagi override `actual_end` kepada `now`.
+- Sistem kini kekalkan tarikh completion backdated yang dihantar semasa `submit for review`.
+
+**Tarikh analytics/gantt lebih tepat**
+- Weekly completion trend kini utamakan `actual_end` (backdated-friendly), fallback `completed_at`.
+- Weekly tasks trend kini kira berdasarkan `actual_start` (fallback `created_at`) untuk align dengan kerja sebenar.
+- Weekly time trend diagihkan ikut overlap jam mengikut setiap weekly bucket (bukan lump sum pada minggu start).
+
+**Developer analytics assignee scope**
+- Untuk manager + project scope, analytics kini termasuk user yang assigned pada task project walaupun tiada `project assignment` explicit (termasuk manager/TL yang self-managed tasks).
+
+**Tooltip theme**
+- Tooltip chart dibaiki untuk light/dark theme (background, border, text, shadow) supaya kontras konsisten.
+
+---
+
 ## 2026-04-23 — Structure Revision: Project > Deliverable > Tasks + Task Preset UX
 
 ### Diubah

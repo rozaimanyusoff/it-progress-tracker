@@ -4,22 +4,32 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 
 interface TaskUpdateEntry {
-  id: number
+  id: number | string
   notes: string | null
   media_urls: string[]
   created_at: string
   user: { id: number; name: string; role: string }
+  entry_type?: 'update' | 'status'
+  event_label?: string | null
+  actual_date?: string | null
 }
 
 interface Props {
   taskId: number
   taskTitle: string
+  taskScope?: string | null
   moduleTitle: string | null
   featureTitle: string | null
   projectTitle: string | null
+  createdByName?: string | null
+  dueDate?: string | null
+  actualStartDate?: string | null
+  actualEndDate?: string | null
   currentStatus: string
   reviewCount?: number
   estMandays?: number | null
+  deliverableBudgetMandays?: number | null
+  deliverableUsedMandays?: number | null
   initialActualMandays?: number | null
   onClose: () => void
   onStatusChange: (taskId: number, newStatus: string) => void
@@ -73,15 +83,38 @@ const STATUS_COLOR: Record<string, string> = {
   Done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
 }
 
+function calcWorkingMandays(startDate: string, endDate: string): number {
+  if (!startDate || !endDate) return 0
+  const start = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0
+
+  const cur = new Date(start)
+  let days = 0
+  while (cur <= end) {
+    const day = cur.getDay()
+    if (day !== 0 && day !== 6) days += 1
+    cur.setDate(cur.getDate() + 1)
+  }
+  return days
+}
+
 export default function TaskUpdateModal({
   taskId,
   taskTitle,
+  taskScope,
   moduleTitle,
   featureTitle,
   projectTitle,
+  createdByName,
+  dueDate,
+  actualStartDate,
+  actualEndDate,
   currentStatus,
   reviewCount = 0,
   estMandays,
+  deliverableBudgetMandays,
+  deliverableUsedMandays,
   initialActualMandays,
   onClose,
   onStatusChange,
@@ -100,8 +133,10 @@ export default function TaskUpdateModal({
   const [actualMandays, setActualMandays] = useState(
     initialActualMandays != null ? String(initialActualMandays) : ''
   )
-  const [savingMandays, setSavingMandays] = useState(false)
-  const [mandaysSaved, setMandaysSaved] = useState(false)
+  const [progressAction, setProgressAction] = useState<'keep' | 'for_review' | 'blocked' | 'resume'>('keep')
+  const [blockedReason, setBlockedReason] = useState('')
+  const [startedOn, setStartedOn] = useState(actualStartDate ? actualStartDate.slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [completedOn, setCompletedOn] = useState(new Date().toISOString().slice(0, 10))
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Manager review state
@@ -113,10 +148,16 @@ export default function TaskUpdateModal({
   const [reviewError, setReviewError] = useState('')
   const reviewFileInputRef = useRef<HTMLInputElement>(null)
 
+  async function loadHistory() {
+    const res = await fetch(`/api/tasks/${taskId}/updates`)
+    const data = await res.json()
+    setUpdates(data)
+    setLoadingHistory(false)
+  }
+
   useEffect(() => {
-    fetch(`/api/tasks/${taskId}/updates`)
-      .then((r) => r.json())
-      .then((data) => { setUpdates(data); setLoadingHistory(false) })
+    setLoadingHistory(true)
+    loadHistory()
   }, [taskId])
 
   function handleFiles(selected: FileList | null) {
@@ -135,16 +176,53 @@ export default function TaskUpdateModal({
     setPreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
-  async function handleSubmit(markComplete = false) {
-    if (markComplete && !notes.trim()) {
-      setError('Please add a progress note before submitting for review.')
+  useEffect(() => {
+    if (status === 'Blocked') setProgressAction('resume')
+    else setProgressAction('keep')
+    setBlockedReason('')
+  }, [status])
+
+  useEffect(() => {
+    setStartedOn(actualStartDate ? actualStartDate.slice(0, 10) : new Date().toISOString().slice(0, 10))
+  }, [actualStartDate, taskId])
+
+  useEffect(() => {
+    const endDate = progressAction === 'for_review' ? completedOn : new Date().toISOString().slice(0, 10)
+    const calculated = calcWorkingMandays(startedOn, endDate).toFixed(1)
+    if (actualMandays !== calculated) setActualMandays(calculated)
+  }, [startedOn, completedOn, progressAction, actualMandays])
+
+  async function handleSubmit() {
+    if (progressAction === 'blocked' && !blockedReason.trim()) {
+      setError('Please provide blocker reason.')
       return
     }
-    if (markComplete && (!actualMandays || Number(actualMandays) <= 0)) {
-      setError('Actual mandays used is required before submitting for review.')
+    if (progressAction === 'for_review' && (!actualMandays || Number(actualMandays) <= 0)) {
+      setError('MD utilized is required before submitting for review.')
       return
     }
-    if (!markComplete && !notes.trim() && files.length === 0) {
+    if (startedOn && startedOn > new Date().toISOString().slice(0, 10)) {
+      setError('Started date cannot be in the future.')
+      return
+    }
+    if (progressAction === 'for_review' && !completedOn) {
+      setError('Completion date is required before submitting for review.')
+      return
+    }
+    if (progressAction === 'for_review' && completedOn > new Date().toISOString().slice(0, 10)) {
+      setError('Completion date cannot be in the future.')
+      return
+    }
+    if (progressAction === 'for_review' && startedOn && completedOn && startedOn > completedOn) {
+      setError('Started date cannot be after completion date.')
+      return
+    }
+    if (progressAction === 'for_review' && status !== 'InProgress') {
+      setError('Task must be In Progress before submitting for review.')
+      return
+    }
+    // For blocked flow, blocker reason is the required note.
+    if (progressAction !== 'blocked' && !notes.trim() && files.length === 0) {
       setError('Please add a note or attach media.')
       return
     }
@@ -172,10 +250,10 @@ export default function TaskUpdateModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          notes: notes.trim() || null,
+          notes: progressAction === 'blocked' && blockedReason.trim()
+            ? `${notes.trim() || 'Task blocked.'}\n\nBlocker: ${blockedReason.trim()}`
+            : (notes.trim() || null),
           media_urls: mediaUrls,
-          mark_complete: markComplete,
-          actual_mandays: markComplete && actualMandays ? Number(actualMandays) : undefined,
         }),
       })
       if (!res.ok) {
@@ -185,13 +263,81 @@ export default function TaskUpdateModal({
         return
       }
       const { update, newStatus } = await res.json()
+      let finalStatus = newStatus as string
+
+      // Apply selected status transition after saving progress note
+      if (progressAction !== 'keep') {
+        const payload: Record<string, unknown> = {}
+        if (progressAction === 'for_review') {
+          payload.status = 'InReview'
+          payload.actual_mandays = Number(actualMandays)
+          payload.actual_start = startedOn
+          payload.actual_date = completedOn
+        } else if (progressAction === 'blocked') {
+          payload.status = 'Blocked'
+          payload.blocked_reason = blockedReason.trim()
+        } else if (progressAction === 'resume') {
+          payload.status = 'InProgress'
+        }
+
+        if (payload.status) {
+          const statusRes = await fetch(`/api/tasks/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          if (!statusRes.ok) {
+            const err = await statusRes.json().catch(() => null)
+            setError(err?.error ?? 'Failed to update task status.')
+            setSubmitting(false)
+            return
+          }
+          const updatedTask = await statusRes.json()
+          finalStatus = updatedTask.status ?? finalStatus
+        }
+      } else if (status === 'Todo') {
+        // Treat first progress update on Todo as task started; allow backdated start date.
+        const statusRes = await fetch(`/api/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'InProgress',
+            actual_date: startedOn,
+          }),
+        })
+        if (!statusRes.ok) {
+          const err = await statusRes.json().catch(() => null)
+          setError(err?.error ?? 'Failed to set task as started.')
+          setSubmitting(false)
+          return
+        }
+        const updatedTask = await statusRes.json()
+        finalStatus = updatedTask.status ?? finalStatus
+      } else if (status === 'InProgress' && startedOn) {
+        // Allow adjusting started date for backdated in-progress tasks.
+        const startRes = await fetch(`/api/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actual_start: startedOn,
+          }),
+        })
+        if (!startRes.ok) {
+          const err = await startRes.json().catch(() => null)
+          setError(err?.error ?? 'Failed to update started date.')
+          setSubmitting(false)
+          return
+        }
+      }
 
       setUpdates((prev) => [update, ...prev])
       setNotes('')
       setFiles([])
       setPreviews([])
-      setStatus(newStatus)
-      onStatusChange(taskId, newStatus)
+      setStatus(finalStatus)
+      onStatusChange(taskId, finalStatus)
+      setBlockedReason('')
+      await loadHistory()
     } finally {
       setSubmitting(false)
     }
@@ -260,31 +406,39 @@ export default function TaskUpdateModal({
       setReviewPreviews([])
       setStatus(newStatus)
       onStatusChange(taskId, newStatus)
+      await loadHistory()
     } finally {
       setReviewing(false)
-    }
-  }
-
-  async function saveActualMandays() {
-    if (!actualMandays || Number(actualMandays) <= 0) return
-    setSavingMandays(true)
-    setMandaysSaved(false)
-    try {
-      await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actual_mandays: Number(actualMandays) }),
-      })
-      setMandaysSaved(true)
-      setTimeout(() => setMandaysSaved(false), 2000)
-    } finally {
-      setSavingMandays(false)
     }
   }
 
   // Form is locked when task is in review (for developer) or done
   // Manager can comment on Todo/InProgress; InReview handled by review panel
   const formLocked = status === 'Done' || status === 'InReview'
+  const remainingMandays =
+    deliverableBudgetMandays != null && deliverableUsedMandays != null
+      ? deliverableBudgetMandays - deliverableUsedMandays
+      : null
+  const dueDateLabel = dueDate
+    ? new Date(dueDate).toLocaleDateString('en-GB')
+    : '—'
+  const startedOnLabel = actualStartDate
+    ? new Date(actualStartDate).toLocaleDateString('en-GB')
+    : '—'
+  const completedOnLabel = actualEndDate
+    ? new Date(actualEndDate).toLocaleDateString('en-GB')
+    : '—'
+  const scopeHeadline = taskScope?.trim() || taskTitle
+  const deliverableProjectLine = [featureTitle, projectTitle].filter(Boolean).join(' · ')
+  const budgetLabel = deliverableBudgetMandays != null ? `${Number(deliverableBudgetMandays).toFixed(1)} md` : '—'
+  const definedMdLabel = estMandays != null ? `${Number(estMandays).toFixed(1)} md` : '—'
+  const remainingLabel = remainingMandays != null ? `${remainingMandays.toFixed(1)} md` : '—'
+  const headerUtilizedMd =
+    initialActualMandays != null
+      ? `${Number(initialActualMandays).toFixed(1)} md`
+      : actualMandays
+        ? `${Number(actualMandays).toFixed(1)} md`
+        : '—'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -293,18 +447,26 @@ export default function TaskUpdateModal({
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-slate-200 dark:border-navy-700">
           <div className="flex-1 min-w-0 pr-4">
-            <h2 className="font-semibold text-slate-900 dark:text-white text-base leading-tight">{taskTitle}</h2>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              {moduleTitle && (
-                <>
-                  <span className="text-xs text-purple-600 dark:text-purple-400 font-medium truncate">{moduleTitle}</span>
-                  <span className="text-xs text-slate-300 dark:text-slate-600">›</span>
-                </>
-              )}
-              {featureTitle && <span className="text-xs text-blue-600 dark:text-blue-400 truncate">{featureTitle}</span>}
-              {featureTitle && projectTitle && <span className="text-xs text-slate-300 dark:text-slate-600">·</span>}
-              {projectTitle && <span className="text-xs text-slate-400 truncate">{projectTitle}</span>}
-            </div>
+            <h2 className="font-semibold text-slate-900 dark:text-white text-base leading-tight break-words">
+              <span className="text-slate-400 dark:text-slate-500 text-sm">Specific Scope:</span>{' '}
+              {scopeHeadline}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 break-words">{deliverableProjectLine || '—'}</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 break-words">
+              <span className="font-medium">Due Date:</span> <span className="text-slate-700 dark:text-slate-200">{dueDateLabel}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">Budget:</span> <span className={`${remainingMandays != null && remainingMandays < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{budgetLabel}{remainingLabel !== '—' ? ` (remaining ${remainingLabel})` : ''}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">Defined MD:</span> <span className="text-slate-700 dark:text-slate-200">{definedMdLabel}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">Started On:</span> <span className="text-slate-700 dark:text-slate-200">{startedOnLabel}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">Completed On:</span> <span className="text-slate-700 dark:text-slate-200">{completedOnLabel}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">MD Utilized:</span> <span className="text-slate-700 dark:text-slate-200">{headerUtilizedMd}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">Created By:</span> <span className="text-slate-700 dark:text-slate-200">{createdByName || '—'}</span>
+            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {reviewCount > 0 && (
@@ -428,54 +590,115 @@ export default function TaskUpdateModal({
             {!formLocked && (
               <>
                 {/* Mandays — above Note */}
-                {estMandays != null && (
-                  <>
-                    <div className="flex items-center gap-3 flex-wrap mb-3">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        Est: <strong className="text-slate-700 dark:text-slate-200">{estMandays} md</strong>
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">Actual used:</label>
+                <hr className="border-slate-100 dark:border-navy-700 mb-3" />
+
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                  Progress Note
+                </label>
+                {isManager && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">
+                    Friendly check-in: ask task owner whether this task is completed, current blockers, and next step.
+                  </p>
+                )}
+                <textarea
+                  className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  placeholder={isManager ? 'Example: Hi, is this task completed? If not, what is the current progress, blocker, and next action?' : status === 'Todo' ? 'Add a note to start working on this task...' : 'Describe what you\'ve done, blockers, or next steps...'}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Update Option</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Task owner: pilih <span className="font-medium text-green-600 dark:text-green-300">Completed &amp; For Review</span>, semak <span className="font-medium">MD utilized (auto)</span>, kemudian submit.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <label className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer ${progressAction === 'keep' ? 'border-blue-400 text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'}`}>
+                      <input type="radio" className="sr-only" checked={progressAction === 'keep'} onChange={() => setProgressAction('keep')} />
+                      {status === 'Todo' ? 'Started / In Progress' : 'Keep Current Status'}
+                    </label>
+                    {status === 'InProgress' && (
+                      <label className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer ${progressAction === 'for_review' ? 'border-green-400 text-green-600 dark:text-green-300 bg-green-50 dark:bg-green-900/20' : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'}`}>
+                        <input type="radio" className="sr-only" checked={progressAction === 'for_review'} onChange={() => setProgressAction('for_review')} />
+                        Completed &amp; For Review
+                      </label>
+                    )}
+                    {(status === 'InProgress' || status === 'Todo') && (
+                      <label className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer ${progressAction === 'blocked' ? 'border-red-400 text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20' : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'}`}>
+                        <input type="radio" className="sr-only" checked={progressAction === 'blocked'} onChange={() => setProgressAction('blocked')} />
+                        Blocked
+                      </label>
+                    )}
+                    {status === 'Blocked' && (
+                      <label className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer ${progressAction === 'resume' ? 'border-amber-400 text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20' : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400'}`}>
+                        <input type="radio" className="sr-only" checked={progressAction === 'resume'} onChange={() => setProgressAction('resume')} />
+                        Resume In Progress
+                      </label>
+                    )}
+                  </div>
+
+                  {(status === 'Todo' || status === 'InProgress') && progressAction === 'keep' && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">Started on:</label>
+                      <input
+                        type="date"
+                        value={startedOn}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setStartedOn(e.target.value)}
+                        className="w-40 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
+
+                  {progressAction === 'for_review' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          Est: <strong className="text-slate-700 dark:text-slate-200">{estMandays != null ? `${Number(estMandays).toFixed(1)}` : '—'} md</strong>
+                        </span>
+                        <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">MD utilized:</label>
                         <input
                           type="number"
                           min="0.5"
                           step="0.5"
-                          placeholder="0"
                           value={actualMandays}
-                          onChange={e => { setActualMandays(e.target.value); setMandaysSaved(false) }}
-                          className="w-16 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          readOnly
+                          className="w-24 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <span className="text-xs text-slate-400">md</span>
-                        {actualMandays && Number(actualMandays) > 0 && (
-                          <button
-                            onClick={saveActualMandays}
-                            disabled={savingMandays}
-                            className="px-2 py-1 text-xs bg-slate-600 hover:bg-slate-700 disabled:opacity-50 text-white rounded transition-colors"
-                          >
-                            {savingMandays ? '…' : mandaysSaved ? '✓' : 'Save'}
-                          </button>
-                        )}
-                        {actualMandays && Number(actualMandays) > Number(estMandays) && (
-                          <span className="text-xs text-amber-500 dark:text-amber-400 font-medium whitespace-nowrap">
-                            +{(Number(actualMandays) - Number(estMandays)).toFixed(1)} md over
-                          </span>
-                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">Started on:</label>
+                        <input
+                          type="date"
+                          value={startedOn}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setStartedOn(e.target.value)}
+                          className="w-40 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">Completed on:</label>
+                        <input
+                          type="date"
+                          value={completedOn}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setCompletedOn(e.target.value)}
+                          className="w-40 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
                       </div>
                     </div>
-                    <hr className="border-slate-100 dark:border-navy-700 mb-3" />
-                  </>
-                )}
+                  )}
 
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  {isManager ? 'Manager Note' : 'Progress Note'}
-                </label>
-                <textarea
-                  className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  rows={3}
-                  placeholder={isManager ? 'Add a note or instruction for the assignee...' : status === 'Todo' ? 'Add a note to start working on this task...' : 'Describe what you\'ve done, blockers, or next steps...'}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
+                  {progressAction === 'blocked' && (
+                    <input
+                      type="text"
+                      value={blockedReason}
+                      onChange={(e) => setBlockedReason(e.target.value)}
+                      placeholder="What is blocking this task?"
+                      className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-red-400"
+                    />
+                  )}
+                </div>
 
                 {/* File previews before submit */}
                 {previews.length > 0 && (
@@ -534,22 +757,20 @@ export default function TaskUpdateModal({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Submit for Review — only developer, only from InProgress */}
-                    {status === 'InProgress' && !isManager && (
-                      <button
-                        onClick={() => handleSubmit(true)}
-                        disabled={submitting}
-                        className="px-3 py-1.5 text-sm bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg disabled:opacity-50 transition-colors font-medium"
-                      >
-                        {submitting ? 'Saving...' : '→ Submit for Review'}
-                      </button>
-                    )}
                     <button
-                      onClick={() => handleSubmit(false)}
+                      onClick={handleSubmit}
                       disabled={submitting}
                       className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors font-medium"
                     >
-                      {submitting ? 'Saving...' : isManager ? 'Save Note' : status === 'Todo' ? 'Start & Save Note' : 'Save Note'}
+                      {submitting
+                        ? 'Saving...'
+                        : progressAction === 'for_review'
+                          ? 'Submit For Review'
+                          : progressAction === 'blocked'
+                            ? 'Save As Blocked'
+                            : status === 'Todo'
+                              ? 'Start Task & Save'
+                              : 'Save Progress'}
                     </button>
                   </div>
                 </div>
@@ -569,19 +790,32 @@ export default function TaskUpdateModal({
             ) : (
               <div className="space-y-4">
                 {updates.map((u) => {
+                  const isStatusEntry = u.entry_type === 'status'
                   const isMgrEntry = u.user.role === 'manager'
+                  const movedToReviewDate = u.actual_date ? new Date(u.actual_date).toLocaleDateString('en-GB') : null
                   return (
-                    <div key={u.id} className={`flex gap-3 rounded-lg p-2 -mx-2 ${isMgrEntry ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}>
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${isMgrEntry ? 'bg-blue-200 dark:bg-blue-800/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-navy-700 text-slate-600 dark:text-slate-300'}`}>
+                    <div key={String(u.id)} className={`flex gap-3 rounded-lg p-2 -mx-2 ${isStatusEntry ? 'bg-violet-50 dark:bg-violet-950/20' : isMgrEntry ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}>
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${isStatusEntry ? 'bg-violet-200 dark:bg-violet-800/50 text-violet-700 dark:text-violet-300' : isMgrEntry ? 'bg-blue-200 dark:bg-blue-800/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-navy-700 text-slate-600 dark:text-slate-300'}`}>
                         {u.user.name[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className={`text-sm font-medium ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-white'}`}>{u.user.name}</span>
-                          {isMgrEntry && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 uppercase tracking-wide">Review</span>}
+                          <span className={`text-sm font-medium ${isStatusEntry ? 'text-violet-700 dark:text-violet-300' : isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-white'}`}>{u.user.name}</span>
+                          {isStatusEntry && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400 uppercase tracking-wide">
+                              Status
+                            </span>
+                          )}
+                          {isMgrEntry && !isStatusEntry && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 uppercase tracking-wide">Review</span>}
                           <span className="text-xs text-slate-400">{timeAgo(u.created_at)}</span>
                         </div>
-                        {u.notes && <p className={`text-sm mt-0.5 whitespace-pre-wrap ${isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300'}`}>{u.notes}</p>}
+                        {isStatusEntry && (
+                          <p className="text-sm mt-0.5 text-violet-700 dark:text-violet-300 font-medium">
+                            {u.event_label || 'Status updated'}
+                            {movedToReviewDate ? ` (${movedToReviewDate})` : ''}
+                          </p>
+                        )}
+                        {u.notes && <p className={`text-sm mt-0.5 whitespace-pre-wrap ${isStatusEntry ? 'text-violet-700 dark:text-violet-300' : isMgrEntry ? 'text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-300'}`}>{u.notes}</p>}
                         {u.media_urls.length > 0 && (
                           <div className="flex flex-wrap gap-2 mt-2">
                             {u.media_urls.map((url, i) => {

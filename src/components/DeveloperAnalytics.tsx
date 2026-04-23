@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useTheme } from 'next-themes'
 import {
   ResponsiveContainer,
   BarChart,
@@ -221,6 +222,36 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
   const [loading, setLoading] = useState(!initialData)
   const [isManager, setIsManager] = useState(false)
   const [reassignDev, setReassignDev] = useState<DeveloperStat | null>(null)
+  const [weeksCount, setWeeksCount] = useState(4)
+  const [weeksOffset, setWeeksOffset] = useState(0)
+  const [maxOffsetWeeks, setMaxOffsetWeeks] = useState(0)
+  const [hasOlder, setHasOlder] = useState(false)
+  const [hasNewer, setHasNewer] = useState(false)
+  const [projectStartDate, setProjectStartDate] = useState<string | null>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+
+  function buildAnalyticsUrl() {
+    const params = new URLSearchParams()
+    if (projectId) params.set('project_id', String(projectId))
+    params.set('weeks', String(weeksCount))
+    params.set('offset_weeks', String(weeksOffset))
+    return `/api/analytics/developers?${params.toString()}`
+  }
+
+  async function fetchAnalytics() {
+    const res = await fetch(buildAnalyticsUrl())
+    const data = await res.json()
+    setDevStats(data.developers ?? [])
+    setMaxOffsetWeeks(Number(data.max_offset_weeks ?? 0))
+    setHasOlder(Boolean(data.has_older))
+    setHasNewer(Boolean(data.has_newer))
+    setProjectStartDate(data.project_start_date ?? null)
+    if (typeof data.offset_weeks === 'number' && data.offset_weeks !== weeksOffset) {
+      setWeeksOffset(data.offset_weeks)
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
     // Check if current user is manager
@@ -230,23 +261,18 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
   }, [])
 
   useEffect(() => {
-    if (initialData) return
-    const url = projectId
-      ? `/api/analytics/developers?project_id=${projectId}`
-      : '/api/analytics/developers'
-    fetch(url)
-      .then((r) => r.json())
-      .then((data) => {
-        setDevStats(data.developers ?? [])
-        setLoading(false)
-      })
-  }, [projectId])
+    fetchAnalytics().catch(() => setLoading(false))
+  }, [projectId, weeksCount, weeksOffset])
 
   function refresh() {
-    const url = projectId
-      ? `/api/analytics/developers?project_id=${projectId}`
-      : '/api/analytics/developers'
-    fetch(url).then(r => r.json()).then(data => setDevStats(data.developers ?? []))
+    fetchAnalytics().catch(() => {})
+  }
+
+  function shiftWindow(direction: 'older' | 'newer') {
+    setWeeksOffset((prev) => {
+      if (direction === 'older') return prev + weeksCount
+      return Math.max(prev - weeksCount, 0)
+    })
   }
 
   if (loading) {
@@ -289,10 +315,79 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
 
   // Workload: remaining = assigned - done
   const maxRemaining = Math.max(...devStats.map(d => d.tasksAssigned - d.tasksDone), 1)
+  const tooltipStyle = {
+    fontSize: 11,
+    backgroundColor: isDark ? '#0f172a' : '#ffffff',
+    border: `1px solid ${isDark ? '#334155' : '#cbd5e1'}`,
+    borderRadius: 8,
+    color: isDark ? '#e2e8f0' : '#0f172a',
+    boxShadow: isDark ? '0 4px 16px rgba(2, 6, 23, 0.45)' : '0 4px 16px rgba(15, 23, 42, 0.12)',
+  } as const
+  const chartMinWidth = Math.max(640, weeks.length * 92)
+  const hasOlderWindow = hasOlder
+  const hasNewerWindow = hasNewer || weeksOffset > 0
+  const projectStartLabel = projectStartDate ? new Date(projectStartDate).toLocaleDateString('en-GB') : null
 
   return (
     <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-4 sm:p-6">
-      <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-5">Developer Analytics</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Developer Analytics</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">Window:</span>
+          {[4, 8, 12, 24].map((w) => (
+            <button
+              key={w}
+              onClick={() => { setWeeksCount(w); setWeeksOffset(0) }}
+              className={`px-2 py-1 rounded-md text-xs border transition-colors ${
+                weeksCount === w
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+              }`}
+            >
+              {w}w
+            </button>
+          ))}
+          <div className="ml-1 flex items-center gap-1">
+            <button
+              onClick={() => shiftWindow('older')}
+              disabled={!hasOlderWindow}
+              className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Show older weeks"
+            >
+              Older ◀
+            </button>
+            <button
+              onClick={() => shiftWindow('newer')}
+              disabled={!hasNewerWindow}
+              className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Back to newer weeks"
+            >
+              ▶ Newer
+            </button>
+            <button
+              onClick={() => setWeeksOffset(maxOffsetWeeks)}
+              disabled={!hasOlderWindow}
+              className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Jump to earliest data"
+            >
+              Project Start
+            </button>
+            <button
+              onClick={() => setWeeksOffset(0)}
+              disabled={!hasNewerWindow}
+              className="px-2 py-1 rounded-md text-xs border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Jump to latest data"
+            >
+              Latest
+            </button>
+          </div>
+        </div>
+      </div>
+      {projectStartLabel && (
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-3 mb-4">
+          Timeline start: {projectStartLabel}
+        </p>
+      )}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -301,28 +396,34 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">
             Weekly Tasks Assigned vs Completed
           </p>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={stackedData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <XAxis dataKey="week" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ fontSize: 11 }}
-                formatter={((value: unknown, name: unknown) => {
-                  const n = String(name)
-                  const isDone = n.endsWith('_done')
-                  const devName = n.replace(/_done$|_rem$/, '')
-                  return [value, isDone ? `${devName} (completed)` : `${devName} (remaining)`]
-                }) as any}
-              />
-              {devStats.map((dev, i) => {
-                const color = DEV_COLORS[i % DEV_COLORS.length]
-                return [
-                  <Bar key={`${dev.id}_done`} dataKey={`${dev.name}_done`} stackId={dev.name} fill={color} radius={[0, 0, 0, 0]} name={`${dev.name}_done`} />,
-                  <Bar key={`${dev.id}_rem`} dataKey={`${dev.name}_rem`} stackId={dev.name} fill={lighten(color)} radius={[3, 3, 0, 0]} name={`${dev.name}_rem`} />,
-                ]
-              })}
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: chartMinWidth }}>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart syncId="dev-analytics-weekly" data={stackedData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                  <XAxis dataKey="week" tick={{ fontSize: 10 }} interval={0} />
+                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelStyle={{ color: isDark ? '#e2e8f0' : '#0f172a' }}
+                    itemStyle={{ color: isDark ? '#cbd5e1' : '#334155' }}
+                    formatter={((value: unknown, name: unknown) => {
+                      const n = String(name)
+                      const isDone = n.endsWith('_done')
+                      const devName = n.replace(/_done$|_rem$/, '')
+                      return [value, isDone ? `${devName} (completed)` : `${devName} (remaining)`]
+                    }) as any}
+                  />
+                  {devStats.map((dev, i) => {
+                    const color = DEV_COLORS[i % DEV_COLORS.length]
+                    return [
+                      <Bar key={`${dev.id}_done`} dataKey={`${dev.name}_done`} stackId={dev.name} fill={color} radius={[0, 0, 0, 0]} name={`${dev.name}_done`} />,
+                      <Bar key={`${dev.id}_rem`} dataKey={`${dev.name}_rem`} stackId={dev.name} fill={lighten(color)} radius={[3, 3, 0, 0]} name={`${dev.name}_rem`} />,
+                    ]
+                  })}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
             {devStats.map((dev, i) => (
               <span key={dev.id} className="flex items-center gap-1 text-xs text-slate-500">
@@ -335,22 +436,32 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
               remaining
             </span>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Last 4 weeks · solid = completed, light = remaining</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            Last {weeksCount} weeks{weeksOffset > 0 ? ` (shifted ${weeksOffset}w older)` : ''} · solid = completed, light = remaining
+          </p>
         </div>
 
         {/* Weekly Time Spent */}
         <div className="rounded-lg border border-slate-100 dark:border-navy-700 p-4 bg-slate-50 dark:bg-navy-900/50">
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Time Spent Trend (hrs)</p>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={timeChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <XAxis dataKey="week" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ fontSize: 11 }} />
-              {devStats.map((dev, i) => (
-                <Bar key={dev.id} dataKey={dev.name} fill={DEV_COLORS[i % DEV_COLORS.length]} radius={[2, 2, 0, 0]} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: chartMinWidth }}>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart syncId="dev-analytics-weekly" data={timeChartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                  <XAxis dataKey="week" tick={{ fontSize: 10 }} interval={0} />
+                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelStyle={{ color: isDark ? '#e2e8f0' : '#0f172a' }}
+                    itemStyle={{ color: isDark ? '#cbd5e1' : '#334155' }}
+                  />
+                  {devStats.map((dev, i) => (
+                    <Bar key={dev.id} dataKey={dev.name} fill={DEV_COLORS[i % DEV_COLORS.length]} radius={[2, 2, 0, 0]} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
             {devStats.map((dev, i) => (
               <span key={dev.id} className="flex items-center gap-1 text-xs text-slate-500">
@@ -359,7 +470,9 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
               </span>
             ))}
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Last 4 weeks</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+            Last {weeksCount} weeks{weeksOffset > 0 ? ` (shifted ${weeksOffset}w older)` : ''}
+          </p>
         </div>
       </div>
 

@@ -31,13 +31,40 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
-  const updates = await prisma.taskUpdate.findMany({
-    where: { task_id: Number(id) },
-    include: { user: { select: { id: true, name: true, role: true } } },
-    orderBy: { created_at: 'desc' },
-  })
+  const taskId = Number(id)
+  const [updates, reviewTransitions] = await prisma.$transaction([
+    prisma.taskUpdate.findMany({
+      where: { task_id: taskId },
+      include: { user: { select: { id: true, name: true, role: true } } },
+      orderBy: { created_at: 'desc' },
+    }),
+    prisma.taskHistory.findMany({
+      where: { task_id: taskId, to_status: 'InReview' },
+      include: { user: { select: { id: true, name: true, role: true } } },
+      orderBy: { created_at: 'desc' },
+    }),
+  ])
 
-  return NextResponse.json(updates)
+  const timeline = [
+    ...updates.map((u) => ({
+      ...u,
+      entry_type: 'update' as const,
+      event_label: null,
+      actual_date: null as Date | null,
+    })),
+    ...reviewTransitions.map((h) => ({
+      id: `history-${h.id}`,
+      notes: h.note,
+      media_urls: [] as string[],
+      created_at: h.created_at,
+      user: h.user,
+      entry_type: 'status' as const,
+      event_label: 'Moved to review',
+      actual_date: h.actual_date,
+    })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  return NextResponse.json(timeline)
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -68,7 +95,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const taskData: any = { status: newStatus, review_count: { increment: 1 } }
 
     if (review_action === 'approve') {
-      taskData.actual_end = now
+      // Preserve backdated completion date submitted when task moved to review.
+      // Fallback to now only when no completion date exists yet.
+      const effectiveCompletedAt = task.actual_end ?? now
+      taskData.actual_end = effectiveCompletedAt
+      taskData.completed_at = task.completed_at ?? effectiveCompletedAt
     } else {
       // Rejected → restart timer
       taskData.time_started_at = now
@@ -118,7 +149,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Create update record
   const update = await prisma.taskUpdate.create({
     data: { task_id: taskId, user_id: userId, notes, media_urls },
-    include: { user: { select: { id: true, name: true } } },
+    include: { user: { select: { id: true, name: true, role: true } } },
   })
 
   // Update task status + time tracking if status changed

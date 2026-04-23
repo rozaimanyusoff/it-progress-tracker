@@ -4,21 +4,27 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import TaskUpdateModal from './TaskUpdateModal'
-import { Trash2, X } from 'lucide-react'
+import { Pencil, X } from 'lucide-react'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
 
 interface Task {
   id: number
   title: string
+  description?: string | null
   status: string
   review_count: number
   time_started_at: string | null
   time_spent_seconds: number
   assignees: { user: { id: number; name: string } }[]
   due_date: string | null
+  actual_start?: string | null
+  actual_end?: string | null
   est_mandays: number | null
   actual_mandays: number | null
   priority: string
+  created_by_name?: string | null
+  deliverable_budget_mandays?: number | null
+  deliverable_used_mandays?: number | null
   is_blocked: boolean
   blocked_reason: string | null
   context: {
@@ -30,8 +36,12 @@ interface Task {
   }
 }
 
-interface Project { id: number; title: string }
-interface Feature { id: number; title: string }
+interface Project {
+  id: number
+  title: string
+  computedProgress?: number
+  computedStatus?: string
+}
 interface Deliverable { id: number; title: string; planned_end: string | null; priority?: string; mandays?: number }
 interface Member { id: number; name: string }
 
@@ -93,12 +103,15 @@ function AddTaskModal({
   projects,
   onClose,
   onAdded,
+  initialTask,
 }: {
   projects: Project[]
   onClose: () => void
   onAdded: (task: Task) => void
+  initialTask?: Task | null
 }) {
   const { data: session } = useSession()
+  const isEditMode = Boolean(initialTask)
   const creatorName = (session?.user as any)?.name ?? 'Current User'
   const creatorRole = (session?.user as any)?.role === 'manager' ? 'Manager' : 'Team Member'
   const CREATE_NEW_DELIVERABLE = '__create_new__'
@@ -140,8 +153,24 @@ function AddTaskModal({
   }, [])
 
   useEffect(() => {
+    if (!initialTask) return
+    const initialProjectId = initialTask.context.project?.id ? String(initialTask.context.project.id) : ''
+    const initialDeliverableId = initialTask.context.type === 'deliverable' ? String(initialTask.context.id) : ''
+    setProjectId(initialProjectId)
+    setDeliverableId(initialDeliverableId)
+    setAssigneeIds(initialTask.assignees.map(a => a.user.id))
+    setTitle(initialTask.title ?? '')
+    setDescription(initialTask.description ?? '')
+    setDueDate(initialTask.due_date ? initialTask.due_date.slice(0, 10) : '')
+    setPriority(initialTask.priority ?? 'medium')
+    setEstMandays(initialTask.est_mandays != null ? String(initialTask.est_mandays) : '')
+    setError('')
+    setShowCreateDeliverable(false)
+    setShowTaskPresetPopover(false)
+  }, [initialTask])
+
+  useEffect(() => {
     setDeliverables([])
-    setDeliverableId('')
     setShowCreateDeliverable(false)
     setNewDeliverableTitle('')
     setNewDeliverableStart('')
@@ -149,16 +178,23 @@ function AddTaskModal({
     setNewDeliverableMandays('1')
     setNewDeliverablePriority('medium')
     setNewDeliverableError('')
-    if (!projectId) return
+    if (!projectId) { setDeliverableId(''); return }
     fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
-      setDeliverables(data.map((d: any) => ({
+      const mapped = data.map((d: any) => ({
         id: d.id,
         title: d.title,
         planned_end: d.planned_end ?? null,
         priority: d.priority ?? 'medium',
-      })))
+      }))
+      setDeliverables(mapped)
+      if (initialTask?.context.type === 'deliverable') {
+        const initDelivId = String(initialTask.context.id)
+        if (mapped.some((d: Deliverable) => String(d.id) === initDelivId)) setDeliverableId(initDelivId)
+      } else if (!isEditMode) {
+        setDeliverableId('')
+      }
     })
-  }, [projectId])
+  }, [projectId, initialTask, isEditMode])
 
   // Auto-fill due date/priority from selected deliverable and fetch task category presets.
   useEffect(() => {
@@ -241,7 +277,7 @@ function AddTaskModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (projectId && !deliverableId) { setError('Please select a deliverable.'); return }
+    if (!isEditMode && projectId && !deliverableId) { setError('Please select a deliverable.'); return }
     if (!title.trim()) { setError('Task category is required.'); return }
     if (!description.trim()) { setError('Task description is required.'); return }
     if (deliverableId && (!estMandays || Number(estMandays) <= 0)) {
@@ -267,13 +303,13 @@ function AddTaskModal({
       payload.priority = priority
     }
 
-    const res = await fetch('/api/tasks', {
-      method: 'POST',
+    const res = await fetch(isEditMode && initialTask ? `/api/tasks/${initialTask.id}` : '/api/tasks', {
+      method: isEditMode ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     if (!res.ok) {
-      setError((await res.json()).error || 'Failed to create task')
+      setError((await res.json()).error || (isEditMode ? 'Failed to update task' : 'Failed to create task'))
       setSaving(false); return
     }
     const task = await res.json()
@@ -286,7 +322,7 @@ function AddTaskModal({
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            Add Task by <span className="text-blue-600 dark:text-blue-400">{creatorName}</span>{' '}
+            {isEditMode ? 'Edit Task by ' : 'Add Task by '}<span className="text-blue-600 dark:text-blue-400">{creatorName}</span>{' '}
             <span className="text-sm font-medium text-slate-400 dark:text-slate-500">({creatorRole})</span>
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 leading-none"><X className="w-4 h-4" /></button>
@@ -300,7 +336,7 @@ function AddTaskModal({
             <div className="flex-1 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project</label>
-                <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)}>
+                <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)} disabled={isEditMode}>
                   <option value="">No Project Link (Standalone)</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                 </select>
@@ -313,8 +349,10 @@ function AddTaskModal({
                   <select
                     className={inputClass}
                     value={deliverableId}
+                    disabled={isEditMode}
                     onChange={e => {
                       const next = e.target.value
+                      if (isEditMode) return
                       if (next === CREATE_NEW_DELIVERABLE) {
                         setDeliverableId('')
                         setShowCreateDeliverable(true)
@@ -328,7 +366,7 @@ function AddTaskModal({
                   >
                     <option value="">Select deliverable...</option>
                     {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-                    <option value={CREATE_NEW_DELIVERABLE}>+ Create new...</option>
+                    {!isEditMode && <option value={CREATE_NEW_DELIVERABLE}>+ Create new...</option>}
                   </select>
                   <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Question: Which deliverable outcome will this task move forward?</p>
                   {showCreateDeliverable && (
@@ -645,7 +683,7 @@ function AddTaskModal({
           <div className="flex gap-3 pt-1 border-t border-slate-100 dark:border-navy-700">
             <button type="submit" disabled={saving}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm transition-colors mt-3">
-              {saving ? 'Adding...' : 'Add Task'}
+              {saving ? (isEditMode ? 'Saving...' : 'Adding...') : (isEditMode ? 'Save Changes' : 'Add Task')}
             </button>
             <button type="button" onClick={onClose}
               className="flex-1 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 py-2 rounded-lg text-sm mt-3">
@@ -660,7 +698,7 @@ function AddTaskModal({
 
 const COLUMNS: { id: string; label: string; color: string; description: string }[] = [
   { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200', description: 'Tasks queued and ready to be picked up. Drag a card to In Progress when work begins.' },
-  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300', description: 'Tasks actively being worked on. Timer runs while a task stays here.' },
+  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300', description: 'Tasks actively being worked on and updated by assignees.' },
   { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300', description: 'Tasks completed by the assignee and awaiting review or approval before closing.' },
   { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300', description: 'Tasks that have been reviewed and signed off. Contributes to project progress.' },
 ]
@@ -672,17 +710,40 @@ const PRIORITY_BADGE: Record<string, string> = {
   critical: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
 }
 
-function dueDateDisplay(due: string | null, status: string): React.ReactNode {
+const STATUS_DOT: Record<string, string> = {
+  Done: 'bg-green-500',
+  InProgress: 'bg-orange-400',
+  OnHold: 'bg-red-400',
+  Pending: 'bg-slate-300 dark:bg-slate-500',
+}
+
+function dueDateDisplay(due: string | null, status: string, actualEnd?: string | null): React.ReactNode {
   if (!due) return null
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const d = new Date(due); d.setHours(0, 0, 0, 0)
   const isDone = status === 'Done'
   const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
+  if (status === 'InReview' && actualEnd) {
+    const completed = new Date(actualEnd)
+    completed.setHours(0, 0, 0, 0)
+    if (completed > d) {
+      return <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">{dateStr} · Submitted late</span>
+    }
+    return <span className="text-[10px] font-semibold text-green-600 dark:text-green-400">{dateStr} · Submitted</span>
+  }
   if (!isDone && d < today)
     return <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">{dateStr} · Overdue</span>
   if (!isDone && d.getTime() === today.getTime())
     return <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">{dateStr} · Due today</span>
   return <span className="text-[10px] text-slate-400">{dateStr}</span>
+}
+
+function startedDateDisplay(started: string | null | undefined, status: string): React.ReactNode {
+  if (status !== 'InProgress' || !started) return null
+  const d = new Date(started)
+  if (isNaN(d.getTime())) return null
+  const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
+  return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {dateStr}</span>
 }
 
 function reviewCardStyle(task: { status: string; review_count: number; is_blocked?: boolean }): string {
@@ -706,20 +767,8 @@ function buildBoard(tasks: Task[]): BoardState {
   return board
 }
 
-function getElapsedSeconds(task: Task): number {
-  let total = task.time_spent_seconds
-  if (task.status === 'InProgress' && task.time_started_at) {
-    total += Math.floor((Date.now() - new Date(task.time_started_at).getTime()) / 1000)
-  }
-  return total
-}
-
-function formatElapsed(seconds: number): string {
-  if (seconds <= 0) return ''
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m ${seconds % 60}s`
+function cardHeaderScope(task: Task): string {
+  return task.description?.trim() || task.title
 }
 
 function AssigneeAvatar({ name }: { name: string }) {
@@ -736,89 +785,56 @@ export default function TeamKanbanBoard() {
   const currentUserId = Number((session?.user as any)?.id)
   const [board, setBoard] = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)
-  const [, setTick] = useState(0)
 
   // Filter state
   const [projects, setProjects] = useState<Project[]>([])
-  const [features, setFeatures] = useState<Feature[]>([])
-  const [projectId, setProjectId] = useState('')
-  const [featureId, setFeatureId] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
 
   // Modal
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
   const [pendingStatus, setPendingStatus] = useState<{ taskId: number; target: StatusTarget } | null>(null)
 
-  // Tick every second for InProgress timers
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  // Load projects for filter
+  // Load projects for chips
   useEffect(() => {
     fetch('/api/projects')
       .then(r => r.json())
-      .then((data: any[]) => setProjects(data.map(p => ({ id: p.id, title: p.title }))))
+      .then((data: any[]) => setProjects(data.map(p => ({
+        id: p.id,
+        title: p.title,
+        computedProgress: p.computedProgress ?? 0,
+        computedStatus: p.computedStatus ?? 'Pending',
+      }))))
   }, [])
-
-  // Load features when project changes
-  useEffect(() => {
-    setFeatureId('')
-    if (!projectId) { setFeatures([]); return }
-    fetch(`/api/features?project_id=${projectId}`)
-      .then(r => r.json())
-      .then((data: any[]) => setFeatures(data.map(f => ({ id: f.id, title: f.title }))))
-  }, [projectId])
 
   // Load tasks
   useEffect(() => {
     loadTasks()
-  }, [projectId, featureId])
+  }, [])
 
   function loadTasks() {
     setLoading(true)
-    const params = new URLSearchParams()
-    if (projectId) params.set('project_id', projectId)
-    if (featureId) params.set('feature_id', featureId)
-    fetch(`/api/tasks/team?${params}`)
+    fetch('/api/tasks/team')
       .then(r => r.json())
       .then((tasks: Task[]) => { setBoard(buildBoard(tasks)); setLoading(false) })
   }
 
   function getFilteredBoard(): BoardState {
-    if (!filterPriority) return board
     const next: BoardState = {}
     for (const col of COLUMNS) {
-      next[col.id] = board[col.id].filter(t => t.priority === filterPriority)
+      next[col.id] = board[col.id].filter(t => {
+        const matchPriority = !filterPriority || t.priority === filterPriority
+        const matchProject = !selectedProjectId || String(t.context.project?.id ?? '') === selectedProjectId
+        return matchPriority && matchProject
+      })
     }
     return next
   }
 
   function handleTaskAdded(_task: Task) {
     loadTasks()
-  }
-
-  async function handleDeleteTask(taskId: number, taskTitle: string) {
-    setDeleteConfirm({ id: taskId, title: taskTitle })
-  }
-
-  async function confirmDeleteTask() {
-    if (!deleteConfirm) return
-    setDeleting(true)
-    const res = await fetch(`/api/tasks/${deleteConfirm.id}`, { method: 'DELETE' })
-    setDeleting(false)
-    if (res.ok) {
-      setBoard(prev => {
-        const next: BoardState = {}
-        for (const col of COLUMNS) next[col.id] = prev[col.id].filter(t => t.id !== deleteConfirm.id)
-        return next
-      })
-      setDeleteConfirm(null)
-    }
   }
 
   function handleStatusChange(taskId: number, newStatus: string) {
@@ -840,6 +856,9 @@ export default function TeamKanbanBoard() {
 
   const activeTask = activeTaskId !== null
     ? COLUMNS.flatMap(c => board[c.id]).find(t => t.id === activeTaskId) ?? null
+    : null
+  const editingTask = editingTaskId !== null
+    ? COLUMNS.flatMap(c => board[c.id]).find(t => t.id === editingTaskId) ?? null
     : null
 
   const filteredBoard = getFilteredBoard()
@@ -928,7 +947,15 @@ export default function TeamKanbanBoard() {
         <StatusChangeModal
           taskId={pendingTask.id}
           taskTitle={pendingTask.title}
+          taskScope={pendingTask.description ?? null}
           targetStatus={pendingStatus.target}
+          projectTitle={pendingTask.context.project?.title ?? null}
+          linkedTitle={pendingTask.context.title}
+          linkedType={pendingTask.context.type}
+          createdByName={pendingTask.created_by_name ?? null}
+          estMandays={pendingTask.est_mandays}
+          deliverableBudgetMandays={pendingTask.deliverable_budget_mandays ?? null}
+          deliverableUsedMandays={pendingTask.deliverable_used_mandays ?? null}
           actualStartDate={(pendingTask as any).actual_start ?? null}
           dueDate={pendingTask.due_date}
           isManager={isManager}
@@ -939,24 +966,41 @@ export default function TeamKanbanBoard() {
       <div>
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 mb-5">
-          <select
-            value={projectId}
-            onChange={e => setProjectId(e.target.value)}
-            className="text-sm bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Projects</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-          </select>
-
-          <select
-            value={featureId}
-            onChange={e => setFeatureId(e.target.value)}
-            disabled={!projectId}
-            className="text-sm bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
-          >
-            <option value="">All Features</option>
-            {features.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}
-          </select>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 min-w-0 scrollbar-none">
+            <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 mr-1">Projects:</span>
+            <button
+              onClick={() => setSelectedProjectId('')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+                selectedProjectId === ''
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+              }`}
+              title="Show all projects"
+            >
+              All
+            </button>
+            {projects.map(p => {
+              const dotClass = STATUS_DOT[p.computedStatus ?? 'Pending'] ?? STATUS_DOT.Pending
+              const progress = p.computedProgress ?? 0
+              const isActive = String(p.id) === selectedProjectId
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedProjectId(String(p.id))}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+                    isActive
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                  }`}
+                  title={p.title}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white/70' : dotClass}`} />
+                  <span className="max-w-[120px] truncate">{p.title}</span>
+                  <span className={`font-bold tabular-nums ${isActive ? 'text-white/80' : 'text-slate-400 dark:text-slate-500'}`}>{progress}%</span>
+                </button>
+              )
+            })}
+          </div>
 
           <select
             value={filterPriority}
@@ -970,9 +1014,9 @@ export default function TeamKanbanBoard() {
             <option value="low">Low</option>
           </select>
 
-          {(projectId || featureId || filterPriority) && (
+          {(selectedProjectId || filterPriority) && (
             <button
-              onClick={() => { setProjectId(''); setFeatureId(''); setFilterPriority('') }}
+              onClick={() => { setSelectedProjectId(''); setFilterPriority('') }}
               className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
             >
               Clear filters
@@ -1057,7 +1101,7 @@ export default function TeamKanbanBoard() {
                           <p className="font-medium text-slate-700 dark:text-slate-200 mb-0.5">Manager</p>
                           <ul className="space-y-0.5 text-slate-500 dark:text-slate-400">
                             <li>✓ Add notes to To Do &amp; In Progress tasks</li>
-                            <li>✓ Delete any To Do task (custom only)</li>
+                            <li>✓ Edit any To Do task (custom only)</li>
                             <li>✓ Approve or reject tasks in To Review</li>
                             <li>✓ View update history on any task</li>
                             <li>✓ Attach evidence &amp; log findings on reject</li>
@@ -1092,7 +1136,7 @@ export default function TeamKanbanBoard() {
                       <span className="text-xs font-medium opacity-70">{filteredBoard[col.id].length}</span>
                       {col.id === 'Todo' && (
                         <button
-                          onClick={() => setShowAddModal(true)}
+                          onClick={() => { setEditingTaskId(null); setShowAddModal(true) }}
                           className="w-5 h-5 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold leading-none"
                           title="Add task"
                         >+</button>
@@ -1126,7 +1170,7 @@ export default function TeamKanbanBoard() {
                       className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : 'hover:shadow-md'}`}
                     >
                       <div className="flex items-start justify-between gap-1 mb-0.5">
-                        <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
+                        <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{cardHeaderScope(task)}</p>
                         <div className="flex items-center gap-1 shrink-0">
                           {task.review_count > 0 && task.status !== 'Todo' && (
                             <span
@@ -1141,6 +1185,9 @@ export default function TeamKanbanBoard() {
                           </span>
                         </div>
                       </div>
+                      {task.description?.trim() && (
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">Category: {task.title}</p>
+                      )}
                       {task.is_blocked && (
                         <div className="flex items-center gap-1 mb-0.5">
                           <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
@@ -1167,29 +1214,12 @@ export default function TeamKanbanBoard() {
                       </div>
                       <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
 
-                      {/* Timer */}
-                      {(() => {
-                        const s = getElapsedSeconds(task)
-                        const running = task.status === 'InProgress'
-                        if (s <= 0 && !running) return null
-                        return (
-                          <span className="flex items-center gap-1 mt-1">
-                            {running && (
-                              <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
-                              </span>
-                            )}
-                            <span className={`text-xs font-mono tabular-nums ${running ? 'text-orange-500 dark:text-orange-400' : 'text-slate-400'}`}>
-                              {running ? formatElapsed(s) : `⏱ ${formatElapsed(s)}`}
-                            </span>
-                          </span>
-                        )
-                      })()}
-
                       {/* Due date */}
+                      {task.status === 'InProgress' && task.actual_start && (
+                        <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
+                      )}
                       {task.due_date && (
-                        <div className="mt-1">{dueDateDisplay(task.due_date, task.status)}</div>
+                        <div className="mt-1">{dueDateDisplay(task.due_date, task.status, task.actual_end ?? null)}</div>
                       )}
 
                       {/* Assignees + Update */}
@@ -1230,15 +1260,6 @@ export default function TeamKanbanBoard() {
                               </>
                             )
                           })()}
-                          {task.status === 'Todo' && (isManager || task.assignees.some(a => a.user.id === currentUserId)) && (
-                            <button
-                              onClick={() => handleDeleteTask(task.id, task.title)}
-                              className="p-1 rounded border border-red-300 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-                              title="Delete task"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                           {task.status === 'InReview' && (
                             <button
                               onClick={() => setActiveTaskId(task.id)}
@@ -1248,15 +1269,25 @@ export default function TeamKanbanBoard() {
                             </button>
                           )}
                           {isManager && task.status !== 'InReview' && (
-                            <button
-                              onClick={() => setActiveTaskId(task.id)}
-                              className={`text-xs px-2 py-0.5 rounded border ${task.status === 'Todo' || task.status === 'InProgress'
-                                ? 'border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium'
-                                : 'border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'
-                                }`}
-                            >
-                              {task.status === 'Todo' || task.status === 'InProgress' ? 'Update' : 'View'}
-                            </button>
+                            task.status === 'Todo' ? (
+                              <button
+                                onClick={() => { setEditingTaskId(task.id); setShowAddModal(true) }}
+                                className="p-1 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                title="Edit task"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setActiveTaskId(task.id)}
+                                className={`text-xs px-2 py-0.5 rounded border ${task.status === 'InProgress'
+                                  ? 'border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium'
+                                  : 'border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'
+                                  }`}
+                              >
+                                {task.status === 'InProgress' ? 'Update' : 'View'}
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -1277,48 +1308,29 @@ export default function TeamKanbanBoard() {
         {showAddModal && (
           <AddTaskModal
             projects={projects}
-            onClose={() => setShowAddModal(false)}
+            initialTask={editingTask}
+            onClose={() => { setShowAddModal(false); setEditingTaskId(null) }}
             onAdded={handleTaskAdded}
           />
-        )}
-
-        {deleteConfirm && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="w-full max-w-sm rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Delete Task</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                Delete <span className="font-medium text-slate-700 dark:text-slate-300">"{deleteConfirm.title}"</span>? This cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={confirmDeleteTask}
-                  disabled={deleting}
-                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium"
-                >
-                  {deleting ? 'Deleting...' : 'Delete'}
-                </button>
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  disabled={deleting}
-                  className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
         )}
 
         {activeTask && (
           <TaskUpdateModal
             taskId={activeTask.id}
             taskTitle={activeTask.title}
+            taskScope={activeTask.description ?? null}
             moduleTitle={activeTask.context.module?.title ?? null}
             featureTitle={activeTask.context.title}
             projectTitle={activeTask.context.project?.title ?? 'No Project Link'}
+            createdByName={activeTask.created_by_name ?? null}
+            dueDate={activeTask.due_date}
+            actualStartDate={activeTask.actual_start ?? null}
+            actualEndDate={activeTask.actual_end ?? null}
             currentStatus={activeTask.status}
             reviewCount={activeTask.review_count}
             estMandays={activeTask.est_mandays}
+            deliverableBudgetMandays={activeTask.deliverable_budget_mandays ?? null}
+            deliverableUsedMandays={activeTask.deliverable_used_mandays ?? null}
             initialActualMandays={activeTask.actual_mandays}
             onClose={() => { setActiveTaskId(null); loadTasks() }}
             onStatusChange={handleStatusChange}

@@ -7,7 +7,15 @@ export type StatusTarget = 'InProgress' | 'InReview' | 'Done' | 'Blocked' | 'Unb
 interface Props {
    taskId: number
    taskTitle: string
+   taskScope?: string | null
    targetStatus: StatusTarget
+   projectTitle?: string | null
+   linkedTitle?: string | null
+   linkedType?: 'deliverable' | 'feature' | 'standalone' | null
+   createdByName?: string | null
+   estMandays?: number | string | null
+   deliverableBudgetMandays?: number | string | null
+   deliverableUsedMandays?: number | string | null
    /** Pass the task's actual_start (as ISO string) so InReview can validate date >= actual_start */
    actualStartDate?: string | null
    /** Pass due_date so InProgress can validate minimum date */
@@ -55,7 +63,43 @@ function todayStr() {
    return new Date().toISOString().slice(0, 10)
 }
 
-export default function StatusChangeModal({ taskId, taskTitle, targetStatus, actualStartDate, dueDate, isManager, onConfirm, onCancel }: Props) {
+function formatDateLabel(date: string | null | undefined): string {
+   if (!date) return '—'
+   const d = new Date(date)
+   if (isNaN(d.getTime())) return '—'
+   return d.toLocaleDateString('en-GB')
+}
+
+function toNum(v: number | string | null | undefined): number | null {
+   if (v == null || v === '') return null
+   const n = Number(v)
+   return Number.isFinite(n) ? n : null
+}
+
+function formatMandays(v: number | string | null | undefined): string {
+   const n = toNum(v)
+   if (n == null) return '—'
+   return `${n.toFixed(1)} md`
+}
+
+export default function StatusChangeModal({
+   taskId,
+   taskTitle,
+   taskScope,
+   targetStatus,
+   projectTitle,
+   linkedTitle,
+   linkedType,
+   createdByName,
+   estMandays,
+   deliverableBudgetMandays,
+   deliverableUsedMandays,
+   actualStartDate,
+   dueDate,
+   isManager,
+   onConfirm,
+   onCancel,
+}: Props) {
    const cfg = STATUS_CONFIG[targetStatus]
    const [date, setDate] = useState(todayStr())
    const [reason, setReason] = useState('')
@@ -111,18 +155,44 @@ export default function StatusChangeModal({ taskId, taskTitle, targetStatus, act
    }
 
    const displayTitle = cfg.title(taskTitle.length > 40 ? taskTitle.slice(0, 40) + '…' : taskTitle)
+   const linkedLabel = linkedType === 'deliverable'
+      ? 'Deliverable'
+      : linkedType === 'feature'
+         ? 'Feature'
+         : 'Linked Scope'
+   const budget = toNum(deliverableBudgetMandays)
+   const used = toNum(deliverableUsedMandays)
+   const remaining = budget != null && used != null ? budget - used : null
 
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-         <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+         <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl w-full max-w-xl mx-4 p-6">
             <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-1">{displayTitle}</h2>
 
-            {cfg.message && (
-               <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{cfg.message}</p>
-            )}
+            <div className="mb-4 rounded-lg border border-slate-200 dark:border-navy-700 bg-slate-50/70 dark:bg-navy-900/40 p-3">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Task:</span> <span className="text-slate-700 dark:text-slate-200">{taskTitle}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">{linkedLabel}:</span> <span className="text-slate-700 dark:text-slate-200">{linkedTitle || '—'}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Project:</span> <span className="text-slate-700 dark:text-slate-200">{projectTitle || '—'}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Created By:</span> <span className="text-slate-700 dark:text-slate-200">{createdByName || '—'}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Due Date:</span> <span className="text-slate-700 dark:text-slate-200">{formatDateLabel(dueDate)}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Defined Mandays:</span> <span className="text-slate-700 dark:text-slate-200">{formatMandays(estMandays)}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Budget:</span> <span className="text-slate-700 dark:text-slate-200">{formatMandays(deliverableBudgetMandays)}</span></p>
+                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Remaining:</span> <span className={`${remaining != null && remaining < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{remaining == null ? '—' : `${remaining.toFixed(1)} md`}</span></p>
+               </div>
+               <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-navy-700/80">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Specific Scope:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{taskScope?.trim() ? taskScope : '—'}</span>
+                  </p>
+               </div>
+            </div>
 
             {cfg.showDate && (
                <div className="mb-4">
+                  {cfg.message && (
+                     <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">{cfg.message}</label>
+                  )}
                   <input
                      type="date"
                      className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"

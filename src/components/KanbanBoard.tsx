@@ -10,15 +10,21 @@ import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
 interface Task {
   id: number
   title: string
+  description?: string | null
   status: string
   is_predefined: boolean
   time_started_at: string | null
   time_spent_seconds: number
   review_count: number
   due_date: string | null
+  actual_start?: string | null
+  actual_end?: string | null
   est_mandays: number | null
   actual_mandays: number | null
   priority: string
+  created_by_name?: string | null
+  deliverable_budget_mandays?: number | null
+  deliverable_used_mandays?: number | null
   is_blocked: boolean
   blocked_reason: string | null
   assignees: { user: { id: number; name: string } }[]
@@ -41,12 +47,19 @@ const PRIORITY_BADGE: Record<string, string> = {
   critical: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
 }
 
-function dueDateDisplay(due: string | null, status: string): React.ReactNode {
+function dueDateDisplay(due: string | null, status: string, actualEnd?: string | null): React.ReactNode {
   if (!due) return null
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const d = new Date(due); d.setHours(0, 0, 0, 0)
   const isDone = status === 'Done'
   const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
+  if (status === 'InReview' && actualEnd) {
+    const completed = new Date(actualEnd)
+    completed.setHours(0, 0, 0, 0)
+    if (completed > d)
+      return <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">{dateStr} · Submitted late</span>
+    return <span className="text-[10px] font-semibold text-green-600 dark:text-green-400">{dateStr} · Submitted</span>
+  }
   if (!isDone && d < today)
     return <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">{dateStr} · Overdue</span>
   if (!isDone && d.getTime() === today.getTime())
@@ -54,9 +67,17 @@ function dueDateDisplay(due: string | null, status: string): React.ReactNode {
   return <span className="text-[10px] text-slate-400">{dateStr}</span>
 }
 
+function startedDateDisplay(started: string | null | undefined, status: string): React.ReactNode {
+  if (status !== 'InProgress' || !started) return null
+  const d = new Date(started)
+  if (isNaN(d.getTime())) return null
+  const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
+  return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {dateStr}</span>
+}
+
 const COLUMNS: { id: string; label: string; color: string; description: string }[] = [
   { id: 'Todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200', description: 'Tasks queued and ready to be picked up. Drag a card to In Progress when work begins.' },
-  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300', description: 'Tasks actively being worked on. Timer runs while a task stays here.' },
+  { id: 'InProgress', label: 'In Progress', color: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300', description: 'Tasks actively being worked on and updated by assignees.' },
   { id: 'InReview', label: 'To Review', color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300', description: 'Tasks completed by the assignee and awaiting review or approval before closing.' },
   { id: 'Done', label: 'Done', color: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300', description: 'Tasks that have been reviewed and signed off. Contributes to project progress.' },
 ]
@@ -83,22 +104,8 @@ function findTask(board: BoardState, id: number) {
   for (const col of COLUMNS) { const t = board[col.id].find(t => t.id === id); if (t) return t }
 }
 
-function getElapsedSeconds(task: Task): number {
-  let total = task.time_spent_seconds
-  if (task.status === 'InProgress' && task.time_started_at) {
-    total += Math.floor((Date.now() - new Date(task.time_started_at).getTime()) / 1000)
-  }
-  return total
-}
-
-function formatElapsed(seconds: number): string {
-  if (seconds <= 0) return ''
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
-  return `${s}s`
+function cardHeaderScope(task: Task): string {
+  return task.description?.trim() || task.title
 }
 
 // ── Add Task Modal ────────────────────────────────────────────────
@@ -341,7 +348,6 @@ export default function KanbanBoard() {
   const [loading, setLoading] = useState(true)
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [, setTick] = useState(0)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<{ taskId: number; target: StatusTarget } | null>(null)
@@ -350,13 +356,6 @@ export default function KanbanBoard() {
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterFeatureId, setFilterFeatureId] = useState('')
   const [showLegend, setShowLegend] = useState(false)
-
-
-  // Tick every second so InProgress timers re-render
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [])
 
   useEffect(() => { loadMyTasks() }, [])
 
@@ -505,7 +504,15 @@ export default function KanbanBoard() {
         <StatusChangeModal
           taskId={pendingTask.id}
           taskTitle={pendingTask.title}
+          taskScope={pendingTask.description ?? null}
           targetStatus={pendingStatus.target}
+          projectTitle={pendingTask.project?.title ?? null}
+          linkedTitle={pendingTask.feature?.title ?? pendingTask.deliverable?.title ?? null}
+          linkedType={pendingTask.deliverable ? 'deliverable' : pendingTask.feature ? 'feature' : 'standalone'}
+          createdByName={pendingTask.created_by_name ?? null}
+          estMandays={pendingTask.est_mandays}
+          deliverableBudgetMandays={pendingTask.deliverable_budget_mandays ?? null}
+          deliverableUsedMandays={pendingTask.deliverable_used_mandays ?? null}
           actualStartDate={(pendingTask as any).actual_start ?? null}
           dueDate={pendingTask.due_date}
           isManager={isManager}
@@ -711,7 +718,7 @@ export default function KanbanBoard() {
                               className={`rounded-lg p-3 shadow-sm select-none transition-colors ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400' : 'hover:shadow-md'}`}
                             >
                               <div className="flex items-start justify-between gap-1 mb-0.5">
-                                <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{task.title}</p>
+                                <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{cardHeaderScope(task)}</p>
                                 <div className="flex items-center gap-1 shrink-0">
                                   {(task._count?.issues ?? 0) > 0 && (
                                     <span
@@ -734,6 +741,9 @@ export default function KanbanBoard() {
                                   </span>
                                 </div>
                               </div>
+                              {task.description?.trim() && (
+                                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">Category: {task.title}</p>
+                              )}
                               {task.is_blocked && (
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
@@ -751,27 +761,12 @@ export default function KanbanBoard() {
                               )}
                               <div className="flex items-center gap-2 mt-1">
                                 {task.is_predefined && <span className="text-xs text-slate-400">SDLC</span>}
-                                {(() => {
-                                  const s = getElapsedSeconds(task)
-                                  const running = task.status === 'InProgress'
-                                  if (s <= 0 && !running) return null
-                                  return (
-                                    <span className="flex items-center gap-1">
-                                      {running && (
-                                        <span className="relative flex h-2 w-2">
-                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
-                                        </span>
-                                      )}
-                                      <span className={`text-xs font-mono tabular-nums ${running ? 'text-orange-500 dark:text-orange-400' : 'text-slate-400'}`}>
-                                        {running ? formatElapsed(s) : `⏱ ${formatElapsed(s)}`}
-                                      </span>
-                                    </span>
-                                  )
-                                })()}
                               </div>
+                              {task.status === 'InProgress' && task.actual_start && (
+                                <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
+                              )}
                               {task.due_date && (
-                                <div className="mt-1">{dueDateDisplay(task.due_date, task.status)}</div>
+                                <div className="mt-1">{dueDateDisplay(task.due_date, task.status, task.actual_end ?? null)}</div>
                               )}
                               <div className="flex items-center justify-between mt-2 gap-1">
                                 <div className="flex gap-1">
@@ -848,12 +843,19 @@ export default function KanbanBoard() {
           <TaskUpdateModal
             taskId={activeTask.id}
             taskTitle={activeTask.title}
+            taskScope={activeTask.description ?? null}
             moduleTitle={activeTask.module?.title ?? null}
             featureTitle={activeTask.feature?.title ?? activeTask.deliverable?.title ?? null}
             projectTitle={activeTask.project?.title ?? null}
+            createdByName={activeTask.created_by_name ?? null}
+            dueDate={activeTask.due_date}
+            actualStartDate={activeTask.actual_start ?? null}
+            actualEndDate={activeTask.actual_end ?? null}
             currentStatus={activeTask.status}
             reviewCount={activeTask.review_count}
             estMandays={activeTask.est_mandays}
+            deliverableBudgetMandays={activeTask.deliverable_budget_mandays ?? null}
+            deliverableUsedMandays={activeTask.deliverable_used_mandays ?? null}
             initialActualMandays={activeTask.actual_mandays}
             onClose={() => { setActiveTaskId(null); loadMyTasks() }}
             onStatusChange={handleStatusChange}
