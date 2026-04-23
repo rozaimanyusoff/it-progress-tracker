@@ -100,6 +100,40 @@ export default async function DashboardPage() {
     return labels
   }
 
+  function getPlannedProgress(start: Date, end: Date, now: Date): number {
+    const totalMs = end.getTime() - start.getTime()
+    if (totalMs <= 0) return 0
+    const elapsedMs = now.getTime() - start.getTime()
+    if (elapsedMs <= 0) return 0
+    if (elapsedMs >= totalMs) return 100
+    return Math.round((elapsedMs / totalMs) * 100)
+  }
+
+  const tasks = projectIds.length > 0
+    ? await prisma.task.findMany({
+        where: {
+          deliverable: { project_id: { in: projectIds } },
+        },
+        select: {
+          created_at: true,
+          due_date: true,
+          status: true,
+          actual_end: true,
+          completed_at: true,
+          deliverable: { select: { project_id: true } },
+        },
+      })
+    : []
+
+  const tasksByProject = new Map<number, typeof tasks>()
+  for (const t of tasks) {
+    const pid = t.deliverable?.project_id
+    if (!pid) continue
+    if (!tasksByProject.has(pid)) tasksByProject.set(pid, [])
+    tasksByProject.get(pid)!.push(t)
+  }
+
+  const now = new Date()
   const projectsWithProgress = projects.map(p => {
     const stats = taskMap.get(p.id)
     const computedProgress = stats && Number(stats.total) > 0
@@ -117,7 +151,68 @@ export default async function DashboardPage() {
       assigned: monthlyAssignedMap.get(p.id)?.get(m) ?? 0,
       completed: monthlyCompletedMap.get(p.id)?.get(m) ?? 0,
     }))
-    return { ...p, computedProgress, computedStatus, monthlyData }
+    const projectTasks = tasksByProject.get(p.id) ?? []
+    const totalAssigned = monthlyData.reduce((s, m) => s + m.assigned, 0)
+    const totalCompleted = monthlyData.reduce((s, m) => s + m.completed, 0)
+    const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null
+    const netFlow = totalCompleted - totalAssigned
+    const backlogTrend = netFlow > 0 ? 'Shrinking' : netFlow < 0 ? 'Growing' : 'Stable'
+
+    const totalOnTimeCompleted = projectTasks.filter(t => {
+      if (t.status !== 'Done') return false
+      const doneAt = t.actual_end ?? t.completed_at
+      if (!doneAt) return false
+      if (!t.due_date) return true
+      return doneAt <= t.due_date
+    }).length
+    const totalLateCompleted = projectTasks.filter(t => {
+      if (t.status !== 'Done') return false
+      const doneAt = t.actual_end ?? t.completed_at
+      if (!doneAt || !t.due_date) return false
+      return doneAt > t.due_date
+    }).length
+    const timedCompleted = totalOnTimeCompleted + totalLateCompleted
+    const onTimeCompletionRate = timedCompleted > 0 ? Math.round((totalOnTimeCompleted / timedCompleted) * 100) : null
+
+    const baselineCutoff = new Date(p.start_date.getTime() + 14 * 86400000)
+    const baselineTaskCount = projectTasks.filter(t => t.created_at <= baselineCutoff).length
+    const addedAfterBaselineCount = projectTasks.filter(t => t.created_at > baselineCutoff).length
+    const totalScopeCount = baselineTaskCount + addedAfterBaselineCount
+    const scopeVolatility = totalScopeCount > 0 ? Math.round((addedAfterBaselineCount / totalScopeCount) * 100) : null
+
+    const latestOverdueOpen = projectTasks.filter(t => {
+      if (!t.due_date) return false
+      const doneAt = t.actual_end ?? t.completed_at
+      return t.due_date <= now && (!doneAt || doneAt > now)
+    }).length
+    const scheduleVariance = computedProgress - getPlannedProgress(p.start_date, p.deadline, now)
+    const isOverdue = computedStatus !== 'Done' && p.deadline < now
+    const computedHealthStatus = (() => {
+      if (computedStatus === 'Done') return null
+      if (isOverdue) return 'overdue'
+      if (scheduleVariance <= -20 || latestOverdueOpen >= 3) return 'delayed'
+      if (
+        scheduleVariance <= -5 ||
+        netFlow < 0 ||
+        latestOverdueOpen > 0 ||
+        (completionRate !== null && completionRate < 80)
+      ) return 'at_risk'
+      return 'on_track'
+    })()
+
+    return {
+      ...p,
+      computedProgress,
+      computedStatus,
+      scheduleVariance,
+      computedHealthStatus,
+      completionRate,
+      netFlow,
+      backlogTrend,
+      onTimeCompletionRate,
+      scopeVolatility,
+      monthlyData,
+    }
   })
 
   return (

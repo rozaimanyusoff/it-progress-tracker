@@ -11,6 +11,88 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-23 — Project Performance Metrics, Dashboard KPI Cards, Roles Persistence, Cron Scheduling
+
+### Diubah
+
+**Projects > list view**
+- Label seksyen row detail ditukar daripada `Analysis` kepada `Project Performance`.
+- `Tasks (Monthly)` dipindahkan ke dalam container `Project Performance` (bukan kolum utama table).
+- Kolum `SV` ditambah pada row utama projek.
+- Card KPI dalam `Project Performance` ditambah tooltip penerangan (`General` + `Current`) per metrik.
+- Ikon info KPI ditukar kepada `?` dan diposisikan di penjuru top-right border card.
+- Styling KPI card dikemas kini (`bg-gray-50` + dark fallback).
+
+**Dashboard > project cards**
+- Badge health kini guna `computedHealthStatus` (berdasarkan SV/flow) bagi elak konflik `On Track` palsu.
+- Seksyen `Tasks (Monthly)` diganti dengan KPI cards ringkas.
+- Nilai `SV` dipaparkan pada header card projek.
+
+**Settings > Roles**
+- Butang `Save Role Permissions` dan `Reset Default` dibuang.
+- Checkbox permissions ditukar kepada auto-save (debounce) + status kecil `Saving changes...`.
+- Loader roles diperbaiki supaya semua role custom daripada `role_preferences` dimuat semula selepas refresh.
+
+### Ditambah
+
+**Projects API enrichment (`GET /api/projects`)**
+- Tambah metrik `monthlyData` lanjutan:
+  - `onTimeCompleted`, `lateCompleted`, `overdueOpen`.
+- Tambah metrik agregat:
+  - `completionRate`, `netFlow`, `backlogTrend`,
+  - `onTimeCompletionRate`,
+  - `scopeVolatility` (berdasarkan baseline 14 hari dari start project).
+- Tambah `computedHealthStatus` yang diselaraskan dengan metrik semasa:
+  - mempertimbangkan `SV`, `netFlow`, `overdueOpen`, `completionRate`.
+
+**Projects chart enhancement**
+- Chart task bulanan dinaik taraf kepada combo:
+  - Bar: `Assigned`, `Completed (On-time)`, `Completed (Late)`
+  - Line: `Overdue Open`, `Completion Rate`.
+- Custom tooltip chart dibina semula (portal-based) untuk elak clipping container.
+- Axis/layout chart dituning untuk alignment kiri + spacing edge yang lebih seimbang.
+
+**Dashboard server-side metrics (`/dashboard/page.tsx`)**
+- Dashboard kini mengira metrik sama seperti projects list:
+  - `scheduleVariance`, `computedHealthStatus`, `completionRate`, `netFlow`,
+  - `backlogTrend`, `onTimeCompletionRate`, `scopeVolatility`.
+
+**Role persistence model enhancement**
+- `User.display_role` ditambah pada Prisma schema untuk simpan role paparan/custom secara terus di row user.
+- API admin users (`/api/admin/users`, `/api/admin/users/[id]`) dikemas kini untuk write/read `display_role`.
+- Migration ditambah:
+  - `prisma/migrations/20260423030000_add_user_display_role/migration.sql`.
+
+**Automation/Cron foundation**
+- Endpoint cron runner ditambah:
+  - `POST /api/cron/run` dengan job `backup | pending-notify | all`.
+- Security:
+  - sokong header `x-cron-secret` (`CRON_SECRET`) + fallback manager session untuk manual run.
+- Job scheduler controls ditambah dalam settings:
+  - `cron_backup_enabled`,
+  - `cron_pending_notify_enabled`,
+  - `cron_backup_day`, `cron_backup_time`,
+  - `cron_pending_notify_day`, `cron_pending_notify_time`,
+  - `cron_timezone`,
+  - dedupe slots: `cron_backup_last_run_slot`, `cron_pending_last_run_slot`.
+- Settings UI (`Backup & Restore`) ditambah:
+  - toggle on/off kedua job,
+  - day selector (kini checkbox multi-day untuk kedua job),
+  - day + time disediakan untuk `backup` dan `pending notify`,
+  - time + timezone fields,
+  - manual run buttons untuk test job.
+- Email function baharu:
+  - `sendWeeklyPendingTasksReminder()` untuk weekly pending task reminder kepada owner.
+
+### Diperbaiki
+
+- Isu `On Track` mengelirukan apabila `SV` negatif / flow buruk telah diselesaikan pada Projects list & Dashboard.
+- Isu role custom hilang selepas refresh tab Roles diperbaiki (state hydrate semua role dari settings).
+- Isu tooltip chart tidak muncul/terpotong diperbaiki dengan custom tooltip flow.
+- Issue type mismatch selepas tambah field Prisma diselesaikan dengan regenerate Prisma Client.
+
+---
+
 ## 2026-04-23 — Settings Roles Integration + Projects Table Monthly Task Graph
 
 ### Diubah

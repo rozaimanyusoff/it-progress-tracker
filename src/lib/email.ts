@@ -175,6 +175,50 @@ export async function sendTaskApproved(
   })
 }
 
+export async function sendWeeklyPendingTasksReminder(
+  memberEmail: string,
+  memberName: string,
+  tasks: Array<{ title: string; project: string; dueDate: string; status: string }>,
+) {
+  if (!tasks.length) return
+  const rows = tasks
+    .slice(0, 20)
+    .map((t) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #e5e7eb;">${t.title}</td>
+        <td style="padding:8px;border:1px solid #e5e7eb;">${t.project}</td>
+        <td style="padding:8px;border:1px solid #e5e7eb;">${t.status}</td>
+        <td style="padding:8px;border:1px solid #e5e7eb;">${t.dueDate}</td>
+      </tr>
+    `)
+    .join('')
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',
+    to: memberEmail,
+    subject: `Weekly pending tasks reminder (${tasks.length})`,
+    html: `
+      <div style="font-family:sans-serif;max-width:640px;margin:0 auto;">
+        <h2 style="color:#1d4ed8;">Weekly Pending Tasks</h2>
+        <p>Hi <strong>${memberName}</strong>,</p>
+        <p>You currently have <strong>${tasks.length}</strong> pending task(s).</p>
+        <table style="border-collapse:collapse;width:100%;margin:16px 0;">
+          <thead>
+            <tr>
+              <th style="padding:8px;background:#f3f4f6;text-align:left;border:1px solid #e5e7eb;">Task</th>
+              <th style="padding:8px;background:#f3f4f6;text-align:left;border:1px solid #e5e7eb;">Project</th>
+              <th style="padding:8px;background:#f3f4f6;text-align:left;border:1px solid #e5e7eb;">Status</th>
+              <th style="padding:8px;background:#f3f4f6;text-align:left;border:1px solid #e5e7eb;">Due</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p style="color:#6b7280;font-size:13px;">Please review and update these tasks in IT Tracker.</p>
+      </div>
+    `,
+  })
+}
+
 export async function sendExportEmail(recipients: string[], month: string, pptxBuffer: Buffer) {
   await transporter.sendMail({
     from: process.env.SMTP_FROM || 'IT Tracker <noreply@it.local>',

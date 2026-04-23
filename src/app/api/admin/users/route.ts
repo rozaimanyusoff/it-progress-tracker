@@ -32,6 +32,7 @@ export async function GET() {
         name: true,
         email: true,
         role: true,
+        display_role: true,
         is_active: true,
         created_at: true,
         unit_id: true,
@@ -48,7 +49,7 @@ export async function GET() {
   return NextResponse.json(
     users.map((u) => ({
       ...u,
-      role: roleOverrides[String(u.id)] || u.role,
+      role: u.display_role || roleOverrides[String(u.id)] || u.role,
     }))
   )
 }
@@ -74,12 +75,14 @@ export async function POST(req: NextRequest) {
 
   const requestedRole = typeof role === 'string' ? role : 'member'
   const systemRole = requestedRole === 'manager' || requestedRole === 'member' ? requestedRole : 'member'
+  const displayRole = requestedRole === 'manager' || requestedRole === 'member' ? null : requestedRole
 
   const user = await prisma.user.create({
     data: {
       name,
       email,
       role: systemRole as any,
+      display_role: displayRole,
       is_active: false,
       activation_token: token,
       activation_token_expiry: expiry,

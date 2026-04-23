@@ -99,6 +99,49 @@ export async function GET(req: NextRequest) {
     return labels
   }
 
+  function getPlannedProgress(start: Date, end: Date, now: Date): number {
+    const totalMs = end.getTime() - start.getTime()
+    if (totalMs <= 0) return 0
+    const elapsedMs = now.getTime() - start.getTime()
+    if (elapsedMs <= 0) return 0
+    if (elapsedMs >= totalMs) return 100
+    return Math.round((elapsedMs / totalMs) * 100)
+  }
+
+  function monthKey(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+
+  function endOfMonth(month: string): Date {
+    const [yy, mm] = month.split('-').map(Number)
+    return new Date(yy, mm, 0, 23, 59, 59, 999)
+  }
+
+  const tasks = projectIds.length > 0
+    ? await prisma.task.findMany({
+        where: {
+          deliverable: { project_id: { in: projectIds } },
+        },
+        select: {
+          created_at: true,
+          due_date: true,
+          status: true,
+          actual_end: true,
+          completed_at: true,
+          deliverable: { select: { project_id: true } },
+        },
+      })
+    : []
+
+  const tasksByProject = new Map<number, typeof tasks>()
+  for (const t of tasks) {
+    const pid = t.deliverable?.project_id
+    if (!pid) continue
+    if (!tasksByProject.has(pid)) tasksByProject.set(pid, [])
+    tasksByProject.get(pid)!.push(t)
+  }
+
+  const now = new Date()
   const result = projects.map(p => {
     const stats = taskMap.get(p.id)
     const computedProgress = stats && Number(stats.total) > 0
@@ -111,12 +154,91 @@ export async function GET(req: NextRequest) {
       return p.status
     })()
     const monthLabels = getMonthLabels(p.start_date, p.deadline)
+    const monthSet = new Set(monthLabels)
+    const projectTasks = tasksByProject.get(p.id) ?? []
+    const onTimeCompletedMap = new Map<string, number>()
+    const lateCompletedMap = new Map<string, number>()
+    const overdueOpenMap = new Map<string, number>()
+
+    for (const t of projectTasks) {
+      const doneAt = (t.actual_end ?? t.completed_at) ?? null
+      if (t.status === 'Done' && doneAt) {
+        const doneMonth = monthKey(doneAt)
+        if (!monthSet.has(doneMonth)) continue
+        if (t.due_date && doneAt > t.due_date) {
+          lateCompletedMap.set(doneMonth, (lateCompletedMap.get(doneMonth) ?? 0) + 1)
+        } else {
+          onTimeCompletedMap.set(doneMonth, (onTimeCompletedMap.get(doneMonth) ?? 0) + 1)
+        }
+      }
+    }
+
+    for (const m of monthLabels) {
+      const monthEnd = endOfMonth(m)
+      let overdueOpen = 0
+      for (const t of projectTasks) {
+        if (!t.due_date) continue
+        if (t.created_at > monthEnd) continue
+        const doneAt = (t.actual_end ?? t.completed_at) ?? null
+        if (t.due_date <= monthEnd && (!doneAt || doneAt > monthEnd)) overdueOpen += 1
+      }
+      overdueOpenMap.set(m, overdueOpen)
+    }
+
     const monthlyData = monthLabels.map(m => ({
       month: new Date(m + '-02').toLocaleDateString('en-MY', { month: 'short', year: '2-digit' }),
       assigned: monthlyAssignedMap.get(p.id)?.get(m) ?? 0,
       completed: monthlyCompletedMap.get(p.id)?.get(m) ?? 0,
+      onTimeCompleted: onTimeCompletedMap.get(m) ?? 0,
+      lateCompleted: lateCompletedMap.get(m) ?? 0,
+      overdueOpen: overdueOpenMap.get(m) ?? 0,
     }))
-    return { ...p, computedProgress, computedStatus, monthlyData }
+
+    const totalOnTimeCompleted = monthlyData.reduce((s, m) => s + m.onTimeCompleted, 0)
+    const totalLateCompleted = monthlyData.reduce((s, m) => s + m.lateCompleted, 0)
+    const totalCompletedWithTiming = totalOnTimeCompleted + totalLateCompleted
+    const onTimeCompletionRate = totalCompletedWithTiming > 0
+      ? Math.round((totalOnTimeCompleted / totalCompletedWithTiming) * 100)
+      : null
+
+    // Scope volatility: tasks introduced after a 14-day baseline window from project start.
+    const baselineCutoff = new Date(p.start_date.getTime() + 14 * 86400000)
+    const baselineTaskCount = projectTasks.filter(t => t.created_at <= baselineCutoff).length
+    const addedAfterBaselineCount = projectTasks.filter(t => t.created_at > baselineCutoff).length
+    const totalScopeCount = baselineTaskCount + addedAfterBaselineCount
+    const scopeVolatility = totalScopeCount > 0
+      ? Math.round((addedAfterBaselineCount / totalScopeCount) * 100)
+      : null
+
+    const totalAssigned = monthlyData.reduce((s, m) => s + m.assigned, 0)
+    const totalCompleted = monthlyData.reduce((s, m) => s + m.completed, 0)
+    const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null
+    const netFlow = totalCompleted - totalAssigned
+    const latestOverdueOpen = monthlyData.length > 0 ? (monthlyData[monthlyData.length - 1].overdueOpen ?? 0) : 0
+    const scheduleVariance = computedProgress - getPlannedProgress(p.start_date, p.deadline, now)
+    const isOverdue = computedStatus !== 'Done' && p.deadline < now
+    const computedHealthStatus = (() => {
+      if (computedStatus === 'Done') return null
+      if (isOverdue) return 'overdue'
+      if (scheduleVariance <= -20 || latestOverdueOpen >= 3) return 'delayed'
+      if (
+        scheduleVariance <= -5 ||
+        netFlow < 0 ||
+        latestOverdueOpen > 0 ||
+        (completionRate !== null && completionRate < 80)
+      ) return 'at_risk'
+      return 'on_track'
+    })()
+
+    return {
+      ...p,
+      computedProgress,
+      computedStatus,
+      computedHealthStatus,
+      onTimeCompletionRate,
+      scopeVolatility,
+      monthlyData,
+    }
   })
 
   return NextResponse.json(result)

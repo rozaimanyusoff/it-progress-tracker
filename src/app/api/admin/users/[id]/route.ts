@@ -101,6 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const requestedRole = String(body.role)
     const systemRole = requestedRole === 'manager' || requestedRole === 'member' ? requestedRole : 'member'
     data.role = systemRole
+    data.display_role = requestedRole === 'manager' || requestedRole === 'member' ? null : requestedRole
 
     const overrides = await getRoleOverrides()
     if (requestedRole === 'manager' || requestedRole === 'member') {
@@ -125,7 +126,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     where: { id: userId },
     data,
     select: {
-      id: true, name: true, email: true, role: true, is_active: true,
+      id: true, name: true, email: true, role: true, display_role: true, is_active: true,
       unit_id: true, dept_id: true, company_id: true,
       unit: { select: { id: true, name: true } },
       department: { select: { id: true, name: true } },
@@ -147,7 +148,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json({
     ...updated,
-    role: roleOverrides[String(updated.id)] || updated.role,
+    role: updated.display_role || roleOverrides[String(updated.id)] || updated.role,
   })
 }
 

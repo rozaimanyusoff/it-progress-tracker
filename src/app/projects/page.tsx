@@ -1,21 +1,32 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLayout from '@/components/Layout'
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { ComposedChart, Bar, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { createPortal } from 'react-dom'
 
 // ── Types ─────────────────────────────────────────────────────────
 type Project = {
   id: number; title: string; description: string | null; status: string
   start_date: string; deadline: string
   health_status?: string | null
+  computedHealthStatus?: 'on_track' | 'at_risk' | 'delayed' | 'overdue' | null
+  onTimeCompletionRate?: number | null
+  scopeVolatility?: number | null
   assignees: { user: { id: number; name: string; email: string } }[]
   updates: { progress_pct: number }[]
   _count: { issues: number }
   computedProgress: number
   computedStatus: string
-  monthlyData?: { month: string; assigned: number; completed: number }[]
+  monthlyData?: {
+    month: string
+    assigned: number
+    completed: number
+    onTimeCompleted: number
+    lateCompleted: number
+    overdueOpen: number
+  }[]
 }
 type Feature = {
   id: number; title: string; description: string | null; mandays: number
@@ -68,22 +79,218 @@ const STATUS_LABEL: Record<string, string> = {
   Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
 }
 
-function MonthlyComboChart({ data }: { data: { month: string; assigned: number; completed: number }[] }) {
-  const hasData = data.some(d => d.assigned > 0 || d.completed > 0)
-  if (!hasData) return <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No task data</p>
+function KPIInfoCard({
+  label,
+  value,
+  valueClassName,
+  generalExplanation,
+  currentExplanation,
+}: {
+  label: string
+  value: string
+  valueClassName: string
+  generalExplanation: string
+  currentExplanation: string
+}) {
   return (
-    <ResponsiveContainer width="100%" height={54}>
-      <ComposedChart data={data} barSize={8} margin={{ top: 4, right: 2, bottom: 0, left: -24 }}>
-        <XAxis dataKey="month" tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-        <YAxis tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-        <Tooltip
-          contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
-          formatter={(v: unknown, name: unknown) => [`${v} tasks`, name === 'completed' ? 'Completed' : 'Assigned'] as [string, string]}
-        />
-        <Bar dataKey="completed" fill="#22c55e" radius={[3, 3, 0, 0]} />
-        <Line dataKey="assigned" type="monotone" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
-      </ComposedChart>
-    </ResponsiveContainer>
+    <div className="rounded-md border border-slate-200 dark:border-navy-700 bg-gray-50 dark:bg-navy-900/40 px-2 py-2 relative">
+      <div className="relative group">
+        <span
+          className="absolute -top-2 -right-2 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800 text-[10px] font-semibold text-slate-600 dark:text-slate-300 cursor-help"
+          title={`General: ${generalExplanation}\nCurrent: ${currentExplanation}`}
+        >
+          ?
+        </span>
+        <div className="pointer-events-none hidden group-hover:block absolute right-0 top-4 z-40 w-64 rounded-md border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg p-2">
+          <p className="text-[10px] text-slate-500 dark:text-slate-400"><span className="font-semibold">General:</span> {generalExplanation}</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-300 mt-1"><span className="font-semibold">Current:</span> {currentExplanation}</p>
+        </div>
+      </div>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</p>
+      </div>
+      <p className={`text-xs font-semibold mt-1 ${valueClassName}`}>{value}</p>
+    </div>
+  )
+}
+
+function MonthlyComboChart({
+  data,
+}: {
+  data: {
+    month: string
+    assigned: number
+    completed: number
+    onTimeCompleted: number
+    lateCompleted: number
+    overdueOpen: number
+  }[]
+}) {
+  const chartWrapRef = useRef<HTMLDivElement | null>(null)
+  const [mounted, setMounted] = useState(false)
+  const [tooltipState, setTooltipState] = useState<{
+    left: number
+    top: number
+    label: string
+    items: { name: string; value: string; color: string }[]
+  } | null>(null)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  const enrichedData = data.map(d => ({
+    ...d,
+    completionRate: d.assigned > 0 ? Math.round((d.completed / d.assigned) * 100) : null,
+  }))
+  const hasData = enrichedData.some(d =>
+    d.assigned > 0 ||
+    d.onTimeCompleted > 0 ||
+    d.lateCompleted > 0 ||
+    d.overdueOpen > 0
+  )
+  if (!hasData) return <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No task data</p>
+
+  const activeIndexes = enrichedData
+    .map((d, idx) => ({
+      idx,
+      active: d.assigned > 0 || d.onTimeCompleted > 0 || d.lateCompleted > 0 || d.overdueOpen > 0,
+    }))
+    .filter(x => x.active)
+    .map(x => x.idx)
+
+  const firstActive = activeIndexes[0] ?? 0
+  const lastActive = activeIndexes[activeIndexes.length - 1] ?? (enrichedData.length - 1)
+  const chartData = enrichedData.slice(firstActive, lastActive + 1).map((d, idx) => ({ ...d, idx }))
+  const chartWidth = Math.max(chartData.length * 120, 520)
+  const xEdgePad = chartData.length <= 2 ? 0.18 : 0.1
+  const metricLabel: Record<string, string> = {
+    assigned: 'Assigned',
+    onTimeCompleted: 'Completed (On-time)',
+    lateCompleted: 'Completed (Late)',
+    overdueOpen: 'Overdue Open',
+    completionRate: 'Completion Rate',
+  }
+
+  return (
+    <div className="w-full overflow-visible">
+      <div className="overflow-x-auto">
+        <div ref={chartWrapRef} style={{ width: chartWidth, height: 136 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
+            data={chartData}
+            barSize={8}
+            margin={{ top: 4, right: 6, bottom: 0, left: 2 }}
+            onMouseMove={(state: any) => {
+              if (!state?.isTooltipActive || !chartWrapRef.current) {
+                setTooltipState(null)
+                return
+              }
+
+              const rect = chartWrapRef.current.getBoundingClientRect()
+              const activePayload = Array.isArray(state.activePayload) ? state.activePayload : []
+              const fallbackIndex = Number(state.activeTooltipIndex ?? -1)
+              const fallbackPoint = fallbackIndex >= 0 ? chartData[fallbackIndex] : null
+
+              const items = activePayload.length > 0
+                ? activePayload
+                    .filter((p: any) => p?.value !== null && p?.value !== undefined)
+                    .map((p: any) => {
+                      const key = String(p.dataKey ?? '')
+                      const val = key === 'completionRate' ? `${p.value}%` : `${p.value}`
+                      return {
+                        name: metricLabel[key] ?? key,
+                        value: val,
+                        color: String(p.color ?? '#e2e8f0'),
+                      }
+                    })
+                : (fallbackPoint ? [
+                    { name: 'Assigned', value: String(fallbackPoint.assigned ?? 0), color: '#f59e0b' },
+                    { name: 'Completed (On-time)', value: String(fallbackPoint.onTimeCompleted ?? 0), color: '#22c55e' },
+                    { name: 'Completed (Late)', value: String(fallbackPoint.lateCompleted ?? 0), color: '#ef4444' },
+                    { name: 'Overdue Open', value: String(fallbackPoint.overdueOpen ?? 0), color: '#0ea5e9' },
+                    { name: 'Completion Rate', value: `${fallbackPoint.completionRate ?? 0}%`, color: '#64748b' },
+                  ] : [])
+
+              if (items.length === 0) {
+                setTooltipState(null)
+                return
+              }
+
+              const left = rect.left + (state.activeCoordinate?.x ?? 0) + 14
+              const top = rect.top + (state.activeCoordinate?.y ?? 0) - 12
+              const pointLabel =
+                String(activePayload?.[0]?.payload?.month ?? fallbackPoint?.month ?? state.activeLabel ?? '')
+
+              setTooltipState({
+                left,
+                top,
+                label: pointLabel,
+                items,
+              })
+            }}
+            onMouseLeave={() => setTooltipState(null)}
+          >
+            <XAxis
+              type="number"
+              dataKey="idx"
+              domain={[-xEdgePad, Math.max(0, chartData.length - 1) + xEdgePad]}
+              ticks={chartData.map(d => d.idx)}
+              tickFormatter={(v: number) => chartData[v]?.month ?? ''}
+              tick={{ fontSize: 8, fill: '#94a3b8' }}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+              minTickGap={8}
+            />
+            <YAxis yAxisId="tasks" width={22} tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <YAxis yAxisId="rate" width={24} orientation="right" domain={[0, 100]} tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v}%`} />
+            <Tooltip content={() => null} cursor={false} />
+            <Bar yAxisId="tasks" dataKey="assigned" name="Assigned" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+            <Bar yAxisId="tasks" stackId="completed" dataKey="onTimeCompleted" name="Completed (On-time)" fill="#22c55e" radius={[3, 3, 0, 0]} />
+            <Bar yAxisId="tasks" stackId="completed" dataKey="lateCompleted" name="Completed (Late)" fill="#ef4444" radius={[3, 3, 0, 0]} />
+            <Line yAxisId="tasks" dataKey="overdueOpen" type="monotone" stroke="#0ea5e9" strokeWidth={1.5} dot={false} name="overdueOpen" />
+            <Line yAxisId="rate" dataKey="completionRate" type="monotone" stroke="#64748b" strokeWidth={1.5} dot={false} name="completionRate" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      </div>
+      <div className="mt-1 overflow-x-auto">
+        <div className="inline-flex min-w-max items-center gap-3 text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 bg-amber-500 inline-block" />Assigned</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 bg-red-500 inline-block" />Completed (Late)</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 bg-green-500 inline-block" />Completed (On-time)</span>
+          <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-slate-500" />Completion Rate</span>
+          <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-sky-500" />Overdue Open</span>
+        </div>
+      </div>
+      {mounted && tooltipState && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: `${Math.max(8, Math.min(window.innerWidth - 220, tooltipState.left))}px`,
+            top: `${Math.max(8, tooltipState.top)}px`,
+            transform: 'translateY(-100%)',
+            zIndex: 9999,
+            pointerEvents: 'none',
+            minWidth: 180,
+          }}
+          className="rounded-lg border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs text-slate-200 shadow-2xl"
+        >
+          <div className="mb-1 font-semibold text-slate-100">{tooltipState.label}</div>
+          <div className="space-y-1">
+            {tooltipState.items.map((it, idx) => (
+              <div key={`${it.name}-${idx}`} className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 text-slate-300">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: it.color }} />
+                  {it.name}
+                </span>
+                <span className="font-semibold text-slate-100">{it.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
   )
 }
 
@@ -111,6 +318,18 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
   }
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
+  const fmtSignedPct = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)}%`
+  const getPlannedProgress = (startDate: string, deadlineDate: string) => {
+    const start = new Date(startDate)
+    const deadline = new Date(deadlineDate)
+    const totalMs = deadline.getTime() - start.getTime()
+    if (totalMs <= 0) return 0
+
+    const elapsedMs = now.getTime() - start.getTime()
+    if (elapsedMs <= 0) return 0
+    if (elapsedMs >= totalMs) return 100
+    return Math.round((elapsedMs / totalMs) * 100)
+  }
   const now = new Date()
 
   return (
@@ -122,14 +341,14 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
         </button>
       </div>
 
-      <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden">
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-x-hidden overflow-y-visible">
         {/* Table header */}
         <div className="grid bg-slate-50 dark:bg-navy-900 border-b border-slate-200 dark:border-navy-700 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"
-          style={{ gridTemplateColumns: '2fr 1fr 160px 190px 1fr 100px 110px 60px 72px' }}>
+          style={{ gridTemplateColumns: '2fr 1fr 160px 72px 1fr 100px 110px 60px 72px' }}>
           <span>Project</span>
           <span>Status</span>
           <span>Progress</span>
-          <span>Tasks (Monthly)</span>
+          <span>SV</span>
           <span>Team</span>
           <span>Start</span>
           <span>Deadline</span>
@@ -141,108 +360,237 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
         {projects.map((p, i) => {
           const deadline = new Date(p.deadline)
           const progress = p.computedProgress ?? 0
+          const plannedProgress = getPlannedProgress(p.start_date, p.deadline)
+          const scheduleVariance = progress - plannedProgress
+          const flowData = p.monthlyData ?? []
+          const totalAssigned = flowData.reduce((sum, m) => sum + (m.assigned ?? 0), 0)
+          const totalCompleted = flowData.reduce((sum, m) => sum + (m.completed ?? 0), 0)
+          const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null
+          const netFlow = totalCompleted - totalAssigned
+          const backlogTrend = netFlow > 0 ? 'Shrinking' : netFlow < 0 ? 'Growing' : 'Stable'
           const overdue = p.computedStatus !== 'Done' && deadline < now
+          const latestOverdueOpen = flowData.length > 0 ? (flowData[flowData.length - 1].overdueOpen ?? 0) : 0
+          const displayHealthStatus: 'on_track' | 'at_risk' | 'delayed' | 'overdue' | null = (
+            p.computedHealthStatus ?? (
+              p.computedStatus === 'Done'
+                ? null
+                : overdue
+                  ? 'overdue'
+                  : (scheduleVariance <= -20 || latestOverdueOpen >= 3)
+                    ? 'delayed'
+                    : (
+                      scheduleVariance <= -5 ||
+                      netFlow < 0 ||
+                      latestOverdueOpen > 0 ||
+                      (completionRate !== null && completionRate < 80)
+                    )
+                      ? 'at_risk'
+                      : 'on_track'
+            )
+          )
           const isLast = i === projects.length - 1
 
           return (
             <div
               key={p.id}
-              className={`grid items-center px-4 py-3 gap-3 hover:bg-slate-50 dark:hover:bg-navy-800/60 transition-colors ${!isLast ? 'border-b border-slate-100 dark:border-navy-700' : ''}`}
-              style={{ gridTemplateColumns: '2fr 1fr 160px 190px 1fr 100px 110px 60px 72px' }}
+              className={`${!isLast ? 'border-b border-slate-100 dark:border-navy-700' : ''}`}
             >
-              {/* Project title + description */}
-              <div className="min-w-0">
-                <p className="font-semibold text-sm text-slate-900 dark:text-white truncate leading-snug">{p.title}</p>
-                {p.description && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{p.description}</p>
-                )}
-              </div>
-
-              {/* Status + health */}
-              <div className="flex flex-col gap-1 items-start">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLOR[p.computedStatus] ?? STATUS_COLOR.Pending}`}>
-                  {STATUS_LABEL[p.computedStatus] ?? p.computedStatus}
-                </span>
-                {p.health_status && p.computedStatus !== 'Done' && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
-                    p.health_status === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                    p.health_status === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                    p.health_status === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                    'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
-                  }`}>
-                    {p.health_status === 'on_track' ? '🟢 On Track' :
-                     p.health_status === 'at_risk' ? '🟡 At Risk' :
-                     p.health_status === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
-                  </span>
-                )}
-              </div>
-
-              {/* Progress bar */}
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-slate-500 dark:text-slate-400">{progress}%</span>
-                  {overdue && <span className="text-red-400 font-medium text-[10px]">Overdue</span>}
-                </div>
-                <div className="h-1.5 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${overdue ? 'bg-red-500' : progress >= 100 ? 'bg-green-500' : 'bg-primary'}`}
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Tasks monthly chart */}
-              <div className="min-w-[170px]">
-                <MonthlyComboChart data={p.monthlyData ?? []} />
-              </div>
-
-              {/* Team avatars */}
-              <div className="flex -space-x-1.5">
-                {p.assignees.slice(0, 5).map(a => (
-                  <div
-                    key={a.user.id}
-                    title={a.user.name}
-                    className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800 shrink-0"
-                  >
-                    {a.user.name[0].toUpperCase()}
-                  </div>
-                ))}
-                {p.assignees.length > 5 && (
-                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-navy-600 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800 shrink-0">
-                    +{p.assignees.length - 5}
-                  </div>
-                )}
-                {p.assignees.length === 0 && (
-                  <span className="text-xs text-slate-300 dark:text-slate-600 italic">—</span>
-                )}
-              </div>
-
-              {/* Start date */}
-              <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(p.start_date)}</span>
-
-              {/* Deadline */}
-              <span className={`text-xs whitespace-nowrap font-medium ${overdue ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
-                {fmtDate(p.deadline)}
-              </span>
-
-              {/* Issues */}
-              <div>
-                {p._count.issues > 0 ? (
-                  <span className="flex items-center gap-1 text-xs font-semibold text-red-500">
-                    <span>⚠</span>{p._count.issues}
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
-                )}
-              </div>
-
-              {/* Action */}
-              <button
-                onClick={() => router.push(`/projects/${p.id}`)}
-                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
+              <div
+                className="grid items-center px-4 py-3 gap-3 hover:bg-slate-50 dark:hover:bg-navy-800/60 transition-colors"
+                style={{ gridTemplateColumns: '2fr 1fr 160px 72px 1fr 100px 110px 60px 72px' }}
               >
-                View
-              </button>
+                {/* Project title + description */}
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-slate-900 dark:text-white truncate leading-snug">{p.title}</p>
+                  {p.description && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{p.description}</p>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div className="flex items-start">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLOR[p.computedStatus] ?? STATUS_COLOR.Pending}`}>
+                    {STATUS_LABEL[p.computedStatus] ?? p.computedStatus}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-slate-500 dark:text-slate-400">{progress}%</span>
+                    {overdue && <span className="text-red-400 font-medium text-[10px]">Overdue</span>}
+                  </div>
+                  <div className="h-1.5 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${overdue ? 'bg-red-500' : progress >= 100 ? 'bg-green-500' : 'bg-primary'}`}
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Schedule variance */}
+                <div className="text-xs font-semibold">
+                  <span className={
+                    scheduleVariance > 0
+                      ? 'text-green-600 dark:text-green-400'
+                      : scheduleVariance < 0
+                        ? 'text-red-500 dark:text-red-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                  }>
+                    {fmtSignedPct(scheduleVariance)}
+                  </span>
+                </div>
+
+                {/* Team avatars */}
+                <div className="flex -space-x-1.5">
+                  {p.assignees.slice(0, 5).map(a => (
+                    <div
+                      key={a.user.id}
+                      title={a.user.name}
+                      className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800 shrink-0"
+                    >
+                      {a.user.name[0].toUpperCase()}
+                    </div>
+                  ))}
+                  {p.assignees.length > 5 && (
+                    <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-navy-600 text-slate-500 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-navy-800 shrink-0">
+                      +{p.assignees.length - 5}
+                    </div>
+                  )}
+                  {p.assignees.length === 0 && (
+                    <span className="text-xs text-slate-300 dark:text-slate-600 italic">—</span>
+                  )}
+                </div>
+
+                {/* Start date */}
+                <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{fmtDate(p.start_date)}</span>
+
+                {/* Deadline */}
+                <span className={`text-xs whitespace-nowrap font-medium ${overdue ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {fmtDate(p.deadline)}
+                </span>
+
+                {/* Issues */}
+                <div>
+                  {p._count.issues > 0 ? (
+                    <span className="flex items-center gap-1 text-xs font-semibold text-red-500">
+                      <span>⚠</span>{p._count.issues}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                  )}
+                </div>
+
+                {/* Action */}
+                <button
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                  className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
+                >
+                  View
+                </button>
+              </div>
+
+              <div className="px-4 pb-3">
+                <div className="rounded-lg border border-slate-100 dark:border-navy-700 bg-slate-50/80 dark:bg-navy-900/50 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
+                    <span className="text-slate-400 dark:text-slate-500 uppercase tracking-wide font-semibold">Project Performance</span>
+                    {displayHealthStatus && (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
+                        displayHealthStatus === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                        displayHealthStatus === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                        displayHealthStatus === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                        'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
+                      }`}>
+                        {displayHealthStatus === 'on_track' ? '🟢 On Track' :
+                         displayHealthStatus === 'at_risk' ? '🟡 At Risk' :
+                         displayHealthStatus === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
+                      </span>
+                    )}
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Planned {plannedProgress}% vs Actual {progress}% (SV {fmtSignedPct(scheduleVariance)})
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_300px] items-start">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">Tasks Monthly</p>
+                      <MonthlyComboChart data={flowData} />
+                    </div>
+                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+                      <KPIInfoCard
+                        label="Completion Rate"
+                        value={completionRate != null ? `${completionRate}%` : '—'}
+                        valueClassName="text-slate-700 dark:text-slate-200"
+                        generalExplanation="Completed tasks as a percentage of assigned tasks. Higher means better delivery throughput."
+                        currentExplanation={
+                          completionRate == null ? 'No assigned tasks yet.' :
+                            completionRate >= 100 ? 'All assigned tasks have been completed.' :
+                            completionRate >= 80 ? 'Healthy throughput with manageable carry-over.' :
+                            'Completion is lagging behind assignment; backlog risk is increasing.'
+                        }
+                      />
+                      <KPIInfoCard
+                        label="Net Flow"
+                        value={`${netFlow > 0 ? '+' : ''}${netFlow}`}
+                        valueClassName={netFlow > 0 ? 'text-green-600 dark:text-green-400' : netFlow < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}
+                        generalExplanation="Completed minus assigned tasks. Positive means backlog is shrinking; negative means it is growing."
+                        currentExplanation={
+                          netFlow > 0 ? 'Team is burning down backlog faster than new scope arrives.' :
+                            netFlow < 0 ? 'New scope is arriving faster than completion.' :
+                            'Flow is balanced; backlog size is stable.'
+                        }
+                      />
+                      <KPIInfoCard
+                        label="Backlog Trend"
+                        value={backlogTrend}
+                        valueClassName={backlogTrend === 'Shrinking' ? 'text-green-600 dark:text-green-400' : backlogTrend === 'Growing' ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}
+                        generalExplanation="Direction of outstanding work based on cumulative net flow over time."
+                        currentExplanation={
+                          backlogTrend === 'Shrinking' ? 'Outstanding tasks are trending down.' :
+                            backlogTrend === 'Growing' ? 'Outstanding tasks are trending up and need intervention.' :
+                            'Outstanding tasks are roughly flat.'
+                        }
+                      />
+                      <KPIInfoCard
+                        label="On-time Completion"
+                        value={p.onTimeCompletionRate != null ? `${p.onTimeCompletionRate}%` : '—'}
+                        valueClassName={
+                          (p.onTimeCompletionRate ?? -1) >= 90
+                            ? 'text-green-600 dark:text-green-400'
+                            : (p.onTimeCompletionRate ?? -1) >= 75
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : 'text-red-500 dark:text-red-400'
+                        }
+                        generalExplanation="Share of completed tasks finished on or before due date."
+                        currentExplanation={
+                          p.onTimeCompletionRate == null ? 'No completed tasks with due-date timing yet.' :
+                            p.onTimeCompletionRate >= 90 ? 'Delivery timing is very reliable.' :
+                            p.onTimeCompletionRate >= 75 ? 'Timing is acceptable but has slippage risk.' :
+                            'Frequent late completions; schedule control needs attention.'
+                        }
+                      />
+                      <KPIInfoCard
+                        label="Scope Volatility"
+                        value={p.scopeVolatility != null ? `${p.scopeVolatility}%` : '—'}
+                        valueClassName={
+                          (p.scopeVolatility ?? 0) <= 15
+                            ? 'text-green-600 dark:text-green-400'
+                            : (p.scopeVolatility ?? 0) <= 30
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : 'text-red-500 dark:text-red-400'
+                        }
+                        generalExplanation="Percentage of tasks added after the first 14 days of project baseline."
+                        currentExplanation={
+                          p.scopeVolatility == null ? 'No task baseline yet to measure scope change.' :
+                            p.scopeVolatility <= 15 ? 'Scope is stable and predictable.' :
+                            p.scopeVolatility <= 30 ? 'Moderate scope drift; monitor planning closely.' :
+                            'High scope churn; likely impact to schedule and flow.'
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )
         })}

@@ -12,6 +12,7 @@ model User {
   email                    String          @unique
   password_hash            String?
   role                     Role            @default(member)
+  display_role             String?         @db.VarChar(50)
   initials                 String?
   contact_number           String?
   avatar_url               String?

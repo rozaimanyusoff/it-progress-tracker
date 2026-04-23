@@ -393,6 +393,7 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [newRoleName, setNewRoleName] = useState('')
+  const initializedRef = useRef(false)
 
   useEffect(() => {
     fetch('/api/settings')
@@ -400,9 +401,19 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
       .then(s => {
         const incoming = s?.role_preferences
         if (incoming && typeof incoming === 'object') {
+          const loaded: RolePreferences = {}
+          for (const [roleName, rolePerms] of Object.entries(incoming as Record<string, Partial<CrudPermission>>)) {
+            loaded[roleName] = {
+              create: Boolean(rolePerms?.create),
+              update: Boolean(rolePerms?.update),
+              view: Boolean(rolePerms?.view),
+              delete: Boolean(rolePerms?.delete),
+            }
+          }
           setPrefs({
-            manager: { ...DEFAULT_ROLE_PREFERENCES.manager, ...(incoming.manager ?? {}) },
-            member: { ...DEFAULT_ROLE_PREFERENCES.member, ...(incoming.member ?? {}) },
+            ...loaded,
+            manager: { ...DEFAULT_ROLE_PREFERENCES.manager, ...(loaded.manager ?? {}) },
+            member: { ...DEFAULT_ROLE_PREFERENCES.member, ...(loaded.member ?? {}) },
           })
         } else {
           setPrefs(DEFAULT_ROLE_PREFERENCES)
@@ -411,6 +422,27 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
       })
       .catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (loading) return
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setSaving(true)
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role_preferences: prefs }),
+      })
+      setSaving(false)
+      if (!res.ok) showToast('error', 'Failed to auto-save role permissions')
+    }, 450)
+
+    return () => clearTimeout(timer)
+  }, [prefs, loading, showToast])
 
   function addRole() {
     const normalized = newRoleName.trim().toLowerCase().replace(/\s+/g, '_')
@@ -445,18 +477,6 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
     showToast('success', `Role "${role}" removed`)
   }
 
-  async function save() {
-    setSaving(true)
-    const res = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role_preferences: prefs }),
-    })
-    setSaving(false)
-    if (res.ok) showToast('success', 'Role permissions saved')
-    else showToast('error', 'Failed to save role permissions')
-  }
-
   if (loading) return <p className="text-slate-400 py-8 text-center">Loading...</p>
 
   const permissionKeys: Array<keyof CrudPermission> = ['create', 'update', 'view', 'delete']
@@ -472,6 +492,9 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
     <div className="space-y-5 max-w-4xl">
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Configure CRUD permissions by role. Current system roles are <span className="font-medium">manager</span> and <span className="font-medium">member</span>.
+      </p>
+      <p className="text-xs text-slate-400 dark:text-slate-500">
+        {saving ? 'Saving changes...' : 'Changes are saved automatically.'}
       </p>
 
       <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
@@ -545,21 +568,6 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : 'Save Role Permissions'}
-        </button>
-        <button
-          onClick={() => { setPrefs(DEFAULT_ROLE_PREFERENCES); setNewRoleName('') }}
-          className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg"
-        >
-          Reset Default
-        </button>
-      </div>
     </div>
   )
 }
@@ -1008,17 +1016,71 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
   const [backups, setBackups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [cronSaving, setCronSaving] = useState(false)
+  const [cronRunning, setCronRunning] = useState<'backup' | 'pending-notify' | null>(null)
   const [restoring, setRestoring] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null)
+  const [cronCfg, setCronCfg] = useState({
+    backupEnabled: false,
+    pendingNotifyEnabled: false,
+    backupDays: ['0', '1', '2', '3', '4', '5', '6'],
+    backupTime: '02:00',
+    pendingDays: ['1'],
+    pendingTime: '09:00',
+    timeZone: 'Asia/Kuala_Lumpur',
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dayOptions = [
+    { value: '1', label: 'Monday' },
+    { value: '2', label: 'Tuesday' },
+    { value: '3', label: 'Wednesday' },
+    { value: '4', label: 'Thursday' },
+    { value: '5', label: 'Friday' },
+    { value: '6', label: 'Saturday' },
+    { value: '0', label: 'Sunday' },
+  ]
+  const allDays = dayOptions.map(d => d.value)
+  const parseDays = (raw: unknown, fallback: string[]) => {
+    const val = String(raw ?? '').trim()
+    if (!val || val === '*') return [...allDays]
+    const picked = val.split(',').map(v => v.trim()).filter(v => allDays.includes(v))
+    return picked.length > 0 ? Array.from(new Set(picked)) : fallback
+  }
+  const serializeDays = (days: string[]) => {
+    const picked = Array.from(new Set(days.filter(d => allDays.includes(d))))
+    if (picked.length === 0 || picked.length === allDays.length) return '*'
+    return picked.join(',')
+  }
+  function toggleDay(target: 'backupDays' | 'pendingDays', day: string) {
+    setCronCfg(prev => {
+      const current = prev[target]
+      const exists = current.includes(day)
+      const next = exists ? current.filter(d => d !== day) : [...current, day]
+      return { ...prev, [target]: next.length ? next : [day] }
+    })
+  }
 
   function loadBackups() {
     setLoading(true)
     fetch('/api/backup').then(r => r.json()).then(d => { setBackups(d); setLoading(false) })
   }
 
-  useEffect(() => { loadBackups() }, [])
+  useEffect(() => {
+    loadBackups()
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(s => setCronCfg({
+        backupEnabled: Boolean(s?.cron_backup_enabled),
+        pendingNotifyEnabled: Boolean(s?.cron_pending_notify_enabled),
+        backupDays: parseDays(s?.cron_backup_day, [...allDays]),
+        backupTime: String(s?.cron_backup_time ?? '02:00'),
+        pendingDays: parseDays(s?.cron_pending_notify_day, ['1']),
+        pendingTime: String(s?.cron_pending_notify_time ?? '09:00'),
+        timeZone: String(s?.cron_timezone ?? 'Asia/Kuala_Lumpur'),
+      }))
+      .catch(() => { })
+  }, [])
 
   async function createBackup() {
     setCreating(true)
@@ -1051,6 +1113,48 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
     else showToast('error', (await res.json()).error ?? 'Restore failed')
   }
 
+  async function saveCronSettings() {
+    setCronSaving(true)
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cron_backup_enabled: cronCfg.backupEnabled,
+        cron_pending_notify_enabled: cronCfg.pendingNotifyEnabled,
+        cron_backup_day: serializeDays(cronCfg.backupDays),
+        cron_backup_time: cronCfg.backupTime,
+        cron_pending_notify_day: serializeDays(cronCfg.pendingDays),
+        cron_pending_notify_time: cronCfg.pendingTime,
+        cron_timezone: cronCfg.timeZone,
+      }),
+    })
+    setCronSaving(false)
+    if (res.ok) showToast('success', 'Automation settings saved')
+    else showToast('error', 'Failed to save automation settings')
+  }
+
+  async function runCronJob(job: 'backup' | 'pending-notify') {
+    setCronRunning(job)
+    const res = await fetch('/api/cron/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job, force: true }),
+    })
+    setCronRunning(null)
+    const payload = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      showToast('error', payload?.error || 'Cron run failed')
+      return
+    }
+    if (job === 'backup') {
+      showToast('success', payload?.result?.backup?.skipped ? `Backup skipped: ${payload?.result?.backup?.reason}` : 'Backup cron executed')
+      loadBackups()
+    } else {
+      const pn = payload?.result?.pendingNotify
+      showToast('success', pn?.skipped ? `Notify skipped: ${pn?.reason}` : `Pending notify sent to ${pn?.recipients ?? 0} owner(s)`)
+    }
+  }
+
   function formatSize(bytes: number) {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -1079,6 +1183,121 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
         </button>
         <input ref={fileInputRef} type="file" accept=".json" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; if (f) restoreFromFile(f); e.target.value = '' }} />
+      </div>
+
+      {/* Automation settings */}
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-4 mb-6 space-y-4">
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Automation (Cron)</p>
+        <label className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">Scheduled Backup</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Allow external cron to create automatic backup files.</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={cronCfg.backupEnabled}
+            onChange={(e) => setCronCfg(v => ({ ...v, backupEnabled: e.target.checked }))}
+            className="w-4 h-4 rounded border-slate-300 dark:border-navy-600 text-blue-600 focus:ring-blue-500"
+          />
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 -mt-2">
+          <div>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Backup day</label>
+            <div className="mt-1 grid grid-cols-2 gap-1.5 rounded-lg border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-900 p-2">
+              {dayOptions.map(d => (
+                <label key={`backup-day-${d.value}`} className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={cronCfg.backupDays.includes(d.value)}
+                    onChange={() => toggleDay('backupDays', d.value)}
+                    className="w-3.5 h-3.5 rounded border-slate-300 dark:border-navy-600 text-blue-600 focus:ring-blue-500"
+                  />
+                  {d.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Backup time</label>
+            <input
+              type="time"
+              value={cronCfg.backupTime}
+              onChange={(e) => setCronCfg(v => ({ ...v, backupTime: e.target.value }))}
+              className={`${inputClass} mt-1`}
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Timezone</label>
+            <input
+              value={cronCfg.timeZone}
+              onChange={(e) => setCronCfg(v => ({ ...v, timeZone: e.target.value }))}
+              className={`${inputClass} mt-1`}
+              placeholder="Asia/Kuala_Lumpur"
+            />
+          </div>
+        </div>
+        <label className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">Weekly Pending Task Reminder</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Allow external cron to send weekly pending-task email reminder to owners.</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={cronCfg.pendingNotifyEnabled}
+            onChange={(e) => setCronCfg(v => ({ ...v, pendingNotifyEnabled: e.target.checked }))}
+            className="w-4 h-4 rounded border-slate-300 dark:border-navy-600 text-blue-600 focus:ring-blue-500"
+          />
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 -mt-2">
+          <div>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Pending notify day</label>
+            <div className="mt-1 grid grid-cols-2 gap-1.5 rounded-lg border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-900 p-2">
+              {dayOptions.map(d => (
+                <label key={`pending-day-${d.value}`} className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={cronCfg.pendingDays.includes(d.value)}
+                    onChange={() => toggleDay('pendingDays', d.value)}
+                    className="w-3.5 h-3.5 rounded border-slate-300 dark:border-navy-600 text-blue-600 focus:ring-blue-500"
+                  />
+                  {d.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Pending notify time</label>
+            <input
+              type="time"
+              value={cronCfg.pendingTime}
+              onChange={(e) => setCronCfg(v => ({ ...v, pendingTime: e.target.value }))}
+              className={`${inputClass} mt-1`}
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            onClick={saveCronSettings}
+            disabled={cronSaving}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+          >
+            {cronSaving ? 'Saving...' : 'Save Automation Settings'}
+          </button>
+          <button
+            onClick={() => runCronJob('backup')}
+            disabled={cronRunning === 'backup'}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-navy-700 disabled:opacity-50"
+          >
+            {cronRunning === 'backup' ? 'Running...' : 'Run Backup Cron Now'}
+          </button>
+          <button
+            onClick={() => runCronJob('pending-notify')}
+            disabled={cronRunning === 'pending-notify'}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-navy-700 disabled:opacity-50"
+          >
+            {cronRunning === 'pending-notify' ? 'Running...' : 'Run Pending Notify Cron Now'}
+          </button>
+        </div>
       </div>
 
       {/* Backup list */}

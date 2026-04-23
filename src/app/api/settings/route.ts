@@ -49,6 +49,13 @@ export async function GET(req: NextRequest) {
     db_name: dbName,
     db_user: dbUser,
     role_preferences: rolePreferences,
+    cron_backup_enabled: settings.cron_backup_enabled === 'true',
+    cron_pending_notify_enabled: settings.cron_pending_notify_enabled === 'true',
+    cron_backup_day: settings.cron_backup_day ?? '*',
+    cron_backup_time: settings.cron_backup_time ?? '02:00',
+    cron_pending_notify_day: settings.cron_pending_notify_day ?? '1',
+    cron_pending_notify_time: settings.cron_pending_notify_time ?? '09:00',
+    cron_timezone: settings.cron_timezone ?? 'Asia/Kuala_Lumpur',
   })
 }
 
@@ -58,7 +65,17 @@ export async function POST(req: NextRequest) {
   if ((session.user as any).role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const allowed = ['brand_name', 'brand_logo_url', 'login_bg_url', 'theme_color', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'smtp_pass', 'db_host', 'db_port', 'db_name', 'db_user', 'db_pass', 'role_preferences']
+  const allowed = [
+    'brand_name', 'brand_logo_url', 'login_bg_url', 'theme_color',
+    'smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'smtp_pass',
+    'db_host', 'db_port', 'db_name', 'db_user', 'db_pass',
+    'role_preferences',
+    'cron_backup_enabled', 'cron_pending_notify_enabled',
+    'cron_backup_day', 'cron_backup_time',
+    'cron_pending_notify_day', 'cron_pending_notify_time',
+    'cron_timezone',
+    'cron_backup_last_run_slot', 'cron_pending_last_run_slot',
+  ]
 
   await Promise.all(
     Object.entries(body)
