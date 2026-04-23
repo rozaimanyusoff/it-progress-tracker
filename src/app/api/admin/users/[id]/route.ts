@@ -3,6 +3,19 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+const ROLE_OVERRIDES_KEY = 'user_role_overrides'
+
+async function getRoleOverrides() {
+  const row = await prisma.appSetting.findUnique({ where: { key: ROLE_OVERRIDES_KEY } })
+  if (!row?.value) return {} as Record<string, string>
+  try {
+    const parsed = JSON.parse(row.value)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await getServerSession(authOptions)
@@ -15,6 +28,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   if (userId === selfId) {
     return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })
+  }
+
+  // Remove custom role override if any.
+  const overrides = await getRoleOverrides()
+  if (overrides[String(userId)]) {
+    delete overrides[String(userId)]
+    await prisma.appSetting.upsert({
+      where: { key: ROLE_OVERRIDES_KEY },
+      create: { key: ROLE_OVERRIDES_KEY, value: JSON.stringify(overrides) },
+      update: { value: JSON.stringify(overrides) },
+    })
   }
 
   await prisma.user.delete({ where: { id: userId } })
@@ -73,7 +97,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const data: Record<string, any> = {}
   if (body.name !== undefined) data.name = body.name
-  if (body.role !== undefined) data.role = body.role
+  if (body.role !== undefined) {
+    const requestedRole = String(body.role)
+    const systemRole = requestedRole === 'manager' || requestedRole === 'member' ? requestedRole : 'member'
+    data.role = systemRole
+
+    const overrides = await getRoleOverrides()
+    if (requestedRole === 'manager' || requestedRole === 'member') {
+      delete overrides[String(userId)]
+    } else {
+      overrides[String(userId)] = requestedRole
+    }
+    await prisma.appSetting.upsert({
+      where: { key: ROLE_OVERRIDES_KEY },
+      create: { key: ROLE_OVERRIDES_KEY, value: JSON.stringify(overrides) },
+      update: { value: JSON.stringify(overrides) },
+    })
+  }
   if (body.is_active !== undefined) data.is_active = body.is_active
   if (body.initials !== undefined) data.initials = body.initials || null
   if (body.contact_number !== undefined) data.contact_number = body.contact_number || null
@@ -93,6 +133,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   })
 
+  const roleOverrides = await getRoleOverrides()
+
   await prisma.auditLog.create({
     data: {
       user_id: Number((session.user as any).id),
@@ -103,7 +145,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   })
 
-  return NextResponse.json(updated)
+  return NextResponse.json({
+    ...updated,
+    role: roleOverrides[String(updated.id)] || updated.role,
+  })
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

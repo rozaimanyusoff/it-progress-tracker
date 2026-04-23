@@ -25,7 +25,15 @@ type Settings = {
   smtp_host: string; smtp_port: string; smtp_user: string; smtp_from: string
 }
 
-const TABS = ['Team Members', 'Organisation', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
+type CrudPermission = { create: boolean; update: boolean; view: boolean; delete: boolean }
+type RolePreferences = Record<string, CrudPermission>
+
+const DEFAULT_ROLE_PREFERENCES: RolePreferences = {
+  manager: { create: true, update: true, view: true, delete: true },
+  member: { create: true, update: true, view: true, delete: false },
+}
+
+const TABS = ['Team Members', 'Roles', 'Organisation', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
 type Tab = typeof TABS[number]
 
 const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -41,8 +49,9 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
 }
 
 // ── Edit User Modal ───────────────────────────────────────────────
-function EditUserModal({ user, onClose, onSaved, showToast }: {
+function EditUserModal({ user, roleOptions, onClose, onSaved, showToast }: {
   user: User
+  roleOptions: string[]
   onClose: () => void
   onSaved: (updated: User) => void
   showToast: (t: 'success' | 'error', m: string) => void
@@ -107,8 +116,9 @@ function EditUserModal({ user, onClose, onSaved, showToast }: {
           <div>
             <label className={labelClass}>Role</label>
             <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-              <option value="member">Member</option>
-              <option value="manager">Manager</option>
+              {roleOptions.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
             </select>
           </div>
           <OrgSelect type="unit" label="Unit" value={form.unit_id} onChange={id => setForm(f => ({ ...f, unit_id: id }))} />
@@ -132,9 +142,16 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', role: 'member' })
   const [editUser, setEditUser] = useState<User | null>(null)
+  const [roleOptions, setRoleOptions] = useState<string[]>(['manager', 'member'])
 
   useEffect(() => {
     fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(Array.isArray(u) ? u : []); setLoading(false) })
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      const prefs = s?.role_preferences && typeof s.role_preferences === 'object' ? s.role_preferences : {}
+      const keys = Object.keys(prefs)
+      const all = Array.from(new Set(['manager', 'member', ...keys]))
+      setRoleOptions(all)
+    }).catch(() => { })
   }, [])
 
   async function handleAdd(e: React.FormEvent) {
@@ -186,6 +203,7 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
       {editUser && (
         <EditUserModal
           user={editUser}
+          roleOptions={roleOptions}
           onClose={() => setEditUser(null)}
           onSaved={updated => { setUsers(prev => prev.map(u => u.id === updated.id ? updated : u)); setEditUser(null) }}
           showToast={showToast}
@@ -207,8 +225,9 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
             <div><label className={labelClass}>Email</label><input required type="email" className={inputClass} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="ahmad@company.com" /></div>
             <div><label className={labelClass}>Role</label>
               <select className={inputClass} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                <option value="member">Member</option>
-                <option value="manager">Manager</option>
+                {roleOptions.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
               </select>
             </div>
             <div className="sm:col-span-3 flex gap-3">
@@ -363,6 +382,183 @@ function OrgTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) 
       <p className="text-sm text-slate-500 dark:text-slate-400">Manage organisation structure options used when editing user profiles.</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {ORG_SECTIONS.map(s => <OrgCrudSection key={s.type} {...s} showToast={showToast} />)}
+      </div>
+    </div>
+  )
+}
+
+// ── Roles Tab ────────────────────────────────────────────────────
+function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
+  const [prefs, setPrefs] = useState<RolePreferences>(DEFAULT_ROLE_PREFERENCES)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [newRoleName, setNewRoleName] = useState('')
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(s => {
+        const incoming = s?.role_preferences
+        if (incoming && typeof incoming === 'object') {
+          setPrefs({
+            manager: { ...DEFAULT_ROLE_PREFERENCES.manager, ...(incoming.manager ?? {}) },
+            member: { ...DEFAULT_ROLE_PREFERENCES.member, ...(incoming.member ?? {}) },
+          })
+        } else {
+          setPrefs(DEFAULT_ROLE_PREFERENCES)
+        }
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
+  function addRole() {
+    const normalized = newRoleName.trim().toLowerCase().replace(/\s+/g, '_')
+    if (!normalized) {
+      showToast('error', 'Role name is required')
+      return
+    }
+    if (!/^[a-z0-9_]+$/.test(normalized)) {
+      showToast('error', 'Use letters, numbers, underscore only')
+      return
+    }
+    if (prefs[normalized]) {
+      showToast('error', 'Role already exists')
+      return
+    }
+    setPrefs(prev => ({
+      ...prev,
+      [normalized]: { create: false, update: false, view: true, delete: false },
+    }))
+    setNewRoleName('')
+    showToast('success', `Role "${normalized}" added`)
+  }
+
+  function removeRole(role: string) {
+    if (role === 'manager' || role === 'member') return
+    if (!confirm(`Delete role "${role}"?`)) return
+    setPrefs(prev => {
+      const next = { ...prev }
+      delete next[role]
+      return next
+    })
+    showToast('success', `Role "${role}" removed`)
+  }
+
+  async function save() {
+    setSaving(true)
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role_preferences: prefs }),
+    })
+    setSaving(false)
+    if (res.ok) showToast('success', 'Role permissions saved')
+    else showToast('error', 'Failed to save role permissions')
+  }
+
+  if (loading) return <p className="text-slate-400 py-8 text-center">Loading...</p>
+
+  const permissionKeys: Array<keyof CrudPermission> = ['create', 'update', 'view', 'delete']
+  const roleNames = Object.keys(prefs).sort((a, b) => {
+    if (a === 'manager') return -1
+    if (b === 'manager') return 1
+    if (a === 'member') return -1
+    if (b === 'member') return 1
+    return a.localeCompare(b)
+  })
+
+  return (
+    <div className="space-y-5 max-w-4xl">
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        Configure CRUD permissions by role. Current system roles are <span className="font-medium">manager</span> and <span className="font-medium">member</span>.
+      </p>
+
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
+              <th className="text-left px-5 py-3 font-medium">Role</th>
+              {permissionKeys.map(k => (
+                <th key={k} className="text-center px-4 py-3 font-medium">{k}</th>
+              ))}
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {roleNames.map(role => (
+              <tr key={role} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
+                <td className="px-5 py-3">
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${role === 'manager' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                    {role}
+                  </span>
+                </td>
+                {permissionKeys.map(k => (
+                  <td key={`${role}-${k}`} className="px-4 py-3 text-center">
+                    <label className="inline-flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(prefs[role]?.[k])}
+                        onChange={() => setPrefs(prev => ({ ...prev, [role]: { ...prev[role], [k]: !prev[role][k] } }))}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-navy-600 text-blue-600 focus:ring-blue-500"
+                      />
+                    </label>
+                  </td>
+                ))}
+                <td className="px-4 py-3 text-right">
+                  {role !== 'manager' && role !== 'member' && (
+                    <button
+                      onClick={() => removeRole(role)}
+                      className="p-1.5 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      title="Delete role"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 p-4">
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Add Role</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className={`${inputClass} max-w-sm`}
+            placeholder="e.g. reviewer or qa_lead"
+            value={newRoleName}
+            onChange={(e) => setNewRoleName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRole() } }}
+          />
+          <button
+            type="button"
+            onClick={addRole}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg"
+          >
+            + Add Role
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+          New roles are saved in preferences and can be configured with CRUD permissions.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save Role Permissions'}
+        </button>
+        <button
+          onClick={() => { setPrefs(DEFAULT_ROLE_PREFERENCES); setNewRoleName('') }}
+          className="px-5 py-2 bg-slate-200 dark:bg-navy-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg"
+        >
+          Reset Default
+        </button>
       </div>
     </div>
   )
@@ -1081,6 +1277,7 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       {activeTab === 'Team Members' && <TeamTab showToast={showToast} />}
+      {activeTab === 'Roles' && <RolesTab showToast={showToast} />}
       {activeTab === 'Organisation' && <OrgTab showToast={showToast} />}
       {activeTab === 'Branding' && <BrandingTab showToast={showToast} />}
       {activeTab === 'Email' && <EmailTab showToast={showToast} />}

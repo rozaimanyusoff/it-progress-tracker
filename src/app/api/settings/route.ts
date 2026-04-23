@@ -22,6 +22,19 @@ export async function GET(req: NextRequest) {
   } catch { }
 
   // Merge env-based email defaults (never expose SMTP_PASS or DB password)
+  let rolePreferences: Record<string, { create: boolean; update: boolean; view: boolean; delete: boolean }> = {
+    manager: { create: true, update: true, view: true, delete: true },
+    member: { create: true, update: true, view: true, delete: false },
+  }
+  try {
+    if (settings.role_preferences) {
+      const parsed = JSON.parse(settings.role_preferences)
+      if (parsed && typeof parsed === 'object') {
+        rolePreferences = parsed
+      }
+    }
+  } catch { }
+
   return NextResponse.json({
     brand_name: settings.brand_name ?? 'IT Tracker',
     brand_logo_url: settings.brand_logo_url ?? '',
@@ -35,6 +48,7 @@ export async function GET(req: NextRequest) {
     db_port: dbPort,
     db_name: dbName,
     db_user: dbUser,
+    role_preferences: rolePreferences,
   })
 }
 
@@ -44,7 +58,7 @@ export async function POST(req: NextRequest) {
   if ((session.user as any).role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const allowed = ['brand_name', 'brand_logo_url', 'login_bg_url', 'theme_color', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'smtp_pass', 'db_host', 'db_port', 'db_name', 'db_user', 'db_pass']
+  const allowed = ['brand_name', 'brand_logo_url', 'login_bg_url', 'theme_color', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'smtp_pass', 'db_host', 'db_port', 'db_name', 'db_user', 'db_pass', 'role_preferences']
 
   await Promise.all(
     Object.entries(body)
@@ -52,8 +66,8 @@ export async function POST(req: NextRequest) {
       .map(([k, v]) =>
         prisma.appSetting.upsert({
           where: { key: k },
-          create: { key: k, value: String(v) },
-          update: { value: String(v) },
+          create: { key: k, value: k === 'role_preferences' ? JSON.stringify(v) : String(v) },
+          update: { value: k === 'role_preferences' ? JSON.stringify(v) : String(v) },
         })
       )
   )

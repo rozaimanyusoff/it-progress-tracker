@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLayout from '@/components/Layout'
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 // ── Types ─────────────────────────────────────────────────────────
 type Project = {
@@ -14,6 +15,7 @@ type Project = {
   _count: { issues: number }
   computedProgress: number
   computedStatus: string
+  monthlyData?: { month: string; assigned: number; completed: number }[]
 }
 type Feature = {
   id: number; title: string; description: string | null; mandays: number
@@ -66,6 +68,25 @@ const STATUS_LABEL: Record<string, string> = {
   Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
 }
 
+function MonthlyComboChart({ data }: { data: { month: string; assigned: number; completed: number }[] }) {
+  const hasData = data.some(d => d.assigned > 0 || d.completed > 0)
+  if (!hasData) return <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No task data</p>
+  return (
+    <ResponsiveContainer width="100%" height={54}>
+      <ComposedChart data={data} barSize={8} margin={{ top: 4, right: 2, bottom: 0, left: -24 }}>
+        <XAxis dataKey="month" tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+        <YAxis tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+        <Tooltip
+          contentStyle={{ fontSize: 11, padding: '4px 8px', borderRadius: 6 }}
+          formatter={(v: unknown, name: unknown) => [`${v} tasks`, name === 'completed' ? 'Completed' : 'Assigned'] as [string, string]}
+        />
+        <Bar dataKey="completed" fill="#22c55e" radius={[3, 3, 0, 0]} />
+        <Line dataKey="assigned" type="monotone" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
 // ── Projects List Tab ──────────────────────────────────────────────
 function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
   const router = useRouter()
@@ -104,10 +125,11 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
       <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden">
         {/* Table header */}
         <div className="grid bg-slate-50 dark:bg-navy-900 border-b border-slate-200 dark:border-navy-700 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500"
-          style={{ gridTemplateColumns: '2fr 1fr 160px 1fr 100px 110px 60px 72px' }}>
+          style={{ gridTemplateColumns: '2fr 1fr 160px 190px 1fr 100px 110px 60px 72px' }}>
           <span>Project</span>
           <span>Status</span>
           <span>Progress</span>
+          <span>Tasks (Monthly)</span>
           <span>Team</span>
           <span>Start</span>
           <span>Deadline</span>
@@ -126,7 +148,7 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
             <div
               key={p.id}
               className={`grid items-center px-4 py-3 gap-3 hover:bg-slate-50 dark:hover:bg-navy-800/60 transition-colors ${!isLast ? 'border-b border-slate-100 dark:border-navy-700' : ''}`}
-              style={{ gridTemplateColumns: '2fr 1fr 160px 1fr 100px 110px 60px 72px' }}
+              style={{ gridTemplateColumns: '2fr 1fr 160px 190px 1fr 100px 110px 60px 72px' }}
             >
               {/* Project title + description */}
               <div className="min-w-0">
@@ -167,6 +189,11 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
+              </div>
+
+              {/* Tasks monthly chart */}
+              <div className="min-w-[170px]">
+                <MonthlyComboChart data={p.monthlyData ?? []} />
               </div>
 
               {/* Team avatars */}

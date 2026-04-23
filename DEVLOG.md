@@ -11,6 +11,41 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-23 — Settings Roles Integration + Projects Table Monthly Task Graph
+
+### Diubah
+
+**Settings > Team Members (Role dropdown)**
+- Dropdown `Role` dalam `Add Member` dan `Edit User` kini tidak lagi hardcode `manager/member`.
+- Option role kini diambil daripada `role_preferences` (Settings > Roles), jadi role custom yang ditambah admin akan terus muncul sebagai pilihan.
+
+**Projects tab (table view)**
+- Tambah kolum baharu `Tasks (Monthly)` dalam senarai projek.
+- Setiap row projek kini memaparkan mini chart (bar `completed` + line `assigned`) sama konsep dengan kad projek di Dashboard.
+
+### Ditambah
+
+**Role override persistence untuk user custom role**
+- API admin user (`/api/admin/users`, `/api/admin/users/[id]`) kini menyokong simpan role custom user melalui app setting key:
+  - `user_role_overrides`
+- `GET /api/admin/users` merge role enum sistem + override custom role supaya paparan role user konsisten di UI Team Members.
+- `POST/PATCH /api/admin/users`:
+  - jika role = `manager/member`, guna enum role asal.
+  - jika role custom, simpan enum role fallback `member` + simpan nilai custom pada override map.
+- `DELETE /api/admin/users/[id]` turut bersihkan override role user.
+
+**Projects API payload enrichment**
+- `GET /api/projects` kini pulangkan `monthlyData` per project:
+  - assigned tasks per month (berdasarkan `created_at`),
+  - completed tasks per month (berdasarkan `COALESCE(actual_end, completed_at)`).
+
+### Diperbaiki
+
+- Isu role custom tidak muncul dalam modal `Edit User` telah diperbaiki.
+- Konsistensi visual metrik task bulanan antara Dashboard dan Projects view dipadankan.
+
+---
+
 ## 2026-04-23 — Kanban/Review UX + Backdated Date Integrity + Developer Analytics Timeline
 
 ### Diubah
