@@ -35,6 +35,7 @@ interface Developer {
 interface Props {
   featureId?: number
   deliverableId?: number
+  deliverableTitle?: string | null
   deliverableMandays?: number | null
   deliverablePlannedStart?: string | null
   deliverablePlannedEnd?: string | null
@@ -76,14 +77,6 @@ const PRIORITY_BADGE: Record<string, string> = {
   medium: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300',
   high: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   critical: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
-}
-
-const CATEGORY_TYPE_BADGE: Record<string, string> = {
-  database: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  backend: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  frontend: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  testing: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  documentation: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
 }
 
 function dueDateBadge(due: string | null, status: string): React.ReactNode {
@@ -255,14 +248,15 @@ function AssigneeCheckList({
             className="sr-only"
           />
           <AssigneeChip name={u.name} />
-          {u.name.split(' ')[0]}
+          <span className="whitespace-nowrap">{u.name}</span>
         </label>
       ))}
     </div>
   )
 }
 
-export default function FeatureTaskList({ featureId, deliverableId, deliverableMandays, deliverablePlannedStart, deliverablePlannedEnd, projectStart, projectDeadline, userRole, developers }: Props) {
+export default function FeatureTaskList({ featureId, deliverableId, deliverableTitle, deliverableMandays, deliverablePlannedStart, deliverablePlannedEnd, projectStart, projectDeadline, userRole, developers }: Props) {
+  const STANDALONE = ''
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -278,14 +272,18 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   })
   const [addingTask, setAddingTask] = useState(false)
   const [addTaskError, setAddTaskError] = useState('')
-  const [presetTasks, setPresetTasks] = useState<Array<{
-    name: string
-    est_mandays: number | null
-    type?: string
-    samples?: { name: string; est_mandays: number | null }[]
+  const [presetCatalog, setPresetCatalog] = useState<Array<{
+    category: string
+    scopes: Array<{
+      scope: string
+      type: string
+      tasks: { name: string; est_mandays: number | null }[]
+    }>
   }>>([])
-  const [showTaskPresetPopover, setShowTaskPresetPopover] = useState(false)
-  const [showScopeGuidePopover, setShowScopeGuidePopover] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState('')
+  const [selectedScope, setSelectedScope] = useState('')
+  const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
+  const [customSpecificTask, setCustomSpecificTask] = useState('')
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [editForm, setEditForm] = useState({ title: '', description: '', assigneeIds: [] as number[], est_mandays: '', due_date: '', priority: 'medium', actual_start: '', actual_end: '' })
   const [editTaskError, setEditTaskError] = useState('')
@@ -312,10 +310,13 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
       .then(r => r.json())
       .then(data => {
-        setPresetTasks(Array.isArray(data) ? data : [])
-        setShowTaskPresetPopover(false)
+        setPresetCatalog(Array.isArray(data) ? data : [])
+        setSelectedCategory('')
+        setSelectedScope('')
+        setSelectedSpecificTask('')
+        setCustomSpecificTask('')
       })
-      .catch(() => setPresetTasks([]))
+      .catch(() => setPresetCatalog([]))
   }, [showAddTask, deliverableId])
 
   async function fetchTasks() {
@@ -459,12 +460,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   }
 
   async function addCustomTask() {
-    if (!newTask.title.trim()) {
-      setAddTaskError('Task category is required.')
-      return
-    }
-    if (!newTask.description.trim()) {
-      setAddTaskError('Specific task/scope is required.')
+    const resolvedTitle = (newTask.title || customSpecificTask).trim()
+    if (!resolvedTitle) {
+      setAddTaskError('Task is required.')
       return
     }
     if (!newTask.est_mandays || Number(newTask.est_mandays) <= 0) {
@@ -492,7 +490,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...(featureId ? { feature_id: featureId } : { deliverable_id: deliverableId }),
-        title: newTask.title,
+        title: resolvedTitle,
         description: newTask.description.trim(),
         assignee_ids: resolvedIds,
         due_date: newTask.due_date || null,
@@ -526,7 +524,21 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   const delivPlannedEndDate = deliverablePlannedEnd ? new Date(deliverablePlannedEnd) : null
   const newDueDateValue = newTask.due_date ? new Date(newTask.due_date) : null
   const newDueDateWarning = delivPlannedEndDate && newDueDateValue && newDueDateValue > delivPlannedEndDate
-  const scopePlaceholder = buildScopePlaceholder(newTask.title)
+  const selectedCategoryNode = presetCatalog.find(c => c.category === selectedCategory)
+  const scopeOptions = selectedCategoryNode?.scopes ?? []
+  const selectedScopeNode = scopeOptions.find(s => s.scope === selectedScope)
+  const specificTaskOptions = selectedScopeNode
+    ? selectedScopeNode.tasks.map(task => ({
+      key: task.name,
+      label: task.name,
+      scope: selectedScopeNode.scope,
+      task: task.name,
+      est_mandays: task.est_mandays,
+    }))
+    : []
+  const hasFullPresetSelection = Boolean(selectedCategory && selectedScope && selectedSpecificTask)
+  const isStandaloneSelection = !selectedCategory && !selectedScope && !selectedSpecificTask
+  const canSubmitTaskSelection = (newTask.title || customSpecificTask).trim().length > 0
   const progressPct = calcProgress(tasks)
   const doneTasks = tasks.filter(t => t.status === 'Done').length
 
@@ -728,8 +740,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
           <button
             onClick={() => {
               setAddTaskError('')
-              setShowTaskPresetPopover(false)
-              setShowScopeGuidePopover(false)
+              setSelectedCategory('')
+              setSelectedScope('')
+              setSelectedSpecificTask('')
+              setCustomSpecificTask('')
               setShowAddTask(true)
             }}
             className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
@@ -743,14 +757,18 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
             <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
               <div className="p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">Add Task</h2>
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                    {deliverableTitle ? `Add Task in ${deliverableTitle}` : 'Add Task'}
+                  </h2>
                   <button
                     onClick={() => {
                       setShowAddTask(false)
-                      setPresetTasks([])
+                      setPresetCatalog([])
                       setAddTaskError('')
-                      setShowTaskPresetPopover(false)
-                      setShowScopeGuidePopover(false)
+                      setSelectedCategory('')
+                      setSelectedScope('')
+                      setSelectedSpecificTask('')
+                      setCustomSpecificTask('')
                       setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                     }}
                     className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
@@ -775,6 +793,12 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                           <span>{deliverablePlannedStart ? new Date(deliverablePlannedStart).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
                           <span className="text-slate-300 dark:text-slate-600">→</span>
                           <span>{deliverablePlannedEnd ? new Date(deliverablePlannedEnd).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                          {deliverableMandays != null && (
+                            <>
+                              <span className="text-slate-300 dark:text-slate-600">•</span>
+                              <span>{deliverableMandays} md budget</span>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -795,6 +819,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                             <span className={`flex-1 ${t.status === 'Done' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}>
                               {t.title}
                             </span>
+                            <span className="text-slate-400 dark:text-slate-500 shrink-0">
+                              {t.est_mandays != null ? `${t.est_mandays} md` : '—'}
+                            </span>
                             {t.due_date && (
                               <span className="text-slate-400 dark:text-slate-500 shrink-0">
                                 {new Date(t.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })}
@@ -805,126 +832,100 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                       </ul>
                     </div>
                   )}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Task Category *{' '}
-                      {presetTasks.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowScopeGuidePopover(false)
-                            setShowTaskPresetPopover(v => !v)
-                          }}
-                          className="text-blue-600 dark:text-blue-300 hover:underline font-normal"
-                        >
-                          or task preset
-                        </button>
-                      )}
-                    </label>
-                    {presetTasks.length > 0 && showTaskPresetPopover && (
-                      <div className="mb-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3 max-h-64 overflow-y-auto">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Task preset catalog (click category to use):</p>
-                        <div className="space-y-2">
-                          {presetTasks.map((p, i) => (
-                            <div
-                              key={i}
-                              className="w-full text-left rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 px-3 py-2"
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                {p.type && (
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_TYPE_BADGE[p.type] ?? CATEGORY_TYPE_BADGE.frontend}`}>
-                                    {p.type}
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setAddTaskError('')
-                                    setNewTask(prev => ({ ...prev, title: p.name }))
-                                    setShowTaskPresetPopover(false)
-                                  }}
-                                  className="text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300"
-                                >
-                                  {p.name}
-                                </button>
-                              </div>
-                              {p.samples && p.samples.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {p.samples.map((s, si) => (
-                                    <button
-                                      key={si}
-                                      type="button"
-                                      onClick={() => {
-                                        setAddTaskError('')
-                                        setNewTask(prev => ({
-                                          ...prev,
-                                          title: `${s.name} (${p.name})`,
-                                          est_mandays: s.est_mandays != null ? String(s.est_mandays) : prev.est_mandays,
-                                        }))
-                                        setShowTaskPresetPopover(false)
-                                      }}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[11px] text-slate-500 dark:text-slate-400 transition-colors"
-                                    >
-                                      <span>{s.name}</span>
-                                      <span>{s.est_mandays != null ? `${s.est_mandays} md` : '—'}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <input
-                      className={`${inputClass} w-full`}
-                      placeholder="e.g. Backend API - User Authentication"
-                      value={newTask.title}
-                      onChange={(e) => {
-                        setAddTaskError('')
-                        setShowTaskPresetPopover(false)
-                        setNewTask(p => ({ ...p, title: e.target.value }))
-                      }}
-                      autoFocus
-                    />
-                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Questionnaire: What exactly will be built? Use “Category - Specific Scope”.</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Specific Task/scope *{' '}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowTaskPresetPopover(false)
-                          setShowScopeGuidePopover(v => !v)
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category</label>
+                      <select
+                        className={inputClass}
+                        value={selectedCategory}
+                        onChange={e => {
+                          const category = e.target.value
+                          setAddTaskError('')
+                          setSelectedCategory(category)
+                          if (category === STANDALONE) {
+                            setSelectedScope(STANDALONE)
+                            setSelectedSpecificTask(STANDALONE)
+                          } else {
+                            setSelectedScope('')
+                            setSelectedSpecificTask('')
+                          }
+                          setCustomSpecificTask('')
+                          setNewTask(prev => ({ ...prev, title: '', description: '' }))
                         }}
-                        className="text-blue-600 dark:text-blue-300 hover:underline font-normal"
                       >
-                        scope guide
-                      </button>
-                    </label>
-                    {showScopeGuidePopover && (
-                      <div className="mb-2 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-3">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Scope checklist:</p>
-                        <ul className="text-xs text-slate-500 dark:text-slate-400 list-disc ml-4 space-y-0.5">
-                          <li>Nyatakan output yang siap (screen/API/report/module).</li>
-                          <li>Nyatakan acceptance criteria / definition of done.</li>
-                          <li>Nyatakan data/role/validation yang terlibat.</li>
-                        </ul>
-                      </div>
-                    )}
-                    <textarea
-                      className={`${inputClass} w-full resize-none`}
-                      rows={3}
-                      placeholder={scopePlaceholder}
-                      value={newTask.description}
-                      onChange={(e) => {
-                        setAddTaskError('')
-                        setNewTask(p => ({ ...p, description: e.target.value }))
-                      }}
-                    />
-                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Guide based on selected category: {scopePlaceholder}</p>
+                        <option value="">{'Standalone tasks'}</option>
+                        {presetCatalog.map(c => (
+                          <option key={c.category} value={c.category}>{c.category}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope</label>
+                      <select
+                        className={inputClass}
+                        value={selectedScope}
+                        onChange={e => {
+                          const scope = e.target.value
+                          setAddTaskError('')
+                          setSelectedScope(scope)
+                          setSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
+                          setCustomSpecificTask('')
+                          setNewTask(prev => ({ ...prev, title: '', description: '' }))
+                        }}
+                        disabled={!selectedCategory}
+                      >
+                        <option value="">{'Standalone tasks'}</option>
+                        {scopeOptions.map(scope => (
+                          <option key={scope.scope} value={scope.scope}>{scope.scope}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+                    <select
+                      className={inputClass}
+                      value={selectedSpecificTask}
+                      onChange={e => {
+                        const next = e.target.value
+                        setAddTaskError('')
+                        setSelectedSpecificTask(next)
+                        const selected = specificTaskOptions.find(opt => opt.key === next)
+                        if (!selected) {
+                          setNewTask(prev => ({ ...prev, title: '' }))
+                          return
+                        }
+                        setNewTask(prev => ({
+                          ...prev,
+                          title: selected.task,
+                          est_mandays: selected.est_mandays != null ? String(selected.est_mandays) : prev.est_mandays,
+                        }))
+                      }}
+                      disabled={!selectedScope}
+                    >
+                      <option value="">{'Standalone tasks'}</option>
+                      {specificTaskOptions.map(opt => (
+                        <option key={opt.key} value={opt.key}>
+                          {opt.label}{opt.est_mandays != null ? ` (${opt.est_mandays} md)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {isStandaloneSelection && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+                      <textarea
+                        className={`${inputClass} w-full resize-none`}
+                        rows={2}
+                        value={customSpecificTask}
+                        onChange={e => {
+                          setCustomSpecificTask(e.target.value)
+                          setNewTask(prev => ({ ...prev, title: e.target.value }))
+                        }}
+                        placeholder="Enter specific task details"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                       {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
@@ -1013,10 +1014,12 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                       type="button"
                       onClick={() => {
                         setShowAddTask(false)
-                        setPresetTasks([])
+                        setPresetCatalog([])
                         setAddTaskError('')
-                        setShowTaskPresetPopover(false)
-                        setShowScopeGuidePopover(false)
+                        setSelectedCategory('')
+                        setSelectedScope('')
+                        setSelectedSpecificTask('')
+                        setCustomSpecificTask('')
                         setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                       }}
                       className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -1026,7 +1029,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     <button
                       type="button"
                       onClick={addCustomTask}
-                      disabled={addingTask || !newTask.title.trim() || !newTask.description.trim()}
+                      disabled={addingTask || !canSubmitTaskSelection}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
                     >
                       {addingTask ? 'Adding...' : 'Add Task'}
@@ -1070,7 +1073,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     </div>
                   )}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category *</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task *</label>
                     <input
                       className={`${inputClass} w-full`}
                       value={editForm.title}
@@ -1079,7 +1082,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Task / Scope</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Details</label>
                     <textarea
                       className={`${inputClass} w-full resize-none`}
                       rows={3}

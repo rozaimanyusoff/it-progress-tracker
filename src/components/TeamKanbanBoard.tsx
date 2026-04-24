@@ -47,38 +47,6 @@ interface Member { id: number; name: string }
 
 type BoardState = Record<string, Task[]>
 
-const CATEGORY_TYPE_BADGE: Record<string, string> = {
-  database: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  backend: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  frontend: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  testing: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  documentation: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
-}
-
-function buildScopePlaceholder(taskCategory: string): string {
-  const c = taskCategory.toLowerCase().trim()
-  if (!c) return 'Describe exact scope and expected output for the selected task category.'
-  if (c.includes('list') || c.includes('table')) {
-    return 'Table apa yang dibina? Nyatakan columns, filters, sorting, pagination, dan data source.'
-  }
-  if (c.includes('api') || c.includes('endpoint')) {
-    return 'Endpoint apa? Nyatakan route, request/response, validation, auth, dan error handling.'
-  }
-  if (c.includes('form')) {
-    return 'Form apa? Nyatakan fields, validation, submit flow, dan success/error behavior.'
-  }
-  if (c.includes('dashboard') || c.includes('widget') || c.includes('chart')) {
-    return 'Widget/metric apa? Nyatakan data source, filter, aggregation, dan update behavior.'
-  }
-  if (c.includes('report') || c.includes('export')) {
-    return 'Report/export apa? Nyatakan format, filter range, layout, dan expected output.'
-  }
-  if (c.includes('test') || c.includes('qa') || c.includes('uat')) {
-    return 'Scenario test apa? Nyatakan scope, test data, expected result, dan pass criteria.'
-  }
-  return `Nyatakan skop spesifik untuk "${taskCategory}" termasuk output dan acceptance criteria.`
-}
-
 function suggestStartDateFromDue(dueDate: string, estMandays: string): string | null {
   const end = new Date(dueDate)
   if (isNaN(end.getTime())) return null
@@ -110,6 +78,7 @@ function AddTaskModal({
   onAdded: (task: Task) => void
   initialTask?: Task | null
 }) {
+  const STANDALONE = ''
   const { data: session } = useSession()
   const isEditMode = Boolean(initialTask)
   const creatorName = (session?.user as any)?.name ?? 'Current User'
@@ -135,17 +104,21 @@ function AddTaskModal({
   const [estMandays, setEstMandays] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [presetTasks, setPresetTasks] = useState<Array<{
-    name: string
-    est_mandays: number | null
-    type?: string
-    samples?: { name: string; est_mandays: number | null }[]
+  const [presetCatalog, setPresetCatalog] = useState<Array<{
+    category: string
+    scopes: Array<{
+      scope: string
+      type: string
+      tasks: { name: string; est_mandays: number | null }[]
+    }>
   }>>([])
-  const [showTaskPresetPopover, setShowTaskPresetPopover] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState('')
+  const [selectedScope, setSelectedScope] = useState('')
+  const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
+  const [customSpecificTask, setCustomSpecificTask] = useState('')
   const [delivBudget, setDelivBudget] = useState<{ total: number; used: number } | null>(null)
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
-  const scopePlaceholder = buildScopePlaceholder(title)
   const suggestedStartDate = dueDate && estMandays ? suggestStartDateFromDue(dueDate, estMandays) : null
 
   useEffect(() => {
@@ -166,7 +139,10 @@ function AddTaskModal({
     setEstMandays(initialTask.est_mandays != null ? String(initialTask.est_mandays) : '')
     setError('')
     setShowCreateDeliverable(false)
-    setShowTaskPresetPopover(false)
+    setSelectedCategory('')
+    setSelectedScope('')
+    setSelectedSpecificTask('')
+    setCustomSpecificTask('')
   }, [initialTask])
 
   useEffect(() => {
@@ -206,19 +182,23 @@ function AddTaskModal({
       setPriority(deliv?.priority ?? 'medium')
     } else {
       setDelivBudget(null)
-      setShowTaskPresetPopover(false)
+      setSelectedCategory('')
+      setSelectedScope('')
+      setSelectedSpecificTask('')
+      setCustomSpecificTask('')
     }
 
-    // Route currently returns global preset categories (id ignored by endpoint),
-    // so we can still offer "select from task preset" in standalone mode.
     fetch(`/api/deliverables/${hasDeliverable ? deliverableId : '0'}/preset-tasks`)
       .then(r => r.json())
       .then(data => {
         const presets = Array.isArray(data) ? data : []
-        setPresetTasks(presets)
-        setShowTaskPresetPopover(false)
+        setPresetCatalog(presets)
+        setSelectedCategory('')
+        setSelectedScope('')
+        setSelectedSpecificTask('')
+        setCustomSpecificTask('')
       })
-      .catch(() => setPresetTasks([]))
+      .catch(() => setPresetCatalog([]))
 
     if (hasDeliverable) {
       fetch(`/api/deliverables/${deliverableId}`)
@@ -227,6 +207,22 @@ function AddTaskModal({
         .catch(() => setDelivBudget(null))
     }
   }, [deliverableId])
+
+  useEffect(() => {
+    if (!initialTask || presetCatalog.length === 0) return
+    const parts = (initialTask.description ?? '').split(' > ').map(s => s.trim()).filter(Boolean)
+    if (parts.length < 2) return
+    const [cat, scope] = parts
+    const catNode = presetCatalog.find(c => c.category === cat)
+    if (!catNode) return
+    const candidate = catNode.scopes
+      .flatMap(s => s.tasks.map(t => ({ key: `${s.scope}|||${t.name}`, scope: s.scope, task: t.name })))
+      .find(x => x.scope === scope && x.task === initialTask.title)
+    setSelectedCategory(cat)
+    setSelectedScope(scope)
+    setSelectedSpecificTask(candidate?.key ?? '')
+    setCustomSpecificTask('')
+  }, [initialTask, presetCatalog])
 
   async function handleCreateDeliverable() {
     if (!projectId) return
@@ -278,8 +274,8 @@ function AddTaskModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isEditMode && projectId && !deliverableId) { setError('Please select a deliverable.'); return }
-    if (!title.trim()) { setError('Task category is required.'); return }
-    if (!description.trim()) { setError('Task description is required.'); return }
+    const taskTitle = (title || customSpecificTask).trim()
+    if (!taskTitle) { setError('Task is required.'); return }
     if (deliverableId && (!estMandays || Number(estMandays) <= 0)) {
       setError('Est. mandays is required when linked to a deliverable.'); return
     }
@@ -291,7 +287,7 @@ function AddTaskModal({
     }
     setSaving(true); setError('')
     const payload: Record<string, unknown> = {
-      title: title.trim(),
+      title: taskTitle,
       description: description.trim(),
       assignee_ids: assigneeIds,
       est_mandays: estMandays ? Number(estMandays) : null,
@@ -316,6 +312,7 @@ function AddTaskModal({
     onAdded(task)
     onClose()
   }
+  const isTaskSelected = Boolean(selectedSpecificTask)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -356,7 +353,11 @@ function AddTaskModal({
                       if (next === CREATE_NEW_DELIVERABLE) {
                         setDeliverableId('')
                         setShowCreateDeliverable(true)
-                        setPresetTasks([])
+                        setPresetCatalog([])
+                        setSelectedCategory('')
+                        setSelectedScope('')
+                        setSelectedSpecificTask('')
+                        setCustomSpecificTask('')
                         setDelivBudget(null)
                         return
                       }
@@ -597,85 +598,116 @@ function AddTaskModal({
 
           {/* ── Full-width: title + description ───────────────────── */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              Task Category *{' '}
-              {presetTasks.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowTaskPresetPopover(v => !v)}
-                  className="text-blue-600 dark:text-blue-300 hover:underline font-normal"
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category</label>
+                <select
+                  className={inputClass}
+                  value={selectedCategory}
+                  onChange={e => {
+                    const next = e.target.value
+                    setSelectedCategory(next)
+                    if (next === STANDALONE) {
+                      setSelectedScope(STANDALONE)
+                      setSelectedSpecificTask(STANDALONE)
+                    } else {
+                      setSelectedScope('')
+                      setSelectedSpecificTask('')
+                    }
+                    setCustomSpecificTask('')
+                    setTitle('')
+                    setDescription('')
+                  }}
                 >
-                  or task preset
-                </button>
-              )}
-            </label>
-            {presetTasks.length > 0 && showTaskPresetPopover && (
-              <div className="mb-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3 max-h-64 overflow-y-auto">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Task preset catalog (click category to use):</p>
-                <div className="space-y-2">
-                  {presetTasks.map((p, i) => (
-                    <div
-                      key={i}
-                      className="w-full text-left rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        {p.type && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_TYPE_BADGE[p.type] ?? CATEGORY_TYPE_BADGE.frontend}`}>
-                            {p.type}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTitle(p.name)
-                            setShowTaskPresetPopover(false)
-                          }}
-                          className="text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300"
-                        >
-                          {p.name}
-                        </button>
-                      </div>
-                      {p.samples && p.samples.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {p.samples.map((s, si) => (
-                            <button
-                              key={si}
-                              type="button"
-                              onClick={() => {
-                                setTitle(`${s.name} (${p.name})`)
-                                if (s.est_mandays != null) setEstMandays(String(s.est_mandays))
-                                setShowTaskPresetPopover(false)
-                              }}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[11px] text-slate-500 dark:text-slate-400 transition-colors"
-                            >
-                              <span>{s.name}</span>
-                              <span>{s.est_mandays != null ? `${s.est_mandays} md` : '—'}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  <option value="">Standalone tasks</option>
+                  {presetCatalog.map(c => (
+                    <option key={c.category} value={c.category}>{c.category}</option>
                   ))}
-                </div>
+                </select>
               </div>
-            )}
-            <input className={inputClass} placeholder="e.g. Backend API - User Authentication" value={title} onChange={e => setTitle(e.target.value)} />
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Questionnaire: What exactly will be built? Use “Category - Specific Scope”.</p>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope</label>
+                <select
+                  className={inputClass}
+                  value={selectedScope}
+                  onChange={e => {
+                    const scope = e.target.value
+                    setSelectedScope(scope)
+                    setSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
+                    setCustomSpecificTask('')
+                    setTitle('')
+                    setDescription('')
+                  }}
+                  disabled={!selectedCategory}
+                >
+                  <option value="">Standalone tasks</option>
+                  {(presetCatalog.find(c => c.category === selectedCategory)?.scopes ?? [])
+                    .map(scope => (
+                      <option key={scope.scope} value={scope.scope}>{scope.scope}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Task/scope *</label>
-            <textarea
-              className={`${inputClass} resize-none`}
-              rows={2}
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder={scopePlaceholder}
-            />
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-              Guide based on selected category: {scopePlaceholder}
-            </p>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+            <select
+              className={inputClass}
+              value={selectedSpecificTask}
+              onChange={e => {
+                const key = e.target.value
+                setSelectedSpecificTask(key)
+                const selected = presetCatalog
+                  .find(c => c.category === selectedCategory)
+                  ?.scopes
+                  .filter(scope => scope.scope === selectedScope)
+                  .flatMap(scope => scope.tasks.map(task => ({
+                    key: `${scope.scope}|||${task.name}`,
+                    scope: scope.scope,
+                    task: task.name,
+                    est_mandays: task.est_mandays,
+                  })))
+                  .find(item => item.key === key)
+                if (!selected) {
+                  setTitle('')
+                  return
+                }
+                setTitle(selected.task)
+                if (selected.est_mandays != null) setEstMandays(String(selected.est_mandays))
+              }}
+              disabled={!selectedScope}
+            >
+              <option value="">Standalone tasks</option>
+              {(presetCatalog.find(c => c.category === selectedCategory)?.scopes ?? [])
+                .filter(scope => scope.scope === selectedScope)
+                .flatMap(scope => scope.tasks.map(task => ({
+                  key: `${scope.scope}|||${task.name}`,
+                  label: `${scope.scope} > ${task.name}`,
+                  est_mandays: task.est_mandays,
+                })))
+                .map(opt => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}{opt.est_mandays != null ? ` (${opt.est_mandays} md)` : ''}
+                  </option>
+                ))}
+            </select>
           </div>
+          {!isTaskSelected && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+              <textarea
+                className={inputClass}
+                rows={2}
+                value={customSpecificTask}
+                onChange={e => {
+                  setCustomSpecificTask(e.target.value)
+                  setTitle(e.target.value)
+                }}
+                placeholder="Enter specific task details"
+              />
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 

@@ -110,6 +110,7 @@ function cardHeaderScope(task: Task): string {
 
 // ── Add Task Modal ────────────────────────────────────────────────
 function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (task: Task) => void }) {
+  const STANDALONE = ''
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
   const [projects, setProjects] = useState<Project[]>([])
@@ -125,7 +126,18 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   const [estMandays, setEstMandays] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
+  const [presetCatalog, setPresetCatalog] = useState<Array<{
+    category: string
+    scopes: Array<{
+      scope: string
+      type: string
+      tasks: { name: string; est_mandays: number | null }[]
+    }>
+  }>>([])
+  const [selectedCategory, setSelectedCategory] = useState('')
+  const [selectedScope, setSelectedScope] = useState('')
+  const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
+  const [customSpecificTask, setCustomSpecificTask] = useState('')
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
 
@@ -151,24 +163,32 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   }, [projectId])
 
   useEffect(() => {
-    if (!deliverableId) { setPresetTasks([]); return }
+    if (!deliverableId) { setPresetCatalog([]); return }
     const deliv = deliverables.find(d => d.id === Number(deliverableId))
     if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
     fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
       .then(r => r.json())
-      .then(data => setPresetTasks(Array.isArray(data) ? data : []))
-      .catch(() => setPresetTasks([]))
+      .then(data => {
+        setPresetCatalog(Array.isArray(data) ? data : [])
+        setSelectedCategory('')
+        setSelectedScope('')
+        setSelectedSpecificTask('')
+        setCustomSpecificTask('')
+      })
+      .catch(() => setPresetCatalog([]))
   }, [deliverableId])
 
   const selectedDeliverable = deliverables.find(d => d.id === Number(deliverableId))
   const delivPlannedEnd = selectedDeliverable?.planned_end ? new Date(selectedDeliverable.planned_end) : null
   const dueDateVal = dueDate ? new Date(dueDate) : null
   const dueDateExceeds = delivPlannedEnd && dueDateVal && dueDateVal > delivPlannedEnd
+  const isTaskSelected = Boolean(selectedSpecificTask)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!deliverableId) { setError('Please select a deliverable.'); return }
-    if (!title.trim()) { setError('Task title is required.'); return }
+    const taskTitle = (title || customSpecificTask).trim()
+    if (!taskTitle) { setError('Task is required.'); return }
     setSaving(true); setError('')
 
     const res = await fetch('/api/tasks', {
@@ -176,7 +196,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         deliverable_id: Number(deliverableId),
-        title: title.trim(),
+        title: taskTitle,
         description: description.trim() || null,
         assignee_ids: partnerIds, // member's own ID is added server-side
         due_date: dueDate || null,
@@ -222,37 +242,118 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
             </div>
           )}
 
-          {/* Preset tasks — shown when deliverable has matching template tasks */}
-          {deliverableId && presetTasks.length > 0 && (
-            <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Preset title suggestions — click to use:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {presetTasks.map((t, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => { setTitle(t.name); if (t.est_mandays != null) setEstMandays(String(t.est_mandays)) }}
-                    className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                  >
-                    {t.name}
-                    {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
-                  </button>
+          {/* 4. Task category */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category</label>
+              <select
+                className={inputClass}
+                value={selectedCategory}
+                onChange={e => {
+                  const category = e.target.value
+                  setSelectedCategory(category)
+                  if (category === STANDALONE) {
+                    setSelectedScope(STANDALONE)
+                    setSelectedSpecificTask(STANDALONE)
+                  } else {
+                    setSelectedScope('')
+                    setSelectedSpecificTask('')
+                  }
+                  setCustomSpecificTask('')
+                  setTitle('')
+                  setDescription('')
+                }}
+              >
+                <option value="">Standalone tasks</option>
+                {presetCatalog.map(c => (
+                  <option key={c.category} value={c.category}>{c.category}</option>
                 ))}
-              </div>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope</label>
+              <select
+                className={inputClass}
+                value={selectedScope}
+                onChange={e => {
+                  const scope = e.target.value
+                  setSelectedScope(scope)
+                  setSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
+                  setCustomSpecificTask('')
+                  setTitle('')
+                  setDescription('')
+                }}
+                disabled={!selectedCategory}
+              >
+                <option value="">Standalone tasks</option>
+                {(presetCatalog.find(c => c.category === selectedCategory)?.scopes ?? [])
+                  .map(scope => (
+                    <option key={scope.scope} value={scope.scope}>{scope.scope}</option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          {/* 6. Specific task */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+            <select
+              className={inputClass}
+              value={selectedSpecificTask}
+              onChange={e => {
+                const key = e.target.value
+                setSelectedSpecificTask(key)
+                const selected = presetCatalog
+                  .find(c => c.category === selectedCategory)
+                  ?.scopes
+                  .filter(scope => scope.scope === selectedScope)
+                  .flatMap(scope => scope.tasks.map(task => ({
+                    key: `${scope.scope}|||${task.name}`,
+                    scope: scope.scope,
+                    task: task.name,
+                    est_mandays: task.est_mandays,
+                  })))
+                  .find(item => item.key === key)
+                if (!selected) {
+                  setTitle('')
+                  return
+                }
+                setTitle(selected.task)
+                if (selected.est_mandays != null) setEstMandays(String(selected.est_mandays))
+              }}
+              disabled={!selectedScope}
+            >
+              <option value="">Standalone tasks</option>
+              {(presetCatalog.find(c => c.category === selectedCategory)?.scopes ?? [])
+                .filter(scope => scope.scope === selectedScope)
+                .flatMap(scope => scope.tasks.map(task => ({
+                  key: `${scope.scope}|||${task.name}`,
+                  label: `${scope.scope} > ${task.name}`,
+                  est_mandays: task.est_mandays,
+                })))
+                .map(opt => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}{opt.est_mandays != null ? ` (${opt.est_mandays} md)` : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+          {!isTaskSelected && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+              <textarea
+                className={inputClass}
+                rows={2}
+                value={customSpecificTask}
+                onChange={e => {
+                  setCustomSpecificTask(e.target.value)
+                  setTitle(e.target.value)
+                }}
+                placeholder="Enter specific task details"
+              />
             </div>
           )}
-
-          {/* 4. Task title */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Title *</label>
-            <input className={inputClass} placeholder="e.g. Implement login endpoint" value={title} onChange={e => setTitle(e.target.value)} />
-          </div>
-
-          {/* 5. Description */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description <span className="text-slate-400 font-normal">(optional)</span></label>
-            <textarea className={`${inputClass} resize-none`} rows={2} value={description} onChange={e => setDescription(e.target.value)} />
-          </div>
 
           {/* 6. Partners */}
           {allUsers.filter(u => u.id !== currentUserId).length > 0 && (

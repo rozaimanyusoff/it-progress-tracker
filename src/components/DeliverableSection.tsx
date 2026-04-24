@@ -243,6 +243,7 @@ function DeliverableCard({
         <div className="px-4 pb-4 border-t border-slate-100 dark:border-navy-700 pt-3">
           <FeatureTaskList
             deliverableId={deliverable.id}
+            deliverableTitle={deliverable.title}
             deliverableMandays={deliverable.mandays}
             deliverablePlannedStart={deliverable.planned_start ?? null}
             deliverablePlannedEnd={deliverable.planned_end ?? null}
