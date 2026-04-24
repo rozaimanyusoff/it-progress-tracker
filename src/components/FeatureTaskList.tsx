@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
-import { Pencil, Trash2, Check, X } from 'lucide-react'
+import { Pencil, Trash2, X } from 'lucide-react'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
 
 interface TaskAssignee {
@@ -19,6 +19,8 @@ interface Task {
   assignees: TaskAssignee[]
   due_date: string | null
   actual_start: string | null
+  actual_end: string | null
+  actual_mandays: number | null
   est_mandays: number | null
   priority: string
   is_blocked: boolean
@@ -34,7 +36,10 @@ interface Props {
   featureId?: number
   deliverableId?: number
   deliverableMandays?: number | null
+  deliverablePlannedStart?: string | null
   deliverablePlannedEnd?: string | null
+  projectStart?: string | null
+  projectDeadline?: string | null
   userRole: string
   developers: Developer[]
 }
@@ -239,8 +244,8 @@ function AssigneeCheckList({
         <label
           key={u.id}
           className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs cursor-pointer transition-colors ${value.includes(u.id)
-              ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-              : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+            ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+            : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
             }`}
         >
           <input
@@ -257,7 +262,7 @@ function AssigneeCheckList({
   )
 }
 
-export default function FeatureTaskList({ featureId, deliverableId, deliverableMandays, deliverablePlannedEnd, userRole, developers }: Props) {
+export default function FeatureTaskList({ featureId, deliverableId, deliverableMandays, deliverablePlannedStart, deliverablePlannedEnd, projectStart, projectDeadline, userRole, developers }: Props) {
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -281,10 +286,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   }>>([])
   const [showTaskPresetPopover, setShowTaskPresetPopover] = useState(false)
   const [showScopeGuidePopover, setShowScopeGuidePopover] = useState(false)
-  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
-  const [editingTitle, setEditingTitle] = useState('')
-  const [editingEstMandays, setEditingEstMandays] = useState<string>('')
-  const [editingDueDate, setEditingDueDate] = useState<string>('')
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [editForm, setEditForm] = useState({ title: '', description: '', assigneeIds: [] as number[], est_mandays: '', due_date: '', priority: 'medium', actual_start: '', actual_end: '' })
+  const [editTaskError, setEditTaskError] = useState('')
+  const [editTaskSaving, setEditTaskSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -382,18 +387,51 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     }
   }
 
-  async function saveTaskTitle(taskId: number) {
-    if (!editingTitle.trim()) return
-    const estMd = editingEstMandays !== '' ? Number(editingEstMandays) : null
-    const dueDate = editingDueDate || null
-    const res = await fetch(`/api/tasks/${taskId}`, {
+  function openEditTask(task: Task) {
+    setEditForm({
+      title: task.title,
+      description: (task as any).description ?? '',
+      assigneeIds: task.assignees.map(a => a.user.id),
+      est_mandays: task.est_mandays != null ? String(task.est_mandays) : '',
+      due_date: task.due_date ? task.due_date.slice(0, 10) : '',
+      priority: task.priority ?? 'medium',
+      actual_start: task.actual_start ? task.actual_start.slice(0, 10) : '',
+      actual_end: task.actual_end ? task.actual_end.slice(0, 10) : '',
+    })
+    setEditTaskError('')
+    setEditingTask(task)
+  }
+
+  async function saveEditTask() {
+    if (!editingTask) return
+    if (!editForm.title.trim()) { setEditTaskError('Task category is required.'); return }
+    setEditTaskError('')
+    setEditTaskSaving(true)
+    const payload: Record<string, unknown> = {
+      title: editForm.title.trim(),
+      description: editForm.description.trim() || null,
+      assignee_ids: editForm.assigneeIds,
+      est_mandays: editForm.est_mandays !== '' ? Number(editForm.est_mandays) : null,
+      due_date: editForm.due_date || null,
+      priority: editForm.priority,
+    }
+    if (userRole === 'manager') {
+      payload.actual_start = editForm.actual_start || null
+      payload.actual_end = editForm.actual_end || null
+    }
+    const res = await fetch(`/api/tasks/${editingTask.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: editingTitle.trim(), est_mandays: estMd, due_date: dueDate }),
+      body: JSON.stringify(payload),
     })
+    setEditTaskSaving(false)
     if (res.ok) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, title: editingTitle.trim(), est_mandays: estMd, due_date: dueDate } : t))
-      setEditingTaskId(null)
+      const updated = await res.json()
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t))
+      setEditingTask(null)
+    } else {
+      const err = await res.json().catch(() => null)
+      setEditTaskError(err?.error ?? 'Failed to save task.')
     }
   }
 
@@ -548,43 +586,33 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                   ? 'text-green-700 dark:text-green-400 line-through decoration-green-400/60'
                   : 'text-slate-800 dark:text-slate-200'
                   }`}>
-                  {editingTaskId === task.id ? (
-                    <input
-                      className={`${inputClass} w-full`}
-                      value={editingTitle}
-                      onChange={e => setEditingTitle(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveTaskTitle(task.id); if (e.key === 'Escape') setEditingTaskId(null) }}
-                      autoFocus
-                    />
-                  ) : (
-                    <div>
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}>
-                          {task.priority}
+                  <div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}>
+                        {task.priority}
+                      </span>
+                      {(task.is_blocked || task.status === 'Blocked') && (
+                        <span
+                          className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 cursor-help"
+                          title={task.blocked_reason ?? 'Blocked'}
+                        >
+                          🚫 Blocked
                         </span>
-                        {(task.is_blocked || task.status === 'Blocked') && (
-                          <span
-                            className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 cursor-help"
-                            title={task.blocked_reason ?? 'Blocked'}
-                          >
-                            🚫 Blocked
-                          </span>
-                        )}
-                        {task.title}
-                        {task.is_predefined && (
-                          <span className="text-xs text-slate-400 dark:text-slate-500">SDLC</span>
-                        )}
-                        {(task._count?.issues ?? 0) > 0 && (
-                          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Open issues">
-                            ⚠ {task._count!.issues}
-                          </span>
-                        )}
-                      </div>
-                      {(task.is_blocked || task.status === 'Blocked') && task.blocked_reason && (
-                        <p className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 italic">{task.blocked_reason}</p>
+                      )}
+                      {task.title}
+                      {task.is_predefined && (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">SDLC</span>
+                      )}
+                      {(task._count?.issues ?? 0) > 0 && (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Open issues">
+                          ⚠ {task._count!.issues}
+                        </span>
                       )}
                     </div>
-                  )}
+                    {(task.is_blocked || task.status === 'Blocked') && task.blocked_reason && (
+                      <p className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 italic">{task.blocked_reason}</p>
+                    )}
+                  </div>
                 </td>
 
                 {/* Assignee cell */}
@@ -611,37 +639,23 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                 </td>
 
                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400 text-xs">
-                  {editingTaskId === task.id ? (
-                    <input
-                      type="number"
-                      min="0.5"
-                      step="0.5"
-                      className={`${inputClass} w-16`}
-                      placeholder="—"
-                      value={editingEstMandays}
-                      onChange={e => setEditingEstMandays(e.target.value)}
-                    />
-                  ) : (
-                    task.est_mandays != null ? task.est_mandays : '—'
-                  )}
+                  {task.est_mandays != null ? task.est_mandays : '—'}
                 </td>
                 <td className="px-3 py-2 text-xs">
-                  {editingTaskId === task.id ? (
-                    <input
-                      type="date"
-                      className={`${inputClass} w-32`}
-                      value={editingDueDate}
-                      onChange={e => setEditingDueDate(e.target.value)}
-                    />
-                  ) : task.due_date ? (
+                  {task.due_date ? (
                     <span className="flex items-center gap-1 whitespace-nowrap">
-                      <span className="text-slate-500 dark:text-slate-400">
+                      <span className={task.status === 'Done' ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-500 dark:text-slate-400'}>
                         {new Date(task.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' })}
                       </span>
-                      {dueDateBadge(task.due_date, task.status)}
+                      {task.status !== 'Done' && dueDateBadge(task.due_date, task.status)}
                     </span>
                   ) : (
                     <span className="text-slate-400">—</span>
+                  )}
+                  {task.status === 'Done' && task.actual_end && (
+                    <div className="text-green-600 dark:text-green-400 font-medium mt-0.5 whitespace-nowrap">
+                      ✓ {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' })}
+                    </div>
                   )}
                 </td>
                 <td className="px-3 py-2">
@@ -684,30 +698,21 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     )}
                     {userRole === 'manager' ? (
                       <>
-                        {editingTaskId === task.id ? (
-                          <>
-                            <button onClick={() => saveTaskTitle(task.id)} className="p-1 rounded text-green-500 hover:text-green-700" title="Save"><Check className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setEditingTaskId(null)} className="p-1 rounded text-slate-400 hover:text-slate-600" title="Cancel"><X className="w-3.5 h-3.5" /></button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => { setEditingTaskId(task.id); setEditingTitle(task.title); setEditingEstMandays(task.est_mandays != null ? String(task.est_mandays) : ''); setEditingDueDate(task.due_date ? task.due_date.slice(0, 10) : '') }}
-                              className="p-1 rounded text-yellow-500 dark:text-yellow-400 hover:text-yellow-600"
-                              title="Edit task"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            {!task.is_predefined && (
-                              <button
-                                onClick={() => deleteTask(task.id, task.title)}
-                                className="p-1 rounded text-red-400 hover:text-red-600"
-                                title="Delete task"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </>
+                        <button
+                          onClick={() => openEditTask(task)}
+                          className="p-1 rounded text-yellow-500 dark:text-yellow-400 hover:text-yellow-600"
+                          title="Edit task"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {!task.is_predefined && (
+                          <button
+                            onClick={() => deleteTask(task.id, task.title)}
+                            className="p-1 rounded text-red-400 hover:text-red-600"
+                            title="Delete task"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </>
                     ) : null}
@@ -754,6 +759,52 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                   </button>
                 </div>
                 <div className="space-y-4">
+                  {(projectStart || projectDeadline || deliverablePlannedStart || deliverablePlannedEnd) && (
+                    <div className="rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 px-3 py-2 space-y-1">
+                      {(projectStart || projectDeadline) && (
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-medium text-slate-600 dark:text-slate-300 shrink-0">Project</span>
+                          <span>{projectStart ? new Date(projectStart).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                          <span className="text-slate-300 dark:text-slate-600">→</span>
+                          <span>{projectDeadline ? new Date(projectDeadline).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                        </div>
+                      )}
+                      {(deliverablePlannedStart || deliverablePlannedEnd) && (
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-medium text-slate-600 dark:text-slate-300 shrink-0">Deliverable</span>
+                          <span>{deliverablePlannedStart ? new Date(deliverablePlannedStart).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                          <span className="text-slate-300 dark:text-slate-600">→</span>
+                          <span>{deliverablePlannedEnd ? new Date(deliverablePlannedEnd).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {tasks.length > 0 && (
+                    <div className="rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 px-3 py-2">
+                      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
+                        Current tasks ({tasks.length})
+                      </p>
+                      <ul className="space-y-0.5 max-h-36 overflow-y-auto">
+                        {tasks.map(t => (
+                          <li key={t.id} className="flex items-center gap-2 text-xs">
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${t.status === 'Done' ? 'bg-green-500' :
+                                t.status === 'InProgress' ? 'bg-orange-400' :
+                                  t.status === 'InReview' ? 'bg-yellow-400' :
+                                    t.status === 'Blocked' ? 'bg-red-400' : 'bg-slate-300'
+                              }`} />
+                            <span className={`flex-1 ${t.status === 'Done' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                              {t.title}
+                            </span>
+                            {t.due_date && (
+                              <span className="text-slate-400 dark:text-slate-500 shrink-0">
+                                {new Date(t.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                       Task Category *{' '}
@@ -979,6 +1030,149 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
                     >
                       {addingTask ? 'Adding...' : 'Add Task'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {editingTask && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">Edit Task</h2>
+                  <button onClick={() => setEditingTask(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  {(projectStart || projectDeadline || deliverablePlannedStart || deliverablePlannedEnd) && (
+                    <div className="rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 px-3 py-2 space-y-1">
+                      {(projectStart || projectDeadline) && (
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-medium text-slate-600 dark:text-slate-300 shrink-0">Project</span>
+                          <span>{projectStart ? new Date(projectStart).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                          <span className="text-slate-300 dark:text-slate-600">→</span>
+                          <span>{projectDeadline ? new Date(projectDeadline).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                        </div>
+                      )}
+                      {(deliverablePlannedStart || deliverablePlannedEnd) && (
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-medium text-slate-600 dark:text-slate-300 shrink-0">Deliverable</span>
+                          <span>{deliverablePlannedStart ? new Date(deliverablePlannedStart).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                          <span className="text-slate-300 dark:text-slate-600">→</span>
+                          <span>{deliverablePlannedEnd ? new Date(deliverablePlannedEnd).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category *</label>
+                    <input
+                      className={`${inputClass} w-full`}
+                      value={editForm.title}
+                      onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, title: e.target.value })) }}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Task / Scope</label>
+                    <textarea
+                      className={`${inputClass} w-full resize-none`}
+                      rows={3}
+                      placeholder={buildScopePlaceholder(editForm.title)}
+                      value={editForm.description}
+                      onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, description: e.target.value })) }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
+                    </label>
+                    {assigneeOptions.length > 0 ? (
+                      <AssigneeCheckList
+                        value={editForm.assigneeIds}
+                        options={userRole === 'manager' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
+                        onChange={(ids) => setEditForm(f => ({ ...f, assigneeIds: ids }))}
+                      />
+                    ) : (
+                      <span className="text-xs text-slate-400">No developers to assign</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        className={`${inputClass} w-full`}
+                        placeholder="e.g. 1.5"
+                        value={editForm.est_mandays}
+                        onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, est_mandays: e.target.value })) }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={editForm.due_date}
+                        onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, due_date: e.target.value })) }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                    <select
+                      className={`${inputClass} w-full`}
+                      value={editForm.priority}
+                      onChange={e => setEditForm(f => ({ ...f, priority: e.target.value }))}
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  {userRole === 'manager' && (
+                    <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-3">
+                      <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">PM Override — Actual Dates</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Started On</label>
+                          <input
+                            type="date"
+                            className={`${inputClass} w-full`}
+                            value={editForm.actual_start}
+                            onChange={e => setEditForm(f => ({ ...f, actual_start: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Completed On</label>
+                          <input
+                            type="date"
+                            className={`${inputClass} w-full`}
+                            value={editForm.actual_end}
+                            onChange={e => setEditForm(f => ({ ...f, actual_end: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {editTaskError && <p className="text-sm text-red-500">{editTaskError}</p>}
+                  <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-navy-700">
+                    <button type="button" onClick={() => setEditingTask(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">Cancel</button>
+                    <button
+                      type="button"
+                      onClick={saveEditTask}
+                      disabled={editTaskSaving || !editForm.title.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+                    >
+                      {editTaskSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                   </div>
                 </div>

@@ -128,6 +128,8 @@ function DeliverableCard({
   onMoveDown,
   canMoveUp,
   canMoveDown,
+  projectStartDate,
+  projectDeadline,
 }: {
   deliverable: Deliverable
   userRole: string
@@ -140,6 +142,8 @@ function DeliverableCard({
   onMoveDown?: () => void
   canMoveUp?: boolean
   canMoveDown?: boolean
+  projectStartDate?: string
+  projectDeadline?: string
 }) {
   const { done, total, pct } = taskProgress(deliverable.tasks)
   const isExpanded = expandedId === deliverable.id
@@ -240,7 +244,10 @@ function DeliverableCard({
           <FeatureTaskList
             deliverableId={deliverable.id}
             deliverableMandays={deliverable.mandays}
+            deliverablePlannedStart={deliverable.planned_start ?? null}
             deliverablePlannedEnd={deliverable.planned_end ?? null}
+            projectStart={projectStartDate ?? null}
+            projectDeadline={projectDeadline ?? null}
             userRole={userRole}
             developers={members.map(m => ({ user: m }))}
           />
@@ -542,6 +549,8 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
               canMoveDown={idx < sortedDeliverables.length - 1}
               onMoveUp={() => moveDeliverable(idx, 'up')}
               onMoveDown={() => moveDeliverable(idx, 'down')}
+              projectStartDate={projectStartDate}
+              projectDeadline={projectDeadline}
             />
           ))}
         </div>
@@ -549,14 +558,41 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
 
       {showDelivModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
+          <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[95vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                {editingDeliv ? 'Edit Deliverable' : `New Deliverable ${projectTitle}`}
+                {editingDeliv ? 'Edit Deliverable' : `New Deliverable — ${projectTitle}`}
               </h2>
               <button onClick={() => setShowDelivModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                 <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Project timeline reference */}
+            <div className="mb-4 rounded-lg border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/60 p-3">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Project Timeline</p>
+              <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200 mb-3">
+                <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">{fmt(projectStartDate)}</span>
+                <span className="flex-1 border-t border-dashed border-slate-300 dark:border-navy-600" />
+                <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-medium">{fmt(projectDeadline)}</span>
+              </div>
+              {sortedDeliverables.length > 0 && (
+                <>
+                  <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">Existing Deliverables</p>
+                  <div className="space-y-1">
+                    {sortedDeliverables.map(d => (
+                      <div key={d.id} className={`flex items-center gap-2 text-xs rounded px-2 py-1 ${editingDeliv?.id === d.id ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50' : 'bg-white dark:bg-navy-800'}`}>
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${d.status === 'Done' ? 'bg-green-500' : d.status === 'InProgress' ? 'bg-orange-400' : d.status === 'OnHold' ? 'bg-yellow-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                        <span className="flex-1 truncate text-slate-700 dark:text-slate-200 font-medium">{d.title}</span>
+                        <span className="text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">
+                          {d.planned_start ? `${fmt(d.planned_start)} → ${d.planned_end ? fmt(d.planned_end) : '—'}` : <span className="italic">No dates</span>}
+                        </span>
+                        {editingDeliv?.id === d.id && <span className="text-[10px] font-semibold text-yellow-600 dark:text-yellow-400 shrink-0">editing</span>}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-4">

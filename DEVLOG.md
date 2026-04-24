@@ -11,6 +11,51 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-24 — Task Completed Date, PM Date Override, Add/Edit Task Date Reference
+
+### Ditambah
+
+**Project Details > Deliverables & Tasks — tarikh "Completed" pada task selesai**
+
+- Kolum Due Date kini memaparkan dua baris bagi task `Done`:
+  - Tarikh due (strikethrough, kelabu).
+  - `✓ {tarikh}` hijau — nilai `actual_end` sebagai tarikh sebenar siap.
+- Jika `actual_end` tiada, baris hijau tidak dipaparkan.
+
+**Project Details > Edit Task modal — PM Override: Actual Dates (manager sahaja)**
+
+- Tambah seksyen biru **"PM Override — Actual Dates"** di bahagian bawah modal edit task, hanya dipaparkan bagi role `manager`.
+- Dua field tarikh: **Started On** (`actual_start`) dan **Completed On** (`actual_end`).
+- Modal populate nilai sedia ada apabila dibuka melalui `openEditTask()`.
+- Payload PUT hanya menyertakan `actual_start` dan `actual_end` jika user adalah manager.
+
+**API `PUT /api/tasks/[id]` — terima `actual_end` daripada manager**
+
+- `actual_end` kini boleh ditetapkan terus melalui PUT (manager sahaja).
+- Jika task berstatus `Done` dan `actual_end` dikemas kini, `completed_at` turut disegerakkan.
+
+**Add Task & Edit Task modal — rujukan tarikh**
+
+- Kedua-dua modal kini memaparkan blok rujukan tarikh di bahagian atas (hanya jika ada data):
+  - **Project** `{start} → {deadline}`
+  - **Deliverable** `{planned_start} → {planned_end}`
+- Prop baharu pada `FeatureTaskList`: `deliverablePlannedStart`, `projectStart`, `projectDeadline`.
+- `DeliverableSection` menghantar `projectStartDate` dan `projectDeadline` melalui `DeliverableCard`.
+
+**Add Task modal — senarai task semasa**
+
+- Tambah seksyen **"Current tasks (n)"** antara blok rujukan tarikh dan form input.
+- Setiap task disenaraikan dengan dot status berwarna + tajuk + tarikh due (jika ada).
+- Task berstatus `Done` dipaparkan strikethrough.
+- Senarai boleh scroll (max-height 144px) untuk deliverable dengan banyak task.
+
+### Diubah
+
+- `Task` interface dalam `FeatureTaskList.tsx` dikemas kini: tambah `actual_end: string | null` dan `actual_mandays: number | null`.
+- `editForm` state dikemas kini: tambah `actual_start` dan `actual_end`.
+
+---
+
 ## 2026-04-24 — Dashboard UI + Deliverable Add Task Modal
 
 ### Diubah
