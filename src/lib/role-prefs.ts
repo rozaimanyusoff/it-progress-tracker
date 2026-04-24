@@ -6,11 +6,12 @@ export type RolePerm = {
    view: boolean
    delete: boolean
    receive_notifications: boolean
+   assignable: boolean
 }
 
 const DEFAULTS: Record<string, RolePerm> = {
-   manager: { create: true, update: true, view: true, delete: true, receive_notifications: true },
-   member: { create: true, update: true, view: true, delete: false, receive_notifications: true },
+   manager: { create: true, update: true, view: true, delete: true, receive_notifications: true, assignable: true },
+   member: { create: true, update: true, view: true, delete: false, receive_notifications: true, assignable: true },
 }
 
 export async function getRolePreferences(): Promise<Record<string, RolePerm>> {
@@ -29,6 +30,9 @@ export async function getRolePreferences(): Promise<Record<string, RolePerm>> {
             receive_notifications: perms?.receive_notifications !== undefined
                ? Boolean(perms.receive_notifications)
                : (DEFAULTS[roleName]?.receive_notifications ?? true),
+            assignable: perms?.assignable !== undefined
+               ? Boolean(perms.assignable)
+               : (DEFAULTS[roleName]?.assignable ?? true),
          }
       }
       return result

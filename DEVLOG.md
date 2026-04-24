@@ -11,6 +11,31 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-24 — Role Assignee Permission + Assignee List Filtering
+
+### Ditambah
+
+**Settings > Roles — kolum "Assignee"**
+- Tambah field `assignable: boolean` pada jenis `CrudPermission` dan `RolePerm`.
+- Kolum baharu **Assignee** kini dipaparkan dalam jadual roles (selepas Receive Updates).
+- Default: `true` bagi `manager` dan `member`; `false` bagi role custom baharu yang ditambah.
+- Hydration daripada `AppSetting` mengekalkan nilai `assignable` (fallback `true` jika tiada).
+
+**`/api/users` — penapisan berdasarkan `assignable`**
+- Endpoint `/api/users` kini fetch `role` + `display_role` bagi setiap user.
+- User yang role efektifnya mempunyai `assignable: false` ditapis keluar daripada senarai pulangan.
+- Kesan: semua dropdown/senarai assignee dalam app (task, deliverable, issue, project) secara automatik tidak akan memaparkan user yang rolenya tidak dibenarkan sebagai assignee.
+
+**`src/lib/role-prefs.ts`**
+- Tambah `assignable: boolean` pada type `RolePerm`.
+- Default `assignable: true` bagi `manager` dan `member`.
+- `getRolePreferences()` dikemas kini untuk hydrate field `assignable` dengan betul.
+
+**`/api/settings` (GET)**
+- Default `rolePreferences` dikemas kini untuk sertakan `assignable: true` bagi `manager` dan `member`.
+
+---
+
 ## 2026-04-24 — Role-Based Notification Permission (Receive Updates)
 
 ### Ditambah
