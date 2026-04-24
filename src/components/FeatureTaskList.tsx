@@ -13,6 +13,10 @@ interface TaskAssignee {
 interface Task {
   id: number
   title: string
+  description?: string | null
+  dev_category?: string | null
+  dev_scope?: string | null
+  dev_task?: string | null
   status: string
   order: number
   is_predefined: boolean
@@ -283,7 +287,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedScope, setSelectedScope] = useState('')
   const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
-  const [customSpecificTask, setCustomSpecificTask] = useState('')
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [editForm, setEditForm] = useState({ title: '', description: '', assigneeIds: [] as number[], est_mandays: '', due_date: '', priority: 'medium', actual_start: '', actual_end: '' })
   const [editTaskError, setEditTaskError] = useState('')
@@ -314,7 +317,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
         setSelectedCategory('')
         setSelectedScope('')
         setSelectedSpecificTask('')
-        setCustomSpecificTask('')
       })
       .catch(() => setPresetCatalog([]))
   }, [showAddTask, deliverableId])
@@ -460,11 +462,15 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   }
 
   async function addCustomTask() {
-    const resolvedTitle = (newTask.title || customSpecificTask).trim()
-    if (!resolvedTitle) {
-      setAddTaskError('Task is required.')
+    const cleanedDetails = newTask.description.trim()
+    if (!cleanedDetails) {
+      setAddTaskError('Specific Tasks Details is required.')
       return
     }
+    const resolvedTitle = cleanedDetails.split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || 'Task'
+    const devCategoryRef = selectedCategory.trim() || null
+    const devScopeRef = selectedScope.trim() || null
+    const devTaskRef = selectedTaskLabel.trim() || null
     if (!newTask.est_mandays || Number(newTask.est_mandays) <= 0) {
       setAddTaskError('Est. mandays is required.')
       return
@@ -492,6 +498,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
         ...(featureId ? { feature_id: featureId } : { deliverable_id: deliverableId }),
         title: resolvedTitle,
         description: newTask.description.trim(),
+        dev_category: devCategoryRef,
+        dev_scope: devScopeRef,
+        dev_task: devTaskRef,
         assignee_ids: resolvedIds,
         due_date: newTask.due_date || null,
         priority: newTask.priority,
@@ -536,9 +545,8 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       est_mandays: task.est_mandays,
     }))
     : []
-  const hasFullPresetSelection = Boolean(selectedCategory && selectedScope && selectedSpecificTask)
-  const isStandaloneSelection = !selectedCategory && !selectedScope && !selectedSpecificTask
-  const canSubmitTaskSelection = (newTask.title || customSpecificTask).trim().length > 0
+  const selectedTaskLabel = specificTaskOptions.find(opt => opt.key === selectedSpecificTask)?.task ?? ''
+  const canSubmitTaskSelection = newTask.description.trim().length > 0
   const progressPct = calcProgress(tasks)
   const doneTasks = tasks.filter(t => t.status === 'Done').length
 
@@ -743,7 +751,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
               setSelectedCategory('')
               setSelectedScope('')
               setSelectedSpecificTask('')
-              setCustomSpecificTask('')
               setShowAddTask(true)
             }}
             className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
@@ -768,7 +775,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       setSelectedCategory('')
                       setSelectedScope('')
                       setSelectedSpecificTask('')
-                      setCustomSpecificTask('')
                       setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                     }}
                     className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
@@ -834,9 +840,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
                       <select
-                        className={inputClass}
+                        className={`${inputClass} w-full`}
                         value={selectedCategory}
                         onChange={e => {
                           const category = e.target.value
@@ -849,8 +855,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                             setSelectedScope('')
                             setSelectedSpecificTask('')
                           }
-                          setCustomSpecificTask('')
-                          setNewTask(prev => ({ ...prev, title: '', description: '' }))
                         }}
                       >
                         <option value="">{'Standalone tasks'}</option>
@@ -860,17 +864,15 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
                       <select
-                        className={inputClass}
+                        className={`${inputClass} w-full`}
                         value={selectedScope}
                         onChange={e => {
                           const scope = e.target.value
                           setAddTaskError('')
                           setSelectedScope(scope)
                           setSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
-                          setCustomSpecificTask('')
-                          setNewTask(prev => ({ ...prev, title: '', description: '' }))
                         }}
                         disabled={!selectedCategory}
                       >
@@ -882,9 +884,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
                     <select
-                      className={inputClass}
+                      className={`${inputClass} w-full`}
                       value={selectedSpecificTask}
                       onChange={e => {
                         const next = e.target.value
@@ -892,12 +894,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         setSelectedSpecificTask(next)
                         const selected = specificTaskOptions.find(opt => opt.key === next)
                         if (!selected) {
-                          setNewTask(prev => ({ ...prev, title: '' }))
                           return
                         }
                         setNewTask(prev => ({
                           ...prev,
-                          title: selected.task,
                           est_mandays: selected.est_mandays != null ? String(selected.est_mandays) : prev.est_mandays,
                         }))
                       }}
@@ -906,26 +906,26 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       <option value="">{'Standalone tasks'}</option>
                       {specificTaskOptions.map(opt => (
                         <option key={opt.key} value={opt.key}>
-                          {opt.label}{opt.est_mandays != null ? ` (${opt.est_mandays} md)` : ''}
+                          {opt.label}
                         </option>
                       ))}
                     </select>
                   </div>
-                  {isStandaloneSelection && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
-                      <textarea
-                        className={`${inputClass} w-full resize-none`}
-                        rows={2}
-                        value={customSpecificTask}
-                        onChange={e => {
-                          setCustomSpecificTask(e.target.value)
-                          setNewTask(prev => ({ ...prev, title: e.target.value }))
-                        }}
-                        placeholder="Enter specific task details"
-                      />
-                    </div>
-                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
+                    <textarea
+                      className={`${inputClass} w-full resize-none`}
+                      rows={2}
+                      value={newTask.description}
+                      onChange={e => {
+                        setAddTaskError('')
+                        setNewTask(prev => ({ ...prev, description: e.target.value }))
+                      }}
+                      placeholder={selectedTaskLabel
+                        ? `Specify details for ${selectedTaskLabel}...`
+                        : 'Specify task details...'}
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                       {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
@@ -1019,7 +1019,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         setSelectedCategory('')
                         setSelectedScope('')
                         setSelectedSpecificTask('')
-                        setCustomSpecificTask('')
                         setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                       }}
                       className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"

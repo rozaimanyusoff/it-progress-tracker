@@ -43,7 +43,19 @@ export async function POST(req: NextRequest) {
   const user = session.user as any
 
   const body = await req.json()
-  const { feature_id, deliverable_id, title, description, assignee_ids, due_date, est_mandays, priority } = body
+  const {
+    feature_id,
+    deliverable_id,
+    title,
+    description,
+    assignee_ids,
+    due_date,
+    est_mandays,
+    priority,
+    dev_category,
+    dev_scope,
+    dev_task,
+  } = body
 
   if (!title) {
     return NextResponse.json({ error: 'title is required' }, { status: 400 })
@@ -114,6 +126,9 @@ export async function POST(req: NextRequest) {
       ...relationData,
       title,
       description: description || null,
+      dev_category: dev_category || null,
+      dev_scope: dev_scope || null,
+      dev_task: dev_task || null,
       order: nextOrder,
       is_predefined: false,
       status: 'Todo',

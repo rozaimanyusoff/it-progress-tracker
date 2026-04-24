@@ -11,6 +11,9 @@ interface Task {
   id: number
   title: string
   description?: string | null
+  dev_category?: string | null
+  dev_scope?: string | null
+  dev_task?: string | null
   status: string
   review_count: number
   time_started_at: string | null
@@ -97,7 +100,6 @@ function AddTaskModal({
   const [creatingDeliverable, setCreatingDeliverable] = useState(false)
   const [newDeliverableError, setNewDeliverableError] = useState('')
   const [assigneeIds, setAssigneeIds] = useState<number[]>([])
-  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -115,7 +117,6 @@ function AddTaskModal({
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedScope, setSelectedScope] = useState('')
   const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
-  const [customSpecificTask, setCustomSpecificTask] = useState('')
   const [delivBudget, setDelivBudget] = useState<{ total: number; used: number } | null>(null)
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -132,7 +133,6 @@ function AddTaskModal({
     setProjectId(initialProjectId)
     setDeliverableId(initialDeliverableId)
     setAssigneeIds(initialTask.assignees.map(a => a.user.id))
-    setTitle(initialTask.title ?? '')
     setDescription(initialTask.description ?? '')
     setDueDate(initialTask.due_date ? initialTask.due_date.slice(0, 10) : '')
     setPriority(initialTask.priority ?? 'medium')
@@ -142,7 +142,6 @@ function AddTaskModal({
     setSelectedCategory('')
     setSelectedScope('')
     setSelectedSpecificTask('')
-    setCustomSpecificTask('')
   }, [initialTask])
 
   useEffect(() => {
@@ -185,7 +184,6 @@ function AddTaskModal({
       setSelectedCategory('')
       setSelectedScope('')
       setSelectedSpecificTask('')
-      setCustomSpecificTask('')
     }
 
     fetch(`/api/deliverables/${hasDeliverable ? deliverableId : '0'}/preset-tasks`)
@@ -196,7 +194,6 @@ function AddTaskModal({
         setSelectedCategory('')
         setSelectedScope('')
         setSelectedSpecificTask('')
-        setCustomSpecificTask('')
       })
       .catch(() => setPresetCatalog([]))
 
@@ -210,18 +207,18 @@ function AddTaskModal({
 
   useEffect(() => {
     if (!initialTask || presetCatalog.length === 0) return
-    const parts = (initialTask.description ?? '').split(' > ').map(s => s.trim()).filter(Boolean)
-    if (parts.length < 2) return
-    const [cat, scope] = parts
+    const cat = initialTask.dev_category?.trim()
+    const scope = initialTask.dev_scope?.trim()
+    const taskName = initialTask.dev_task?.trim()
+    if (!cat || !scope || !taskName) return
     const catNode = presetCatalog.find(c => c.category === cat)
     if (!catNode) return
     const candidate = catNode.scopes
       .flatMap(s => s.tasks.map(t => ({ key: `${s.scope}|||${t.name}`, scope: s.scope, task: t.name })))
-      .find(x => x.scope === scope && x.task === initialTask.title)
+      .find(x => x.scope === scope && x.task === taskName)
     setSelectedCategory(cat)
     setSelectedScope(scope)
     setSelectedSpecificTask(candidate?.key ?? '')
-    setCustomSpecificTask('')
   }, [initialTask, presetCatalog])
 
   async function handleCreateDeliverable() {
@@ -274,8 +271,12 @@ function AddTaskModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isEditMode && projectId && !deliverableId) { setError('Please select a deliverable.'); return }
-    const taskTitle = (title || customSpecificTask).trim()
-    if (!taskTitle) { setError('Task is required.'); return }
+    const cleanedDetails = description.trim()
+    if (!cleanedDetails) { setError('Specific Tasks Details is required.'); return }
+    const taskTitle = cleanedDetails.split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || 'Task'
+    const devCategoryRef = selectedCategory.trim() || null
+    const devScopeRef = selectedScope.trim() || null
+    const devTaskRef = selectedTaskLabel.trim() || null
     if (deliverableId && (!estMandays || Number(estMandays) <= 0)) {
       setError('Est. mandays is required when linked to a deliverable.'); return
     }
@@ -289,6 +290,9 @@ function AddTaskModal({
     const payload: Record<string, unknown> = {
       title: taskTitle,
       description: description.trim(),
+      dev_category: devCategoryRef,
+      dev_scope: devScopeRef,
+      dev_task: devTaskRef,
       assignee_ids: assigneeIds,
       est_mandays: estMandays ? Number(estMandays) : null,
     }
@@ -312,7 +316,13 @@ function AddTaskModal({
     onAdded(task)
     onClose()
   }
-  const isTaskSelected = Boolean(selectedSpecificTask)
+  const selectedTaskLabel = (presetCatalog.find(c => c.category === selectedCategory)?.scopes ?? [])
+    .filter(scope => scope.scope === selectedScope)
+    .flatMap(scope => scope.tasks.map(task => ({
+      key: `${scope.scope}|||${task.name}`,
+      task: task.name,
+    })))
+    .find(item => item.key === selectedSpecificTask)?.task ?? ''
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -357,7 +367,6 @@ function AddTaskModal({
                         setSelectedCategory('')
                         setSelectedScope('')
                         setSelectedSpecificTask('')
-                        setCustomSpecificTask('')
                         setDelivBudget(null)
                         return
                       }
@@ -600,7 +609,7 @@ function AddTaskModal({
           <div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
                 <select
                   className={inputClass}
                   value={selectedCategory}
@@ -614,9 +623,6 @@ function AddTaskModal({
                       setSelectedScope('')
                       setSelectedSpecificTask('')
                     }
-                    setCustomSpecificTask('')
-                    setTitle('')
-                    setDescription('')
                   }}
                 >
                   <option value="">Standalone tasks</option>
@@ -626,7 +632,7 @@ function AddTaskModal({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
                 <select
                   className={inputClass}
                   value={selectedScope}
@@ -634,9 +640,6 @@ function AddTaskModal({
                     const scope = e.target.value
                     setSelectedScope(scope)
                     setSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
-                    setCustomSpecificTask('')
-                    setTitle('')
-                    setDescription('')
                   }}
                   disabled={!selectedCategory}
                 >
@@ -651,7 +654,7 @@ function AddTaskModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
             <select
               className={inputClass}
               value={selectedSpecificTask}
@@ -670,10 +673,8 @@ function AddTaskModal({
                   })))
                   .find(item => item.key === key)
                 if (!selected) {
-                  setTitle('')
                   return
                 }
-                setTitle(selected.task)
                 if (selected.est_mandays != null) setEstMandays(String(selected.est_mandays))
               }}
               disabled={!selectedScope}
@@ -683,31 +684,28 @@ function AddTaskModal({
                 .filter(scope => scope.scope === selectedScope)
                 .flatMap(scope => scope.tasks.map(task => ({
                   key: `${scope.scope}|||${task.name}`,
-                  label: `${scope.scope} > ${task.name}`,
+                  label: task.name,
                   est_mandays: task.est_mandays,
                 })))
                 .map(opt => (
                   <option key={opt.key} value={opt.key}>
-                    {opt.label}{opt.est_mandays != null ? ` (${opt.est_mandays} md)` : ''}
+                    {opt.label}
                   </option>
                 ))}
             </select>
           </div>
-          {!isTaskSelected && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
-              <textarea
-                className={inputClass}
-                rows={2}
-                value={customSpecificTask}
-                onChange={e => {
-                  setCustomSpecificTask(e.target.value)
-                  setTitle(e.target.value)
-                }}
-                placeholder="Enter specific task details"
-              />
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
+            <textarea
+              className={inputClass}
+              rows={2}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder={selectedTaskLabel
+                ? `Specify details for ${selectedTaskLabel}...`
+                : 'Specify task details...'}
+            />
+          </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
@@ -821,6 +819,12 @@ export default function TeamKanbanBoard() {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
+  const [columnSearch, setColumnSearch] = useState<Record<string, string>>({
+    Todo: '',
+    InProgress: '',
+    InReview: '',
+    Done: '',
+  })
 
   // Modal
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
@@ -855,10 +859,22 @@ export default function TeamKanbanBoard() {
   function getFilteredBoard(): BoardState {
     const next: BoardState = {}
     for (const col of COLUMNS) {
+      const query = (columnSearch[col.id] ?? '').trim().toLowerCase()
       next[col.id] = board[col.id].filter(t => {
         const matchPriority = !filterPriority || t.priority === filterPriority
         const matchProject = !selectedProjectId || String(t.context.project?.id ?? '') === selectedProjectId
-        return matchPriority && matchProject
+        const searchable = [
+          t.title,
+          t.description ?? '',
+          t.context.title ?? '',
+          t.context.project?.title ?? '',
+          t.context.module?.title ?? '',
+          t.dev_category ?? '',
+          t.dev_scope ?? '',
+          t.dev_task ?? '',
+        ].join(' ').toLowerCase()
+        const matchSearch = !query || searchable.includes(query)
+        return matchPriority && matchProject && matchSearch
       })
     }
     return next
@@ -1170,7 +1186,7 @@ export default function TeamKanbanBoard() {
               {COLUMNS.map(col => (
                 <div key={col.id} className="flex flex-col">
                   {/* Column header */}
-                  <div className={`rounded-lg px-3 py-2 mb-1 ${col.color}`}>
+                  <div className={`rounded-lg px-3 py-2 mb-1 flex flex-col min-h-[102px] ${col.color}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-sm">{col.label}</span>
@@ -1186,7 +1202,13 @@ export default function TeamKanbanBoard() {
                         )}
                       </div>
                     </div>
-                    <p className="text-[10px] opacity-60 mt-0.5 leading-snug">{col.description}</p>
+                    <p className="text-[10px] opacity-60 mt-0.5 leading-snug min-h-[30px]">{col.description}</p>
+                    <input
+                      value={columnSearch[col.id] ?? ''}
+                      onChange={e => setColumnSearch(prev => ({ ...prev, [col.id]: e.target.value }))}
+                      placeholder="Search task/deliverable..."
+                      className="mt-auto w-full bg-white/70 dark:bg-navy-900/80 border border-slate-300/60 dark:border-navy-600 rounded px-2 py-1 text-[11px] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
                   <div className="mb-3" />
 

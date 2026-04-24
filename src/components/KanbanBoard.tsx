@@ -11,6 +11,9 @@ interface Task {
   id: number
   title: string
   description?: string | null
+  dev_category?: string | null
+  dev_scope?: string | null
+  dev_task?: string | null
   status: string
   is_predefined: boolean
   time_started_at: string | null
@@ -119,7 +122,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   const [partnerIds, setPartnerIds] = useState<number[]>([])
   const [projectId, setProjectId] = useState('')
   const [deliverableId, setDeliverableId] = useState('')
-  const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -137,7 +139,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedScope, setSelectedScope] = useState('')
   const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
-  const [customSpecificTask, setCustomSpecificTask] = useState('')
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
 
@@ -173,7 +174,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
         setSelectedCategory('')
         setSelectedScope('')
         setSelectedSpecificTask('')
-        setCustomSpecificTask('')
       })
       .catch(() => setPresetCatalog([]))
   }, [deliverableId])
@@ -182,13 +182,23 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   const delivPlannedEnd = selectedDeliverable?.planned_end ? new Date(selectedDeliverable.planned_end) : null
   const dueDateVal = dueDate ? new Date(dueDate) : null
   const dueDateExceeds = delivPlannedEnd && dueDateVal && dueDateVal > delivPlannedEnd
-  const isTaskSelected = Boolean(selectedSpecificTask)
+  const selectedTaskLabel = (presetCatalog.find(c => c.category === selectedCategory)?.scopes ?? [])
+    .filter(scope => scope.scope === selectedScope)
+    .flatMap(scope => scope.tasks.map(task => ({
+      key: `${scope.scope}|||${task.name}`,
+      task: task.name,
+    })))
+    .find(item => item.key === selectedSpecificTask)?.task ?? ''
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!deliverableId) { setError('Please select a deliverable.'); return }
-    const taskTitle = (title || customSpecificTask).trim()
-    if (!taskTitle) { setError('Task is required.'); return }
+    const cleanedDetails = description.trim()
+    if (!cleanedDetails) { setError('Specific Tasks Details is required.'); return }
+    const taskTitle = cleanedDetails.split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || 'Task'
+    const devCategoryRef = selectedCategory.trim() || null
+    const devScopeRef = selectedScope.trim() || null
+    const devTaskRef = selectedTaskLabel.trim() || null
     setSaving(true); setError('')
 
     const res = await fetch('/api/tasks', {
@@ -198,6 +208,9 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
         deliverable_id: Number(deliverableId),
         title: taskTitle,
         description: description.trim() || null,
+        dev_category: devCategoryRef,
+        dev_scope: devScopeRef,
+        dev_task: devTaskRef,
         assignee_ids: partnerIds, // member's own ID is added server-side
         due_date: dueDate || null,
         priority,
@@ -245,7 +258,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
           {/* 4. Task category */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Category</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
               <select
                 className={inputClass}
                 value={selectedCategory}
@@ -259,9 +272,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
                     setSelectedScope('')
                     setSelectedSpecificTask('')
                   }
-                  setCustomSpecificTask('')
-                  setTitle('')
-                  setDescription('')
                 }}
               >
                 <option value="">Standalone tasks</option>
@@ -272,7 +282,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
               <select
                 className={inputClass}
                 value={selectedScope}
@@ -280,9 +290,6 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
                   const scope = e.target.value
                   setSelectedScope(scope)
                   setSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
-                  setCustomSpecificTask('')
-                  setTitle('')
-                  setDescription('')
                 }}
                 disabled={!selectedCategory}
               >
@@ -297,7 +304,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
 
           {/* 6. Specific task */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
             <select
               className={inputClass}
               value={selectedSpecificTask}
@@ -316,10 +323,8 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
                   })))
                   .find(item => item.key === key)
                 if (!selected) {
-                  setTitle('')
                   return
                 }
-                setTitle(selected.task)
                 if (selected.est_mandays != null) setEstMandays(String(selected.est_mandays))
               }}
               disabled={!selectedScope}
@@ -329,31 +334,28 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
                 .filter(scope => scope.scope === selectedScope)
                 .flatMap(scope => scope.tasks.map(task => ({
                   key: `${scope.scope}|||${task.name}`,
-                  label: `${scope.scope} > ${task.name}`,
+                  label: task.name,
                   est_mandays: task.est_mandays,
                 })))
                 .map(opt => (
                   <option key={opt.key} value={opt.key}>
-                    {opt.label}{opt.est_mandays != null ? ` (${opt.est_mandays} md)` : ''}
+                    {opt.label}
                   </option>
                 ))}
             </select>
           </div>
-          {!isTaskSelected && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task</label>
-              <textarea
-                className={inputClass}
-                rows={2}
-                value={customSpecificTask}
-                onChange={e => {
-                  setCustomSpecificTask(e.target.value)
-                  setTitle(e.target.value)
-                }}
-                placeholder="Enter specific task details"
-              />
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
+            <textarea
+              className={inputClass}
+              rows={2}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder={selectedTaskLabel
+                ? `Specify details for ${selectedTaskLabel}...`
+                : 'Specify task details...'}
+            />
+          </div>
 
           {/* 6. Partners */}
           {allUsers.filter(u => u.id !== currentUserId).length > 0 && (
@@ -456,6 +458,12 @@ export default function KanbanBoard() {
   // Filters
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterFeatureId, setFilterFeatureId] = useState('')
+  const [columnSearch, setColumnSearch] = useState<Record<string, string>>({
+    Todo: '',
+    InProgress: '',
+    InReview: '',
+    Done: '',
+  })
   const [showLegend, setShowLegend] = useState(false)
 
   useEffect(() => { loadMyTasks() }, [])
@@ -491,6 +499,30 @@ export default function KanbanBoard() {
     return true
   })
   const board = buildBoard(visibleTasks)
+  const getColumnTasks = (colId: string) => {
+    const query = (columnSearch[colId] ?? '').trim().toLowerCase()
+    if (!query) return board[colId]
+    return board[colId].filter(t => {
+      const searchable = [
+        t.title,
+        t.description ?? '',
+        t.feature?.title ?? '',
+        t.deliverable?.title ?? '',
+        t.project?.title ?? '',
+        t.module?.title ?? '',
+        t.dev_category ?? '',
+        t.dev_scope ?? '',
+        t.dev_task ?? '',
+      ].join(' ').toLowerCase()
+      return searchable.includes(query)
+    })
+  }
+  const todoSearchQuery = (columnSearch.Todo ?? '').trim().toLowerCase()
+  const visibleAssignedIssues = assignedIssues.filter(issue => {
+    if (!todoSearchQuery) return true
+    const searchable = [issue.title, issue.description ?? '', issue.project.title].join(' ').toLowerCase()
+    return searchable.includes(todoSearchQuery)
+  })
 
   function handleTaskAdded(task: Task) {
     setAllTasks(prev => [...prev, task])
@@ -749,14 +781,14 @@ export default function KanbanBoard() {
           <div className="grid grid-cols-4 gap-4 items-start">
             {COLUMNS.map(col => (
               <div key={col.id} className="flex flex-col">
-                <div className={`rounded-lg px-3 py-2 mb-1 ${col.color}`}>
+                <div className={`rounded-lg px-3 py-2 mb-1 flex flex-col min-h-[102px] ${col.color}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="font-semibold text-sm">{col.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium opacity-70">
-                        {board[col.id].length + (col.id === 'Todo' ? assignedIssues.length : 0)}
+                        {getColumnTasks(col.id).length + (col.id === 'Todo' ? visibleAssignedIssues.length : 0)}
                       </span>
                       {col.id === 'Todo' && (
                         <button
@@ -767,7 +799,13 @@ export default function KanbanBoard() {
                       )}
                     </div>
                   </div>
-                  <p className="text-[10px] opacity-60 mt-0.5 leading-snug">{col.description}</p>
+                  <p className="text-[10px] opacity-60 mt-0.5 leading-snug min-h-[30px]">{col.description}</p>
+                  <input
+                    value={columnSearch[col.id] ?? ''}
+                    onChange={e => setColumnSearch(prev => ({ ...prev, [col.id]: e.target.value }))}
+                    placeholder="Search task/deliverable..."
+                    className="mt-auto w-full bg-white/70 dark:bg-navy-900/80 border border-slate-300/60 dark:border-navy-600 rounded px-2 py-1 text-[11px] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
                 </div>
                 <div className="mb-3" />
 
@@ -781,7 +819,7 @@ export default function KanbanBoard() {
                 )}
 
                 {/* Assigned issue cards — To Do column only */}
-                {col.id === 'Todo' && assignedIssues.map(issue => {
+                {col.id === 'Todo' && visibleAssignedIssues.map(issue => {
                   const sevColor: Record<string, string> = {
                     high: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
                     medium: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300',
@@ -809,7 +847,7 @@ export default function KanbanBoard() {
                       {...provided.droppableProps}
                       className={`flex flex-col gap-2 min-h-32 rounded-lg p-1 transition-colors ${snapshot.isDraggingOver ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
                     >
-                      {board[col.id].map((task, index) => (
+                      {getColumnTasks(col.id).map((task, index) => (
                         <Draggable key={task.id} draggableId={String(task.id)} index={index}>
                           {(provided, snapshot) => (
                             <div

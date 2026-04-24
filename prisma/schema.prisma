@@ -330,6 +330,9 @@ model Task {
   deliverable_id     Int?
   title              String
   description        String?
+  dev_category       String?
+  dev_scope          String?
+  dev_task           String?
   status             TaskStatus    @default(Todo)
   order              Int           @default(0)
   is_predefined      Boolean       @default(false)

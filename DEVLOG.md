@@ -11,6 +11,61 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-24 — Add Task Form Refactor + Dev Reference Schema + Kanban Column Search
+
+### Ditambah
+
+**Schema Task — Dev reference fields (nullable)**
+
+- Tambah kolum baharu pada `Task` (nullable): `dev_category`, `dev_scope`, `dev_task`.
+- Migration ditambah: `prisma/migrations/20260424143000_add_task_dev_references_nullable/migration.sql`.
+- Prisma schema dikemas kini untuk map ketiga-tiga field baharu pada model `Task`.
+
+**Add Task payload (Kanban + Project Details)**
+
+- `POST /api/tasks` kini menerima dan menyimpan:
+  - `dev_category` (nullable)
+  - `dev_scope` (nullable)
+  - `dev_task` (nullable)
+- `PUT /api/tasks/[id]` kini boleh kemas kini ketiga-tiga field Dev reference tersebut.
+
+### Diubah
+
+**Add Task form (Team Kanban + My Kanban + Project Details > Deliverable)**
+
+- Rombak aliran input:
+  - Dropdown `Tasks Category (Dev)`, `Scope (Dev)`, `Task (Dev)` dijadikan **reference sahaja**.
+  - `Specific Tasks Details` dijadikan **mandatory** untuk tujuan umum (general purpose).
+  - Field `Task (Standalone)` dibuang.
+- Label diseragamkan:
+  - `Tasks Category (Dev)`
+  - `Scope (Dev)`
+  - `Task (Dev)`
+  - `Specific Tasks Details`
+- Placeholder `Specific Tasks Details` diperkemas:
+  - Buang simbol `< >`
+  - Guna format `Specify details for {task}...` apabila task dev dipilih.
+- Dropdown `Task (Dev)` kini paparkan nama task sahaja (tiada format `Scope > Task`).
+- Add Task Project Details: dropdown Dev diset `w-full` untuk alignment dengan grid form.
+
+**Kanban board search**
+
+- Tambah search input pada setiap column header.
+- Tingkah laku ditukar daripada global sync kepada **per-column search** (independent per status column).
+- Search match merangkumi task/deliverable context termasuk `title`, `description`, project/module/context title, serta `dev_category/dev_scope/dev_task`.
+- Untuk My Kanban, issue cards di kolum `To Do` turut ikut query search kolum `To Do`.
+
+### Diperbaiki
+
+- Alignment header kolum Kanban:
+  - Tinggi header diseragamkan (`min-h`) supaya semua kolum nampak rata.
+  - Ruang deskripsi distabilkan (`min-h`) dan search input dikunci di bahagian bawah (`mt-auto`).
+- Build verification:
+  - `npx prisma generate` lulus.
+  - `npm run build` lulus selepas semua perubahan.
+
+---
+
 ## 2026-04-24 — Task Completed Date, PM Date Override, Add/Edit Task Date Reference
 
 ### Ditambah
