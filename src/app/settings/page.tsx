@@ -25,12 +25,12 @@ type Settings = {
   smtp_host: string; smtp_port: string; smtp_user: string; smtp_from: string
 }
 
-type CrudPermission = { create: boolean; update: boolean; view: boolean; delete: boolean }
+type CrudPermission = { create: boolean; update: boolean; view: boolean; delete: boolean; receive_notifications: boolean }
 type RolePreferences = Record<string, CrudPermission>
 
 const DEFAULT_ROLE_PREFERENCES: RolePreferences = {
-  manager: { create: true, update: true, view: true, delete: true },
-  member: { create: true, update: true, view: true, delete: false },
+  manager: { create: true, update: true, view: true, delete: true, receive_notifications: true },
+  member: { create: true, update: true, view: true, delete: false, receive_notifications: true },
 }
 
 const TABS = ['Team Members', 'Roles', 'Organisation', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
@@ -408,6 +408,9 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
               update: Boolean(rolePerms?.update),
               view: Boolean(rolePerms?.view),
               delete: Boolean(rolePerms?.delete),
+              receive_notifications: rolePerms?.receive_notifications !== undefined
+                ? Boolean(rolePerms.receive_notifications)
+                : (DEFAULT_ROLE_PREFERENCES[roleName]?.receive_notifications ?? true),
             }
           }
           setPrefs({
@@ -460,7 +463,7 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
     }
     setPrefs(prev => ({
       ...prev,
-      [normalized]: { create: false, update: false, view: true, delete: false },
+      [normalized]: { create: false, update: false, view: true, delete: false, receive_notifications: false },
     }))
     setNewRoleName('')
     showToast('success', `Role "${normalized}" added`)
@@ -479,7 +482,7 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
 
   if (loading) return <p className="text-slate-400 py-8 text-center">Loading...</p>
 
-  const permissionKeys: Array<keyof CrudPermission> = ['create', 'update', 'view', 'delete']
+  const permissionKeys: Array<keyof CrudPermission> = ['create', 'update', 'view', 'delete', 'receive_notifications']
   const roleNames = Object.keys(prefs).sort((a, b) => {
     if (a === 'manager') return -1
     if (b === 'manager') return 1
@@ -503,7 +506,7 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
             <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
               <th className="text-left px-5 py-3 font-medium">Role</th>
               {permissionKeys.map(k => (
-                <th key={k} className="text-center px-4 py-3 font-medium">{k}</th>
+                <th key={k} className="text-center px-4 py-3 font-medium">{k === 'receive_notifications' ? 'Receive Updates' : k}</th>
               ))}
               <th className="px-4 py-3"></th>
             </tr>

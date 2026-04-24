@@ -8,6 +8,7 @@ import {
   sendTaskApproved,
   sendTaskAssigned,
 } from '@/lib/email'
+import { filterUsersCanReceiveNotifications, canReceiveNotifications } from '@/lib/role-prefs'
 
 // ── Progress weights ───────────────────────────────────────────────
 const PROGRESS_WEIGHT: Record<string, number> = {
@@ -231,7 +232,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { id: taskId },
     data: updateData,
     include: {
-      assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
+      assignees: { include: { user: { select: { id: true, name: true, email: true, role: true, display_role: true } } } },
     },
   })
 
@@ -248,8 +249,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Notify newly added assignees
     const addedIds = newIds.filter((id) => !oldIds.includes(id))
     for (const uid of addedIds) {
-      const assignee = await prisma.user.findUnique({ where: { id: uid }, select: { email: true, name: true } })
-      if (assignee) sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
+      const assignee = await prisma.user.findUnique({ where: { id: uid }, select: { email: true, name: true, role: true, display_role: true } })
+      if (assignee && await canReceiveNotifications(assignee)) sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
     }
   }
 
@@ -296,9 +297,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (user.role === 'member' && prevStatus === 'InProgress' && newStatus === 'InReview') {
       const managers = await prisma.user.findMany({
         where: { role: 'manager', is_active: true },
-        select: { email: true },
+        select: { email: true, role: true, display_role: true },
       })
-      const managerEmails = managers.map((m) => m.email)
+      const notifiable = await filterUsersCanReceiveNotifications(managers)
+      const managerEmails = notifiable.map((m) => m.email)
       if (managerEmails.length > 0) {
         sendTaskSubmittedForReview(managerEmails, task.title, user.name).catch(() => { })
       }
@@ -306,13 +308,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'InProgress') {
       for (const a of task.assignees) {
-        sendTaskRejected(a.user.email, a.user.name, task.title).catch(() => { })
+        if (await canReceiveNotifications(a.user))
+          sendTaskRejected(a.user.email, a.user.name, task.title).catch(() => { })
       }
     }
 
     if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'Done') {
       for (const a of task.assignees) {
-        sendTaskApproved(a.user.email, a.user.name, task.title).catch(() => { })
+        if (await canReceiveNotifications(a.user))
+          sendTaskApproved(a.user.email, a.user.name, task.title).catch(() => { })
       }
     }
   }

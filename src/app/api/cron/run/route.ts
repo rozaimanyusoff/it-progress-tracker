@@ -161,13 +161,17 @@ async function runPendingNotifyJob(force = false) {
       title: true,
       status: true,
       due_date: true,
-      assignees: { select: { user: { select: { id: true, name: true, email: true, is_active: true } } } },
+      assignees: { select: { user: { select: { id: true, name: true, email: true, is_active: true, role: true, display_role: true } } } },
       deliverable: { select: { project: { select: { title: true } } } },
       feature: { select: { project_links: { select: { project: { select: { title: true } } }, take: 1 } } },
     },
   })
 
-  const byUser = new Map<number, { name: string; email: string; tasks: Array<{ title: string; project: string; dueDate: string; status: string }> }>()
+  const byUser = new Map<number, { name: string; email: string; role: string; display_role: string | null; tasks: Array<{ title: string; project: string; dueDate: string; status: string }> }>()
+
+  // Load role preferences once for the whole batch
+  const { getRolePreferences } = await import('@/lib/role-prefs')
+  const rolePrefs = await getRolePreferences()
 
   for (const t of tasks) {
     const projectTitle = t.deliverable?.project?.title || t.feature?.project_links?.[0]?.project?.title || 'Unlinked'
@@ -177,7 +181,7 @@ async function runPendingNotifyJob(force = false) {
     for (const a of t.assignees) {
       const u = a.user
       if (!u.is_active || !u.email) continue
-      if (!byUser.has(u.id)) byUser.set(u.id, { name: u.name, email: u.email, tasks: [] })
+      if (!byUser.has(u.id)) byUser.set(u.id, { name: u.name, email: u.email, role: u.role, display_role: u.display_role, tasks: [] })
       byUser.get(u.id)!.tasks.push({ title: t.title, project: projectTitle, dueDate, status: t.status })
     }
   }
@@ -185,6 +189,9 @@ async function runPendingNotifyJob(force = false) {
   let sent = 0
   for (const userData of byUser.values()) {
     if (!userData.tasks.length) continue
+    const effectiveRole = userData.display_role || userData.role
+    const rolePerm = rolePrefs[effectiveRole] ?? rolePrefs[userData.role]
+    if (rolePerm && !rolePerm.receive_notifications) continue
     await sendWeeklyPendingTasksReminder(userData.email, userData.name, userData.tasks)
     sent += 1
   }

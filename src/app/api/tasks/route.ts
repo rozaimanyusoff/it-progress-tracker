@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendTaskAssigned } from '@/lib/email'
+import { filterUsersCanReceiveNotifications } from '@/lib/role-prefs'
 
 const ASSIGNEE_INCLUDE = {
   assignees: { include: { user: { select: { id: true, name: true } } } },
@@ -143,9 +144,9 @@ export async function POST(req: NextRequest) {
     for (const uid of resolvedIds) {
       const assignee = await prisma.user.findUnique({
         where: { id: uid },
-        select: { email: true, name: true },
+        select: { email: true, name: true, role: true, display_role: true },
       })
-      if (assignee) {
+      if (assignee && await filterUsersCanReceiveNotifications([assignee]).then(a => a.length > 0)) {
         sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
       }
     }

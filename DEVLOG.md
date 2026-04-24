@@ -11,11 +11,53 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-24 — Role-Based Notification Permission (Receive Updates)
+
+### Ditambah
+
+**Settings > Roles — kolum "Receive Updates"**
+
+- Tambah field `receive_notifications: boolean` pada jenis `CrudPermission`.
+- Kolum baharu **Receive Updates** kini dipaparkan dalam jadual roles (selepas Delete).
+- Default: `true` bagi `manager` dan `member`; `false` bagi role custom baharu yang ditambah.
+- Auto-save debounce tetap digunakan — tiada butang tambahan diperlukan.
+- Pemuatan (hydration) setting semula daripada `AppSetting` turut mengekalkan nilai `receive_notifications`.
+
+**Pustaka pembantu: `src/lib/role-prefs.ts`**
+
+- `getRolePreferences()` — baca dan parse `role_preferences` daripada `AppSetting`.
+- `canReceiveNotifications(user)` — semak sama ada satu user layak terima notifikasi berdasarkan role efektif.
+- `filterUsersCanReceiveNotifications(users)` — tapis senarai user, hanya kembalikan yang rolenya ada `receive_notifications: true`.
+
+### Diubah
+
+**Tingkah laku notifikasi email disemak**
+
+Sebelum ini, semua user aktif akan dapat email notifikasi tanpa mengira role.  
+Kini, setiap email hantar akan disemak dulu terhadap permission role:
+
+| Route           | Notifikasi                    | Pemfilteran                                      |
+| --------------- | ----------------------------- | ------------------------------------------------ |
+| `tasks/[id]`    | Task submitted for review     | Manager yang ada `receive_notifications` sahaja  |
+| `tasks/[id]`    | Task approved / rejected      | Assignee yang ada `receive_notifications` sahaja |
+| `tasks/[id]`    | Task re-assigned              | Assignee baharu yang ada permission sahaja       |
+| `tasks` (POST)  | Task assigned on create       | Assignee yang ada permission sahaja              |
+| `projects/[id]` | Project deleted               | Manager lain yang ada permission sahaja          |
+| `issues` (POST) | Issue assigned                | Assignee yang ada permission sahaja              |
+| `cron/run`      | Weekly pending tasks reminder | User assignee yang rolenya ada permission sahaja |
+
+**API `/api/settings` (GET)**
+
+- Default `rolePreferences` dikemas kini untuk sertakan `receive_notifications: true` bagi `manager` dan `member`.
+
+---
+
 ## 2026-04-23 — Project Performance Metrics, Dashboard KPI Cards, Roles Persistence, Cron Scheduling
 
 ### Diubah
 
 **Projects > list view**
+
 - Label seksyen row detail ditukar daripada `Analysis` kepada `Project Performance`.
 - `Tasks (Monthly)` dipindahkan ke dalam container `Project Performance` (bukan kolum utama table).
 - Kolum `SV` ditambah pada row utama projek.
@@ -24,11 +66,13 @@ Format: **terbaru di atas**.
 - Styling KPI card dikemas kini (`bg-gray-50` + dark fallback).
 
 **Dashboard > project cards**
+
 - Badge health kini guna `computedHealthStatus` (berdasarkan SV/flow) bagi elak konflik `On Track` palsu.
 - Seksyen `Tasks (Monthly)` diganti dengan KPI cards ringkas.
 - Nilai `SV` dipaparkan pada header card projek.
 
 **Settings > Roles**
+
 - Butang `Save Role Permissions` dan `Reset Default` dibuang.
 - Checkbox permissions ditukar kepada auto-save (debounce) + status kecil `Saving changes...`.
 - Loader roles diperbaiki supaya semua role custom daripada `role_preferences` dimuat semula selepas refresh.
@@ -36,53 +80,58 @@ Format: **terbaru di atas**.
 ### Ditambah
 
 **Projects API enrichment (`GET /api/projects`)**
+
 - Tambah metrik `monthlyData` lanjutan:
-  - `onTimeCompleted`, `lateCompleted`, `overdueOpen`.
+   - `onTimeCompleted`, `lateCompleted`, `overdueOpen`.
 - Tambah metrik agregat:
-  - `completionRate`, `netFlow`, `backlogTrend`,
-  - `onTimeCompletionRate`,
-  - `scopeVolatility` (berdasarkan baseline 14 hari dari start project).
+   - `completionRate`, `netFlow`, `backlogTrend`,
+   - `onTimeCompletionRate`,
+   - `scopeVolatility` (berdasarkan baseline 14 hari dari start project).
 - Tambah `computedHealthStatus` yang diselaraskan dengan metrik semasa:
-  - mempertimbangkan `SV`, `netFlow`, `overdueOpen`, `completionRate`.
+   - mempertimbangkan `SV`, `netFlow`, `overdueOpen`, `completionRate`.
 
 **Projects chart enhancement**
+
 - Chart task bulanan dinaik taraf kepada combo:
-  - Bar: `Assigned`, `Completed (On-time)`, `Completed (Late)`
-  - Line: `Overdue Open`, `Completion Rate`.
+   - Bar: `Assigned`, `Completed (On-time)`, `Completed (Late)`
+   - Line: `Overdue Open`, `Completion Rate`.
 - Custom tooltip chart dibina semula (portal-based) untuk elak clipping container.
 - Axis/layout chart dituning untuk alignment kiri + spacing edge yang lebih seimbang.
 
 **Dashboard server-side metrics (`/dashboard/page.tsx`)**
+
 - Dashboard kini mengira metrik sama seperti projects list:
-  - `scheduleVariance`, `computedHealthStatus`, `completionRate`, `netFlow`,
-  - `backlogTrend`, `onTimeCompletionRate`, `scopeVolatility`.
+   - `scheduleVariance`, `computedHealthStatus`, `completionRate`, `netFlow`,
+   - `backlogTrend`, `onTimeCompletionRate`, `scopeVolatility`.
 
 **Role persistence model enhancement**
+
 - `User.display_role` ditambah pada Prisma schema untuk simpan role paparan/custom secara terus di row user.
 - API admin users (`/api/admin/users`, `/api/admin/users/[id]`) dikemas kini untuk write/read `display_role`.
 - Migration ditambah:
-  - `prisma/migrations/20260423030000_add_user_display_role/migration.sql`.
+   - `prisma/migrations/20260423030000_add_user_display_role/migration.sql`.
 
 **Automation/Cron foundation**
+
 - Endpoint cron runner ditambah:
-  - `POST /api/cron/run` dengan job `backup | pending-notify | all`.
+   - `POST /api/cron/run` dengan job `backup | pending-notify | all`.
 - Security:
-  - sokong header `x-cron-secret` (`CRON_SECRET`) + fallback manager session untuk manual run.
+   - sokong header `x-cron-secret` (`CRON_SECRET`) + fallback manager session untuk manual run.
 - Job scheduler controls ditambah dalam settings:
-  - `cron_backup_enabled`,
-  - `cron_pending_notify_enabled`,
-  - `cron_backup_day`, `cron_backup_time`,
-  - `cron_pending_notify_day`, `cron_pending_notify_time`,
-  - `cron_timezone`,
-  - dedupe slots: `cron_backup_last_run_slot`, `cron_pending_last_run_slot`.
+   - `cron_backup_enabled`,
+   - `cron_pending_notify_enabled`,
+   - `cron_backup_day`, `cron_backup_time`,
+   - `cron_pending_notify_day`, `cron_pending_notify_time`,
+   - `cron_timezone`,
+   - dedupe slots: `cron_backup_last_run_slot`, `cron_pending_last_run_slot`.
 - Settings UI (`Backup & Restore`) ditambah:
-  - toggle on/off kedua job,
-  - day selector (kini checkbox multi-day untuk kedua job),
-  - day + time disediakan untuk `backup` dan `pending notify`,
-  - time + timezone fields,
-  - manual run buttons untuk test job.
+   - toggle on/off kedua job,
+   - day selector (kini checkbox multi-day untuk kedua job),
+   - day + time disediakan untuk `backup` dan `pending notify`,
+   - time + timezone fields,
+   - manual run buttons untuk test job.
 - Email function baharu:
-  - `sendWeeklyPendingTasksReminder()` untuk weekly pending task reminder kepada owner.
+   - `sendWeeklyPendingTasksReminder()` untuk weekly pending task reminder kepada owner.
 
 ### Diperbaiki
 
@@ -98,28 +147,32 @@ Format: **terbaru di atas**.
 ### Diubah
 
 **Settings > Team Members (Role dropdown)**
+
 - Dropdown `Role` dalam `Add Member` dan `Edit User` kini tidak lagi hardcode `manager/member`.
 - Option role kini diambil daripada `role_preferences` (Settings > Roles), jadi role custom yang ditambah admin akan terus muncul sebagai pilihan.
 
 **Projects tab (table view)**
+
 - Tambah kolum baharu `Tasks (Monthly)` dalam senarai projek.
 - Setiap row projek kini memaparkan mini chart (bar `completed` + line `assigned`) sama konsep dengan kad projek di Dashboard.
 
 ### Ditambah
 
 **Role override persistence untuk user custom role**
+
 - API admin user (`/api/admin/users`, `/api/admin/users/[id]`) kini menyokong simpan role custom user melalui app setting key:
-  - `user_role_overrides`
+   - `user_role_overrides`
 - `GET /api/admin/users` merge role enum sistem + override custom role supaya paparan role user konsisten di UI Team Members.
 - `POST/PATCH /api/admin/users`:
-  - jika role = `manager/member`, guna enum role asal.
-  - jika role custom, simpan enum role fallback `member` + simpan nilai custom pada override map.
+   - jika role = `manager/member`, guna enum role asal.
+   - jika role custom, simpan enum role fallback `member` + simpan nilai custom pada override map.
 - `DELETE /api/admin/users/[id]` turut bersihkan override role user.
 
 **Projects API payload enrichment**
+
 - `GET /api/projects` kini pulangkan `monthlyData` per project:
-  - assigned tasks per month (berdasarkan `created_at`),
-  - completed tasks per month (berdasarkan `COALESCE(actual_end, completed_at)`).
+   - assigned tasks per month (berdasarkan `created_at`),
+   - completed tasks per month (berdasarkan `COALESCE(actual_end, completed_at)`).
 
 ### Diperbaiki
 
@@ -133,6 +186,7 @@ Format: **terbaru di atas**.
 ### Diubah
 
 **Kanban filters & task cards**
+
 - Team Kanban: filter `Project` ditukar daripada dropdown kepada project chips (gaya Project Details), `Priority` filter dikekalkan.
 - Aksi card `Todo`: buang butang delete, gantikan aksi update kepada ikon pencil (edit task).
 - Header/title card diseragamkan supaya `Specific Scope` digunakan sebagai tajuk utama.
@@ -140,65 +194,74 @@ Format: **terbaru di atas**.
 - Paparan `Started` date dipaparkan pada card `InProgress`.
 
 **Task update & review modal**
+
 - Header modal disusun semula untuk paparkan metadata: `Specific Scope` (title), `Deliverable + Project`, `Due Date`, `Budget`, `Defined MD`, `Started On`, `Completed On`, `MD Utilized`, `Created By`.
 - Label/teks form ditukar:
-  - `Manager Note` → `Progress Note`,
-  - mesej prompt lebih friendly untuk tracking progress task owner.
+   - `Manager Note` → `Progress Note`,
+   - mesej prompt lebih friendly untuk tracking progress task owner.
 - Tambah `Update Option`: `Keep Current Status`, `Completed & For Review`, `Blocked`, `Resume`.
 - Jika `Blocked`, `blocker note` diwajibkan.
 - Jika `Completed & For Review`, paparkan dan validasi:
-  - `Started on` (editable untuk backdated),
-  - `Completed on` (editable untuk backdated),
-  - `MD utilized` (dikira auto dari working days started→completed/current).
+   - `Started on` (editable untuk backdated),
+   - `Completed on` (editable untuk backdated),
+   - `MD utilized` (dikira auto dari working days started→completed/current).
 - Susun atur field progress disemak semula (gap/positioning) untuk kebolehbacaan.
 - Form `Edit Task` guna semula form yang sama seperti `Add Task` (prefill + update).
 
 ### Ditambah
 
 **Status transition context**
+
 - `StatusChangeModal` (contoh Todo → InProgress) diperkaya dengan metadata tugas:
-  - task name/scope,
-  - linked deliverable & project,
-  - created by,
-  - due date,
-  - budget,
-  - defined mandays.
+   - task name/scope,
+   - linked deliverable & project,
+   - created by,
+   - due date,
+   - budget,
+   - defined mandays.
 
 **Manager review history visibility**
+
 - `GET /api/tasks/[id]/updates` kini gabungkan:
-  - `task_updates`,
-  - event `task_history` untuk `to_status = InReview`.
+   - `task_updates`,
+   - event `task_history` untuk `to_status = InReview`.
 - `Update History` kini memaparkan event status jelas `Moved to review (dd/mm/yyyy)` untuk audit bila creator/reviewer orang sama.
 
 **Developer analytics controls**
+
 - `Developer Analytics` API menyokong parameter `weeks` dan `offset_weeks` untuk paging timeline.
 - UI analytics tambah kawalan timeline: `4w/8w/12w/24w`, `Older`, `Newer`, `Project Start`, `Latest`.
 - X-axis mingguan dipaparkan sebagai julat tarikh (cth `09 Apr - 15 Apr`) bukan `W1..W4`.
 
 **Data correction tooling**
+
 - Script baru: `scripts/fix-backdated-completion-dates.ts`
-  - cari task `Done` yang completion date tertindih,
-  - pulihkan `actual_end`/`completed_at` daripada `task_history.actual_date` (InReview),
-  - recalc deliverable/project actual dates.
+   - cari task `Done` yang completion date tertindih,
+   - pulihkan `actual_end`/`completed_at` daripada `task_history.actual_date` (InReview),
+   - recalc deliverable/project actual dates.
 - Command npm baru:
-  - `npm run db:fix:completion-dates` (dry-run),
-  - `npm run db:fix:completion-dates -- --apply` (apply fix).
+   - `npm run db:fix:completion-dates` (dry-run),
+   - `npm run db:fix:completion-dates -- --apply` (apply fix).
 
 ### Diperbaiki
 
 **Backdated completion date tidak lagi tertindih**
+
 - Flow manager review `approve` tidak lagi override `actual_end` kepada `now`.
 - Sistem kini kekalkan tarikh completion backdated yang dihantar semasa `submit for review`.
 
 **Tarikh analytics/gantt lebih tepat**
+
 - Weekly completion trend kini utamakan `actual_end` (backdated-friendly), fallback `completed_at`.
 - Weekly tasks trend kini kira berdasarkan `actual_start` (fallback `created_at`) untuk align dengan kerja sebenar.
 - Weekly time trend diagihkan ikut overlap jam mengikut setiap weekly bucket (bukan lump sum pada minggu start).
 
 **Developer analytics assignee scope**
+
 - Untuk manager + project scope, analytics kini termasuk user yang assigned pada task project walaupun tiada `project assignment` explicit (termasuk manager/TL yang self-managed tasks).
 
 **Tooltip theme**
+
 - Tooltip chart dibaiki untuk light/dark theme (background, border, text, shadow) supaya kontras konsisten.
 
 ---
@@ -208,10 +271,12 @@ Format: **terbaru di atas**.
 ### Diubah
 
 **Struktur kerja projek**
+
 - Struktur dalaman diperkemas kepada `Project > Deliverable > Tasks` (module linkage tidak lagi digunakan pada flow baru).
 - Paparan dan flow berkaitan deliverable/task diselaras untuk model baru.
 
 **Deliverable (Project Details)**
+
 - `New Deliverable` title kini paparkan nama projek: `New Deliverable <project name>`.
 - Field `Title`, `Planned Start`, `Planned End` dijadikan mandatory dengan validasi tarikh.
 - Tambah ikon `?` (lebih besar, tanpa border) pada `Title` untuk popover contoh deliverable.
@@ -220,6 +285,7 @@ Format: **terbaru di atas**.
 - Tambah `priority` pada deliverable (level project details) dan boleh set masa create/edit.
 
 **Add Task (Team Kanban)**
+
 - Header ditukar kepada `Add Task by <currently creating as>`.
 - Label assignees ditukar ke `Add Partners`.
 - `Task Title` ditukar kepada `Task Category`.
@@ -228,37 +294,40 @@ Format: **terbaru di atas**.
 - `Create new deliverable` dari dropdown Deliverable kini guna popover form (bukan inline block).
 - `Est. Mandays` diposisikan semula bawah `Add Partners`.
 - Task preset flow ditukar:
-  - `task preset` sebagai link pada label Task Category.
-  - Klik link toggle popover yang paparkan task category + sample tasks.
-  - Klik category isi category; klik sample task isi `TaskName (Category)`.
-  - Hover task badge highlight border untuk kebolehlihatan.
+   - `task preset` sebagai link pada label Task Category.
+   - Klik link toggle popover yang paparkan task category + sample tasks.
+   - Klik category isi category; klik sample task isi `TaskName (Category)`.
+   - Hover task badge highlight border untuk kebolehlihatan.
 - Placeholder/helper `Specific Task/scope` kini dinamik ikut task category terpilih.
 - Bila `Est. Mandays` diisi, paparkan cadangan `Suggested start date` berdasarkan due date.
 - Field `Est. Mandays` untuk standalone (`No Project Link`) dikekalkan tersedia (tanpa deliverable budget meter).
 
 **Task Category & Tasks Library (Projects tab)**
+
 - Tab `Deliverables` ditukar kepada `Task Categories`.
 - Library/preset list ditukar daripada accordion kepada senarai category row dengan task badges.
 - Unit paparan effort ditukar daripada `d` kepada `md`.
 - Dalam mode edit template:
-  - category tidak boleh rename/remove,
-  - tasks boleh add/update/delete.
+   - category tidak boleh rename/remove,
+   - tasks boleh add/update/delete.
 - Add task dalam category menggunakan modal form.
 - Task badge ada menu hover `...` dengan tindakan `Update/Delete`.
 
 ### Ditambah
 
 **Database & migration**
+
 - Kolum baru `priority` pada model `Deliverable` (`TaskPriority`, default `medium`).
 - Migration data untuk detach deliverables legacy dari module:
-  - set `Deliverable.module_id = NULL` bagi rekod sedia ada.
+   - set `Deliverable.module_id = NULL` bagi rekod sedia ada.
 
 **API behavior**
+
 - `POST /api/projects/[id]/deliverables` sokong `priority` dan enforce validasi tarikh + title.
 - `PUT /api/deliverables/[id]` sokong update `priority`.
 - `POST /api/tasks`:
-  - task linked deliverable inherit `due_date` + `priority` dari deliverable (predefined/locked di UI),
-  - standalone task boleh define due date/priority sendiri.
+   - task linked deliverable inherit `due_date` + `priority` dari deliverable (predefined/locked di UI),
+   - standalone task boleh define due date/priority sendiri.
 - `GET /api/deliverables/[id]/preset-tasks` diperkaya dengan category `type` + `samples` task untuk popover preset.
 
 ### Diperbaiki
@@ -274,15 +343,16 @@ Format: **terbaru di atas**.
 ### Feature Baru
 
 **`src/components/TeamKanbanBoard.tsx`**
+
 - Tambah fungsi `moveTask(taskId, currentStatus, direction)` — sama dengan KanbanBoard, dengan permission checks:
-  - InReview tidak boleh kembali ke Todo
-  - Non-manager tidak boleh lompat ke InReview dari Todo
-  - Hanya manager boleh move ke Done
-  - Trigger StatusChangeModal untuk status yang perlukan popup (InProgress, InReview, Done, Blocked)
+   - InReview tidak boleh kembali ke Todo
+   - Non-manager tidak boleh lompat ke InReview dari Todo
+   - Hanya manager boleh move ke Done
+   - Trigger StatusChangeModal untuk status yang perlukan popup (InProgress, InReview, Done, Blocked)
 - Tambah butang ← → di baris bawah setiap kad:
-  - ← : tunjuk jika bukan kolum pertama (Todo); manager-only jika di kolum Done
-  - → : tunjuk jika bukan kolum terakhir (Done); manager-only jika di kolum InReview (next = Done)
-  - Hanya tunjuk kepada manager atau member yang di-assign kepada task
+   - ← : tunjuk jika bukan kolum pertama (Todo); manager-only jika di kolum Done
+   - → : tunjuk jika bukan kolum terakhir (Done); manager-only jika di kolum InReview (next = Done)
+   - Hanya tunjuk kepada manager atau member yang di-assign kepada task
 
 ---
 
@@ -291,6 +361,7 @@ Format: **terbaru di atas**.
 ### UI Enhancement
 
 **`src/app/projects/page.tsx` — Senarai Projek (Table Layout)**
+
 - Gantikan card grid (`sm:grid-cols-2 xl:grid-cols-3`) dengan layout jadual div-based
 - `gridTemplateColumns: '2fr 1fr 160px 1fr 100px 110px 60px 72px'`
 - Kolum: Project (tajuk + deskripsi), Status + Health badge, Progress bar, Team avatars, Start, Deadline, Issues, butang View
@@ -306,6 +377,7 @@ Format: **terbaru di atas**.
 ### Feature Baru
 
 **`src/components/TeamKanbanBoard.tsx` — Drag-and-Drop**
+
 - Import `DragDropContext, Droppable, Draggable, DropResult` dari `@hello-pangea/dnd`
 - `handleDragEnd`: manager boleh drag semua task ke mana-mana kolum; member hanya boleh drag task yang di-assign kepada mereka (kecuali ke kolum Done)
 - Grid bungkus dengan `<DragDropContext onDragEnd={handleDragEnd}>`
@@ -314,12 +386,14 @@ Format: **terbaru di atas**.
 - Trigger popup status (InProgress, InReview, Done) semasa drag sama seperti klik butang
 
 **`src/components/TeamKanbanBoard.tsx` — Fix handleTaskAdded**
+
 - Bug: menambah raw POST response ke board state menyebabkan `TypeError: Cannot read properties of undefined (reading 'module')` di baris 782
 - Fix: `handleTaskAdded` kini memanggil `loadTasks()` semula daripada mengappend task mentah
 
 ### UI Enhancement
 
 **`src/components/TaskUpdateModal.tsx` — Actual Mandays Section**
+
 - Pindahkan input actual mandays ke bahagian tersendiri **di atas** label Note textarea
 - `<hr>` separator antara bahagian mandays dan Note
 - Input sentiasa kelihatan bila `estMandays != null` (tidak lagi terhad kepada status tertentu)
@@ -334,34 +408,41 @@ Format: **terbaru di atas**.
 ### Feature Baru
 
 **Schema: `actual_mandays` pada Task**
+
 - `prisma/schema.prisma` — tambah `actual_mandays Decimal? @db.Decimal(4,1)`
 - Migration: `20260414140130_add_task_actual_mandays`
 
 **API: GET `/api/deliverables/[id]`**
+
 - Return `{ id, title, mandays, used_mandays }` — budget deliverable + jumlah est_mandays task sedia ada
 
 **API: POST `/api/tasks` — Mandays Guard**
+
 - `est_mandays` wajib bila `deliverable_id` disertakan (> 0)
 - Jika `deliverable.mandays > 0`, validate: `used + new_est ≤ total` — return 422 jika melebihi
 
 **API: POST `/api/tasks/[id]/updates` — Actual Mandays**
+
 - Terima `actual_mandays` dalam body
 - Wajib bila `mark_complete=true` (submit for review) — return 400 jika tiada
 - Simpan ke `task.actual_mandays` semasa transisi InProgress → InReview
 
 **UI: AddTaskModal (`TeamKanbanBoard.tsx`)**
+
 - `delivBudget` state — fetch budget deliverable bila deliverableId berubah
 - Budget progress bar: hijau/amber/merah ikut % penggunaan; tunjuk "X.X md remaining" / "Exceeds by X.X md"
-- Est. Mandays label berubah kepada wajib (*) bila deliverable dipilih
+- Est. Mandays label berubah kepada wajib (\*) bila deliverable dipilih
 - Client-side validation sebelum submit
 
 **UI: TaskUpdateModal (`TaskUpdateModal.tsx`)**
+
 - Tambah prop `estMandays?: number | null`
 - Tambah state `actualMandays`
 - Bila status=InProgress & bukan manager: tunjuk input "Actual md used (est: X md)" bersebelahan butang Submit for Review
 - Validate sebelum submit: actualMandays wajib dan > 0
 
 **Boards: Wiring**
+
 - `TeamKanbanBoard.tsx` & `KanbanBoard.tsx` — pass `estMandays={activeTask.est_mandays}` ke TaskUpdateModal
 
 ---
@@ -371,10 +452,11 @@ Format: **terbaru di atas**.
 ### UI Enhancement
 
 **`src/components/TeamKanbanBoard.tsx` — AddTaskModal**
+
 - Modal diperbesarkan dari `max-w-lg` → `max-w-3xl`
 - Layout diubah kepada 2 kolum menggunakan `flex gap-5`:
-  - **Kiri**: Project, Module (conditional), Deliverable
-  - **Kanan**: Assignees, Due date + Priority (grid 2 kolum), Est. Mandays
+   - **Kiri**: Project, Module (conditional), Deliverable
+   - **Kanan**: Assignees, Due date + Priority (grid 2 kolum), Est. Mandays
 - **Full-width** di bawah: Preset tasks banner, Task Title, Description, butang action
 - Due date + Priority disusun sejajar dalam `grid grid-cols-2 gap-3`
 
@@ -385,11 +467,13 @@ Format: **terbaru di atas**.
 ### Pembaikan Bug
 
 **Status badge tidak sinkron antara Dashboard dan Projects page**
+
 - `/api/projects/route.ts` — tambah `computedStatus` dalam response (sama dengan logik dashboard): `OnHold` → OnHold, progress ≥ 100 → Done, progress > 0 → InProgress, else → DB status
 - `src/app/projects/page.tsx` — badge status kini guna `p.computedStatus` bukan `p.status` mentah dari DB; type `Project` dikemaskini tambah `computedStatus: string`
 - Sebelum ini, projek dengan progress > 0 masih tunjuk "Pending" kerana API tidak return `computedStatus`
 
 **Dashboard project cards tiada health indicator**
+
 - `src/app/dashboard/DashboardClient.tsx` — tambah `health_status` ke interface `Project` dan render badge On Track / At Risk / Delayed / Overdue betul-betul selepas `StatusBadge`, sama seperti halaman `/projects`
 
 ---
@@ -399,17 +483,20 @@ Format: **terbaru di atas**.
 ### Penambahan Feature
 
 **Edit Meeting Title/Details (`src/app/planner/page.tsx`)**
+
 - Tambah butang pencil (✎) di header modal MeetingDetail — hanya kelihatan untuk manager
 - Klik butang buka form inline dalam header: Title, Date, Venue, Time From, Time To
 - Save memanggil `PUT /api/meetings/[id]` (sudah wujud) dan update state terus tanpa reload
 - Import tambahan: `Pencil`, `Check` dari lucide-react
 
 **Sidebar Counter: Planner (`src/components/Sidebar.tsx`, `src/app/api/counts/route.ts`)**
+
 - Member yang login akan nampak badge amber pada menu Planner
 - Counter = bilangan `MeetingAgenda` di mana user adalah PIC (`MeetingAgendaPIC`) **dan** belum post sebarang followup (`MeetingFollowup.created_by`) untuk agenda tersebut
 - Badge hilang secara automatik apabila member post followup/update
 
 **Sidebar Counter: Projects (`src/components/Sidebar.tsx`, `src/app/api/counts/route.ts`)**
+
 - Member yang login akan nampak badge pada menu Projects
 - Counter = bilangan project yang member di-assign sebagai assignee (`ProjectAssignee`)
 - Badge warna primary (konsisten dengan badge Kanban)
@@ -417,6 +504,7 @@ Format: **terbaru di atas**.
 ### Perubahan API
 
 **`src/app/api/counts/route.ts`**
+
 - Tambah query `plannerPending`: count `MeetingAgenda` di mana `pics.some.user_id == userId` dan `followups.none.created_by == userId` — member sahaja
 - Tambah query `projectCount`: count `ProjectAssignee` di mana `user_id == userId` — member sahaja
 - Response kini return `{ kanban, issues, planner, projects }`
@@ -440,12 +528,14 @@ Format: **terbaru di atas**.
 ### Komponen Baru
 
 **`src/components/DeliverableSidebar.tsx`**
+
 - Panel slide-in dari kanan, lebar `w-full sm:w-1/2`, dengan notch pill di bahagian atas
 - Tab terapung di tepi kanan (label menegak + ikon `Layers`)
 - Tutup dengan Escape / klik luar; kunci scroll body semasa terbuka
 - Render `DeliverableSection` secara lazy hanya apabila terbuka
 
 **`src/components/ProjectNavBar.tsx`**
+
 - Bar navigasi di bahagian atas halaman project details
 - Kiri: senarai pills project boleh-scroll (dot status, tajuk dipotong ≤120px, peratusan progress)
 - Kanan: pautan `← Back` ke `/dashboard`
@@ -454,6 +544,7 @@ Format: **terbaru di atas**.
 ### Perubahan Komponen
 
 **`src/components/ProjectDetailCard.tsx`**
+
 - Pindahkan badge status project ke atas kad (sebelum baris tajuk)
 - Tambah tab paparan: **Gantt Chart** / **Burndown Chart** / **Milestone**
 - Tab Milestone: garis masa menegak deliverable disusun mengikut `planned_end`; tunjuk status badge, isu terbuka, peratusan task, tarikh planned/actual
@@ -461,16 +552,19 @@ Format: **terbaru di atas**.
 - Tukar butang "Export PPTX" → **"Download Report"**
 
 **`src/components/ProjectActions.tsx`**
+
 - Tambah prop `openIssueCount?: number` (default 0)
 - Badge merah `absolute -top-1.5 -right-1.5` pada butang "+ Issue" apabila ada isu terbuka
 
 **`src/components/DeveloperAnalytics.tsx`**
+
 - Buang bahagian "Completed vs Total Tasks" (MiniCircle)
 - Chart "Tasks Assigned Trend" diganti dengan **stacked bar chart per assignee**: bar pepejal (completed) + bar separuh telus (remaining)
 - **Overall Workload Balance**: buang progress bar; gantikan kolum "Done" → "Completed"; tambah kolum **Workload** (bar mendatar hijau/oren/merah mengikut beban)
 - Manager boleh klik workload bar untuk buka `ReassignModal` — ambil tasks aktif via `GET /api/tasks/by-assignee`, pilih assignee baru, hantar `PUT /api/tasks/[id]`
 
 **`src/app/projects/[id]/page.tsx`**
+
 - Gantikan `<Link>← Back</Link>` dengan `<ProjectNavBar>` (termasuk pengiraan progress + computedStatus sibling projects)
 - Gantikan section inline Modules & Deliverables dengan `<DeliverableSidebar>`
 - Tambah `prisma.issue.count()` untuk `openIssueCount`, dihantar ke `ProjectDetailCard`
@@ -478,6 +572,7 @@ Format: **terbaru di atas**.
 ### API Route Baru
 
 **`src/app/api/tasks/by-assignee/route.ts`**
+
 - `GET /api/tasks/by-assignee?user_id=X&project_id=Y`
 - Manager-only; kembalikan tasks aktif (bukan Done) untuk seorang assignee dalam sesebuah project
 - Filter OR untuk tasks berkaitan feature dan deliverable
@@ -485,16 +580,18 @@ Format: **terbaru di atas**.
 ### Dashboard — Carta Bulanan + Grid Responsif
 
 **`src/app/dashboard/page.tsx`**
+
 - Gantikan query mingguan dengan dua query SQL bulanan selari:
-  - **Monthly Assigned**: kira task mengikut `DATE_TRUNC('month', created_at)`
-  - **Monthly Completed**: kira task `status = 'Done'` mengikut `COALESCE(completed_at, actual_end)`
+   - **Monthly Assigned**: kira task mengikut `DATE_TRUNC('month', created_at)`
+   - **Monthly Completed**: kira task `status = 'Done'` mengikut `COALESCE(completed_at, actual_end)`
 - Label bulan dijana per-project dari `start_date` hingga `deadline` (bukan tempoh tetap)
 - Data berbentuk `monthlyData: { month, assigned, completed }[]`
 
 **`src/app/dashboard/DashboardClient.tsx`**
+
 - Gantikan `WeeklyBar` (BarChart biru) dengan `MonthlyComboChart`:
-  - `ComposedChart` dari recharts
-  - **Bar hijau** = completed tasks; **Line oren** = assigned tasks
+   - `ComposedChart` dari recharts
+   - **Bar hijau** = completed tasks; **Line oren** = assigned tasks
 - Tambah tarikh **Start** dan **Deadline** pada kad project (sebelum ini hanya Deadline)
 - Grid kad: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3` → **`grid-cols-2 md:grid-cols-3 xl:grid-cols-4`** (min 2, max 4 mengikut saiz skrin)
 

@@ -22,9 +22,9 @@ export async function GET(req: NextRequest) {
   } catch { }
 
   // Merge env-based email defaults (never expose SMTP_PASS or DB password)
-  let rolePreferences: Record<string, { create: boolean; update: boolean; view: boolean; delete: boolean }> = {
-    manager: { create: true, update: true, view: true, delete: true },
-    member: { create: true, update: true, view: true, delete: false },
+  let rolePreferences: Record<string, { create: boolean; update: boolean; view: boolean; delete: boolean; receive_notifications: boolean }> = {
+    manager: { create: true, update: true, view: true, delete: true, receive_notifications: true },
+    member: { create: true, update: true, view: true, delete: false, receive_notifications: true },
   }
   try {
     if (settings.role_preferences) {

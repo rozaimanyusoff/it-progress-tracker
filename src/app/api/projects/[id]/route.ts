@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendProjectDeleted } from '@/lib/email'
+import { filterUsersCanReceiveNotifications } from '@/lib/role-prefs'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -128,9 +129,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Notify other active managers about the project deletion
   const otherManagers = await prisma.user.findMany({
     where: { role: 'manager', is_active: true, NOT: { id: Number(user.id) } },
-    select: { email: true },
+    select: { email: true, role: true, display_role: true },
   })
-  const managerEmails = otherManagers.map((m) => m.email)
+  const notifiable = await filterUsersCanReceiveNotifications(otherManagers)
+  const managerEmails = notifiable.map((m) => m.email)
   if (managerEmails.length > 0) {
     sendProjectDeleted(managerEmails, project.title, user.name).catch(() => { })
   }

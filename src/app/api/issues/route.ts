@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendIssueAssigned } from '@/lib/email'
+import { canReceiveNotifications } from '@/lib/role-prefs'
 
 const ISSUE_INCLUDE = {
   project: { select: { id: true, title: true } },
@@ -135,9 +136,9 @@ export async function POST(req: NextRequest) {
   if (assignee_id) {
     const assignee = await prisma.user.findUnique({
       where: { id: Number(assignee_id) },
-      select: { email: true, name: true },
+      select: { email: true, name: true, role: true, display_role: true },
     })
-    if (assignee) sendIssueAssigned(assignee.email, assignee.name, issue.title).catch(() => {})
+    if (assignee && await canReceiveNotifications(assignee)) sendIssueAssigned(assignee.email, assignee.name, issue.title).catch(() => { })
   }
 
   return NextResponse.json(issue, { status: 201 })
