@@ -246,6 +246,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   const [showAddTask, setShowAddTask] = useState(false)
   const [newTask, setNewTask] = useState({
     title: '',
+    description: '',
     assigneeIds: [] as number[],
     due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
     priority: 'medium',
@@ -404,6 +405,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
       body: JSON.stringify({
         ...(featureId ? { feature_id: featureId } : { deliverable_id: deliverableId }),
         title: newTask.title,
+        description: newTask.description.trim() || null,
         assignee_ids: resolvedIds,
         due_date: newTask.due_date || null,
         priority: newTask.priority,
@@ -415,6 +417,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
       setTasks((prev) => [...prev, task])
       setNewTask({
         title: '',
+        description: '',
         assigneeIds: [],
         due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
         priority: 'medium',
@@ -664,117 +667,163 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
           </tbody>
         </table>
 
-        {/* Add task form — visible to all users */}
+        {/* Add task button */}
         <div className="px-3 py-2 border-t border-slate-100 dark:border-navy-700">
-          {!showAddTask ? (
-            <button
-              onClick={() => setShowAddTask(true)}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              + Add Task
-            </button>
-          ) : (
-            <div className="space-y-2 py-1">
-              {presetTasks.length > 0 && (
-                <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset title suggestions — click to use:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {presetTasks.map((t, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setNewTask(p => ({ ...p, title: t.name, est_mandays: t.est_mandays != null ? String(t.est_mandays) : p.est_mandays }))}
-                        className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                      >
-                        {t.name}
-                        {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
-                      </button>
-                    ))}
+          <button
+            onClick={() => setShowAddTask(true)}
+            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            + Add Task
+          </button>
+        </div>
+
+        {showAddTask && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">Add Task</h2>
+                  <button
+                    onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  {presetTasks.length > 0 && (
+                    <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
+                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset title suggestions — click to use:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {presetTasks.map((t, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setNewTask(p => ({ ...p, title: t.name, est_mandays: t.est_mandays != null ? String(t.est_mandays) : p.est_mandays }))}
+                            className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                          >
+                            {t.name}
+                            {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Title *</label>
+                    <input
+                      className={`${inputClass} w-full`}
+                      placeholder="Task title"
+                      value={newTask.title}
+                      onChange={(e) => setNewTask(p => ({ ...p, title: e.target.value }))}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
+                    <textarea
+                      className={`${inputClass} w-full resize-none`}
+                      rows={3}
+                      placeholder="Describe what this task involves and the expected output."
+                      value={newTask.description}
+                      onChange={(e) => setNewTask(p => ({ ...p, description: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
+                    </label>
+                    {assigneeOptions.length > 0 ? (
+                      <AssigneeCheckList
+                        value={newTask.assigneeIds}
+                        options={userRole === 'manager' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
+                        onChange={(ids) => setNewTask(p => ({ ...p, assigneeIds: ids }))}
+                      />
+                    ) : (
+                      <span className="text-xs text-slate-400">No developers to assign</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        className={`${inputClass} w-full`}
+                        placeholder="e.g. 1.5"
+                        value={newTask.est_mandays}
+                        onChange={e => setNewTask(p => ({ ...p, est_mandays: e.target.value }))}
+                      />
+                      {deliverableMandays != null && deliverableMandays > 0 && (() => {
+                        const usedMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
+                        const remaining = deliverableMandays - usedMd
+                        const newMd = Number(newTask.est_mandays) || 0
+                        const afterAdd = remaining - newMd
+                        const pctUsed = Math.min(100, Math.round((usedMd / deliverableMandays) * 100))
+                        const pctNew = Math.min(100 - pctUsed, Math.round((newMd / deliverableMandays) * 100))
+                        return (
+                          <div className="mt-2">
+                            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                              <span>Budget: {deliverableMandays} md total</span>
+                              <span className={afterAdd < 0 ? 'text-red-500 dark:text-red-400' : ''}>{afterAdd.toFixed(1)} md left</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden flex">
+                              <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctUsed}%` }} />
+                              <div className={`h-full transition-all ${afterAdd < 0 ? 'bg-red-400' : 'bg-blue-300'}`} style={{ width: `${pctNew}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={newTask.due_date}
+                        onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))}
+                      />
+                      {newDueDateWarning && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                    <select
+                      className={`${inputClass} w-full`}
+                      value={newTask.priority}
+                      onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-navy-700">
+                    <button
+                      type="button"
+                      onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
+                      className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addCustomTask}
+                      disabled={addingTask || !newTask.title.trim()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+                    >
+                      {addingTask ? 'Adding...' : 'Add Task'}
+                    </button>
                   </div>
                 </div>
-              )}
-              <div className="flex items-center gap-2 flex-wrap">
-                <input
-                  className={`${inputClass} flex-1 min-w-40`}
-                  placeholder="Task title *"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask(p => ({ ...p, title: e.target.value }))}
-                  onKeyDown={(e) => e.key === 'Enter' && addCustomTask()}
-                  autoFocus
-                />
-              </div>
-
-              {/* Assignees */}
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                  {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
-                </p>
-                {assigneeOptions.length > 0 ? (
-                  <AssigneeCheckList
-                    value={newTask.assigneeIds}
-                    options={userRole === 'manager' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
-                    onChange={(ids) => setNewTask(p => ({ ...p, assigneeIds: ids }))}
-                  />
-                ) : (
-                  <span className="text-xs text-slate-400">No developers to assign</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <div>
-                  <label className="text-xs text-slate-500 mr-1">Due date</label>
-                  <input
-                    type="date"
-                    className={inputClass}
-                    value={newTask.due_date}
-                    onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))}
-                  />
-                  {newDueDateWarning && (
-                    <span className="text-xs text-amber-600 ml-1">Due date exceeds deliverable end date</span>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mr-1">Priority</label>
-                  <select
-                    className={inputClass}
-                    value={newTask.priority}
-                    onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mr-1">Est. md</label>
-                  <input
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    className={`${inputClass} w-20`}
-                    placeholder="—"
-                    value={newTask.est_mandays}
-                    onChange={e => setNewTask(p => ({ ...p, est_mandays: e.target.value }))}
-                  />
-                </div>
-                <button
-                  onClick={addCustomTask}
-                  disabled={addingTask}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm disabled:opacity-50"
-                >
-                  {addingTask ? 'Adding...' : 'Save'}
-                </button>
-                <button
-                  onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
-                  className="text-slate-400 hover:text-slate-600 text-sm"
-                >
-                  Cancel
-                </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {deleteConfirm && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">

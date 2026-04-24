@@ -110,7 +110,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
           No projects found.
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
           {localProjects.map(project => {
             const progress = project.computedProgress ?? 0
             const sv = project.scheduleVariance ?? 0
@@ -124,6 +124,7 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                       <Link
                         href={`/projects/${project.id}`}
                         className="font-semibold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm leading-snug block truncate"
+                        title={project.title}
                       >
                         {project.title}
                       </Link>
