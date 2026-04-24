@@ -128,26 +128,24 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                       >
                         {project.title}
                       </Link>
-                      <span className={`text-xs font-semibold whitespace-nowrap ${
-                        sv > 0 ? 'text-green-600 dark:text-green-400' :
+                      <span className={`text-xs font-semibold whitespace-nowrap ${sv > 0 ? 'text-green-600 dark:text-green-400' :
                           sv < 0 ? 'text-red-500 dark:text-red-400' :
                             'text-slate-500 dark:text-slate-400'
-                      }`}>
+                        }`}>
                         SV {sv > 0 ? '+' : ''}{Math.round(sv)}%
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <StatusBadge status={project.computedStatus} />
                       {project.computedHealthStatus && project.computedStatus !== 'Done' && (
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
-                          project.computedHealthStatus === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                          project.computedHealthStatus === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                          project.computedHealthStatus === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                          'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
-                        }`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${project.computedHealthStatus === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                            project.computedHealthStatus === 'at_risk' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                              project.computedHealthStatus === 'delayed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
+                          }`}>
                           {project.computedHealthStatus === 'on_track' ? '🟢 On Track' :
-                           project.computedHealthStatus === 'at_risk' ? '🟡 At Risk' :
-                           project.computedHealthStatus === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
+                            project.computedHealthStatus === 'at_risk' ? '🟡 At Risk' :
+                              project.computedHealthStatus === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
                         </span>
                       )}
                       {project._count.issues > 0 && (
@@ -196,31 +194,28 @@ export default function DashboardClient({ projects, session }: { projects: Proje
                     </div>
                     <div className="rounded-md border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40 px-2 py-1.5">
                       <p className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Net Flow</p>
-                      <p className={`text-[11px] font-semibold mt-0.5 ${
-                        (project.netFlow ?? 0) > 0 ? 'text-green-600 dark:text-green-400' :
+                      <p className={`text-[11px] font-semibold mt-0.5 ${(project.netFlow ?? 0) > 0 ? 'text-green-600 dark:text-green-400' :
                           (project.netFlow ?? 0) < 0 ? 'text-red-500 dark:text-red-400' :
                             'text-slate-700 dark:text-slate-200'
-                      }`}>
+                        }`}>
                         {(project.netFlow ?? 0) > 0 ? '+' : ''}{project.netFlow ?? 0}
                       </p>
                     </div>
                     <div className="rounded-md border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40 px-2 py-1.5">
                       <p className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">On-time</p>
-                      <p className={`text-[11px] font-semibold mt-0.5 ${
-                        (project.onTimeCompletionRate ?? -1) >= 90 ? 'text-green-600 dark:text-green-400' :
+                      <p className={`text-[11px] font-semibold mt-0.5 ${(project.onTimeCompletionRate ?? -1) >= 90 ? 'text-green-600 dark:text-green-400' :
                           (project.onTimeCompletionRate ?? -1) >= 75 ? 'text-yellow-600 dark:text-yellow-400' :
                             'text-red-500 dark:text-red-400'
-                      }`}>
+                        }`}>
                         {project.onTimeCompletionRate != null ? `${project.onTimeCompletionRate}%` : '—'}
                       </p>
                     </div>
                     <div className="rounded-md border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40 px-2 py-1.5">
                       <p className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Scope Volatility</p>
-                      <p className={`text-[11px] font-semibold mt-0.5 ${
-                        (project.scopeVolatility ?? 0) <= 15 ? 'text-green-600 dark:text-green-400' :
+                      <p className={`text-[11px] font-semibold mt-0.5 ${(project.scopeVolatility ?? 0) <= 15 ? 'text-green-600 dark:text-green-400' :
                           (project.scopeVolatility ?? 0) <= 30 ? 'text-yellow-600 dark:text-yellow-400' :
                             'text-red-500 dark:text-red-400'
-                      }`}>
+                        }`}>
                         {project.scopeVolatility != null ? `${project.scopeVolatility}%` : '—'}
                       </p>
                     </div>

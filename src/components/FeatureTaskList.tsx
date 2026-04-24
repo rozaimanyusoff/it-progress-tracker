@@ -218,11 +218,10 @@ function AssigneeCheckList({
       {options.map(u => (
         <label
           key={u.id}
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs cursor-pointer transition-colors ${
-            value.includes(u.id)
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs cursor-pointer transition-colors ${value.includes(u.id)
               ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
               : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
-          }`}
+            }`}
         >
           <input
             type="checkbox"
