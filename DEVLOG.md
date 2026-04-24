@@ -27,6 +27,22 @@ Format: **terbaru di atas**.
 - Bar bajet dikira terus daripada prop `deliverableMandays` dan jumlah `est_mandays` task sedia ada — tiada panggilan API tambahan.
 - Field `description` dihantar kepada `/api/tasks` POST payload.
 
+**Project Details > Deliverable — Add Task popover sync (follow-up)**
+
+- Selaraskan label & mandatory field dengan Team Kanban:
+  - `Task Title` → `Task Category *`
+  - `Description` → `Specific Task/scope *`
+  - `Est. Mandays` dijadikan required.
+- Tambah validasi form sebelum submit:
+  - kategori wajib,
+  - scope wajib,
+  - est. mandays wajib,
+  - block jika est. mandays melebihi baki bajet deliverable.
+- Tambah popover `or task preset` pada `Task Category` (catalog category + sample task, klik untuk autofill).
+- Tambah popover `scope guide` pada `Specific Task/scope` (checklist ringkas output/acceptance/data-role-validation).
+- Tambah helper dinamik `Specific Task/scope` ikut kategori task terpilih (`buildScopePlaceholder`).
+- Build verification: `npm run build` lulus selepas perubahan.
+
 ## 2026-04-24 — Role Assignee Permission + Assignee List Filtering
 
 ### Ditambah

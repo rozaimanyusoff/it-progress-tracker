@@ -73,6 +73,14 @@ const PRIORITY_BADGE: Record<string, string> = {
   critical: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
 }
 
+const CATEGORY_TYPE_BADGE: Record<string, string> = {
+  database: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  backend: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  frontend: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  testing: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  documentation: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
+}
+
 function dueDateBadge(due: string | null, status: string): React.ReactNode {
   if (!due) return null
   const today = new Date()
@@ -92,6 +100,18 @@ function dueDateBadge(due: string | null, status: string): React.ReactNode {
     return <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 ml-1">Due soon</span>
   }
   return <span className="text-[10px] text-slate-400 ml-1">{dateStr}</span>
+}
+
+function buildScopePlaceholder(taskCategory: string): string {
+  const c = taskCategory.toLowerCase().trim()
+  if (!c) return 'Describe exact scope and expected output for the selected task category.'
+  if (c.includes('list') || c.includes('table')) return 'Table apa yang dibina? Nyatakan columns, filters, sorting, pagination, dan data source.'
+  if (c.includes('api') || c.includes('endpoint')) return 'Endpoint apa? Nyatakan route, request/response, validation, auth, dan error handling.'
+  if (c.includes('form')) return 'Form apa? Nyatakan fields, validation, submit flow, dan success/error behavior.'
+  if (c.includes('dashboard') || c.includes('widget') || c.includes('chart')) return 'Widget/metric apa? Nyatakan data source, filter, aggregation, dan update behavior.'
+  if (c.includes('report') || c.includes('export')) return 'Report/export apa? Nyatakan format, filter range, layout, dan expected output.'
+  if (c.includes('test') || c.includes('qa') || c.includes('uat')) return 'Scenario test apa? Nyatakan scope, test data, expected result, dan pass criteria.'
+  return `Nyatakan skop spesifik untuk "${taskCategory}" termasuk output dan acceptance criteria.`
 }
 
 // ── Assignee Chip ──────────────────────────────────────────────────
@@ -252,7 +272,15 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     est_mandays: '',
   })
   const [addingTask, setAddingTask] = useState(false)
-  const [presetTasks, setPresetTasks] = useState<{ name: string; est_mandays: number | null }[]>([])
+  const [addTaskError, setAddTaskError] = useState('')
+  const [presetTasks, setPresetTasks] = useState<Array<{
+    name: string
+    est_mandays: number | null
+    type?: string
+    samples?: { name: string; est_mandays: number | null }[]
+  }>>([])
+  const [showTaskPresetPopover, setShowTaskPresetPopover] = useState(false)
+  const [showScopeGuidePopover, setShowScopeGuidePopover] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [editingEstMandays, setEditingEstMandays] = useState<string>('')
@@ -278,7 +306,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
     if (!showAddTask || !deliverableId) return
     fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
       .then(r => r.json())
-      .then(data => setPresetTasks(Array.isArray(data) ? data : []))
+      .then(data => {
+        setPresetTasks(Array.isArray(data) ? data : [])
+        setShowTaskPresetPopover(false)
+      })
       .catch(() => setPresetTasks([]))
   }, [showAddTask, deliverableId])
 
@@ -390,7 +421,27 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   }
 
   async function addCustomTask() {
-    if (!newTask.title.trim()) return
+    if (!newTask.title.trim()) {
+      setAddTaskError('Task category is required.')
+      return
+    }
+    if (!newTask.description.trim()) {
+      setAddTaskError('Specific task/scope is required.')
+      return
+    }
+    if (!newTask.est_mandays || Number(newTask.est_mandays) <= 0) {
+      setAddTaskError('Est. mandays is required.')
+      return
+    }
+    if (deliverableMandays != null && deliverableMandays > 0) {
+      const usedMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
+      const remaining = deliverableMandays - usedMd
+      if (Number(newTask.est_mandays) > remaining) {
+        setAddTaskError(`Est. mandays exceeds remaining budget (${remaining.toFixed(1)} md available).`)
+        return
+      }
+    }
+    setAddTaskError('')
     setAddingTask(true)
 
     // For members: always include themselves + any partners
@@ -404,7 +455,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
       body: JSON.stringify({
         ...(featureId ? { feature_id: featureId } : { deliverable_id: deliverableId }),
         title: newTask.title,
-        description: newTask.description.trim() || null,
+        description: newTask.description.trim(),
         assignee_ids: resolvedIds,
         due_date: newTask.due_date || null,
         priority: newTask.priority,
@@ -437,6 +488,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
   const delivPlannedEndDate = deliverablePlannedEnd ? new Date(deliverablePlannedEnd) : null
   const newDueDateValue = newTask.due_date ? new Date(newTask.due_date) : null
   const newDueDateWarning = delivPlannedEndDate && newDueDateValue && newDueDateValue > delivPlannedEndDate
+  const scopePlaceholder = buildScopePlaceholder(newTask.title)
   const progressPct = calcProgress(tasks)
   const doneTasks = tasks.filter(t => t.status === 'Done').length
 
@@ -669,7 +721,12 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
         {/* Add task button */}
         <div className="px-3 py-2 border-t border-slate-100 dark:border-navy-700">
           <button
-            onClick={() => setShowAddTask(true)}
+            onClick={() => {
+              setAddTaskError('')
+              setShowTaskPresetPopover(false)
+              setShowScopeGuidePopover(false)
+              setShowAddTask(true)
+            }}
             className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
           >
             + Add Task
@@ -683,50 +740,139 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-slate-900 dark:text-white">Add Task</h2>
                   <button
-                    onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
+                    onClick={() => {
+                      setShowAddTask(false)
+                      setPresetTasks([])
+                      setAddTaskError('')
+                      setShowTaskPresetPopover(false)
+                      setShowScopeGuidePopover(false)
+                      setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
+                    }}
                     className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {presetTasks.length > 0 && (
-                    <div className="rounded-lg border border-dashed border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2">
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Preset title suggestions — click to use:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {presetTasks.map((t, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => setNewTask(p => ({ ...p, title: t.name, est_mandays: t.est_mandays != null ? String(t.est_mandays) : p.est_mandays }))}
-                            className="px-2.5 py-1 text-xs rounded-full border border-blue-200 dark:border-blue-700 bg-white dark:bg-navy-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                          >
-                            {t.name}
-                            {t.est_mandays != null && <span className="text-slate-400 dark:text-slate-500 ml-1">{t.est_mandays}md</span>}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task Title *</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Task Category *{' '}
+                      {presetTasks.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowScopeGuidePopover(false)
+                            setShowTaskPresetPopover(v => !v)
+                          }}
+                          className="text-blue-600 dark:text-blue-300 hover:underline font-normal"
+                        >
+                          or task preset
+                        </button>
+                      )}
+                    </label>
+                    {presetTasks.length > 0 && showTaskPresetPopover && (
+                      <div className="mb-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 p-3 max-h-64 overflow-y-auto">
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Task preset catalog (click category to use):</p>
+                        <div className="space-y-2">
+                          {presetTasks.map((p, i) => (
+                            <div
+                              key={i}
+                              className="w-full text-left rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 px-3 py-2"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                {p.type && (
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_TYPE_BADGE[p.type] ?? CATEGORY_TYPE_BADGE.frontend}`}>
+                                    {p.type}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAddTaskError('')
+                                    setNewTask(prev => ({ ...prev, title: p.name }))
+                                    setShowTaskPresetPopover(false)
+                                  }}
+                                  className="text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300"
+                                >
+                                  {p.name}
+                                </button>
+                              </div>
+                              {p.samples && p.samples.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {p.samples.map((s, si) => (
+                                    <button
+                                      key={si}
+                                      type="button"
+                                      onClick={() => {
+                                        setAddTaskError('')
+                                        setNewTask(prev => ({
+                                          ...prev,
+                                          title: `${s.name} (${p.name})`,
+                                          est_mandays: s.est_mandays != null ? String(s.est_mandays) : prev.est_mandays,
+                                        }))
+                                        setShowTaskPresetPopover(false)
+                                      }}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-[11px] text-slate-500 dark:text-slate-400 transition-colors"
+                                    >
+                                      <span>{s.name}</span>
+                                      <span>{s.est_mandays != null ? `${s.est_mandays} md` : '—'}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <input
                       className={`${inputClass} w-full`}
-                      placeholder="Task title"
+                      placeholder="e.g. Backend API - User Authentication"
                       value={newTask.title}
-                      onChange={(e) => setNewTask(p => ({ ...p, title: e.target.value }))}
+                      onChange={(e) => {
+                        setAddTaskError('')
+                        setShowTaskPresetPopover(false)
+                        setNewTask(p => ({ ...p, title: e.target.value }))
+                      }}
                       autoFocus
                     />
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Questionnaire: What exactly will be built? Use “Category - Specific Scope”.</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Specific Task/scope *{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowTaskPresetPopover(false)
+                          setShowScopeGuidePopover(v => !v)
+                        }}
+                        className="text-blue-600 dark:text-blue-300 hover:underline font-normal"
+                      >
+                        scope guide
+                      </button>
+                    </label>
+                    {showScopeGuidePopover && (
+                      <div className="mb-2 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 p-3">
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Scope checklist:</p>
+                        <ul className="text-xs text-slate-500 dark:text-slate-400 list-disc ml-4 space-y-0.5">
+                          <li>Nyatakan output yang siap (screen/API/report/module).</li>
+                          <li>Nyatakan acceptance criteria / definition of done.</li>
+                          <li>Nyatakan data/role/validation yang terlibat.</li>
+                        </ul>
+                      </div>
+                    )}
                     <textarea
                       className={`${inputClass} w-full resize-none`}
                       rows={3}
-                      placeholder="Describe what this task involves and the expected output."
+                      placeholder={scopePlaceholder}
                       value={newTask.description}
-                      onChange={(e) => setNewTask(p => ({ ...p, description: e.target.value }))}
+                      onChange={(e) => {
+                        setAddTaskError('')
+                        setNewTask(p => ({ ...p, description: e.target.value }))
+                      }}
                     />
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Guide based on selected category: {scopePlaceholder}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -744,7 +890,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
                       <input
                         type="number"
                         min="0.5"
@@ -752,7 +898,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                         className={`${inputClass} w-full`}
                         placeholder="e.g. 1.5"
                         value={newTask.est_mandays}
-                        onChange={e => setNewTask(p => ({ ...p, est_mandays: e.target.value }))}
+                        onChange={e => {
+                          setAddTaskError('')
+                          setNewTask(p => ({ ...p, est_mandays: e.target.value }))
+                        }}
                       />
                       {deliverableMandays != null && deliverableMandays > 0 && (() => {
                         const usedMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
@@ -781,7 +930,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                         type="date"
                         className={`${inputClass} w-full`}
                         value={newTask.due_date}
-                        onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))}
+                        onChange={e => {
+                          setAddTaskError('')
+                          setNewTask(p => ({ ...p, due_date: e.target.value }))
+                        }}
                       />
                       {newDueDateWarning && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
@@ -793,7 +945,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     <select
                       className={`${inputClass} w-full`}
                       value={newTask.priority}
-                      onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}
+                      onChange={e => {
+                        setAddTaskError('')
+                        setNewTask(p => ({ ...p, priority: e.target.value }))
+                      }}
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -801,10 +956,18 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                       <option value="critical">Critical</option>
                     </select>
                   </div>
+                  {addTaskError && <p className="text-sm text-red-500">{addTaskError}</p>}
                   <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-navy-700">
                     <button
                       type="button"
-                      onClick={() => { setShowAddTask(false); setPresetTasks([]); setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' }) }}
+                      onClick={() => {
+                        setShowAddTask(false)
+                        setPresetTasks([])
+                        setAddTaskError('')
+                        setShowTaskPresetPopover(false)
+                        setShowScopeGuidePopover(false)
+                        setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
+                      }}
                       className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                     >
                       Cancel
@@ -812,7 +975,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableM
                     <button
                       type="button"
                       onClick={addCustomTask}
-                      disabled={addingTask || !newTask.title.trim()}
+                      disabled={addingTask || !newTask.title.trim() || !newTask.description.trim()}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
                     >
                       {addingTask ? 'Adding...' : 'Add Task'}
