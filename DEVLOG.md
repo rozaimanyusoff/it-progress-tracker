@@ -18,8 +18,8 @@ Format: **terbaru di atas**.
 **Project Details > Deliverables & Tasks — tarikh "Completed" pada task selesai**
 
 - Kolum Due Date kini memaparkan dua baris bagi task `Done`:
-  - Tarikh due (strikethrough, kelabu).
-  - `✓ {tarikh}` hijau — nilai `actual_end` sebagai tarikh sebenar siap.
+   - Tarikh due (strikethrough, kelabu).
+   - `✓ {tarikh}` hijau — nilai `actual_end` sebagai tarikh sebenar siap.
 - Jika `actual_end` tiada, baris hijau tidak dipaparkan.
 
 **Project Details > Edit Task modal — PM Override: Actual Dates (manager sahaja)**
@@ -37,8 +37,8 @@ Format: **terbaru di atas**.
 **Add Task & Edit Task modal — rujukan tarikh**
 
 - Kedua-dua modal kini memaparkan blok rujukan tarikh di bahagian atas (hanya jika ada data):
-  - **Project** `{start} → {deadline}`
-  - **Deliverable** `{planned_start} → {planned_end}`
+   - **Project** `{start} → {deadline}`
+   - **Deliverable** `{planned_start} → {planned_end}`
 - Prop baharu pada `FeatureTaskList`: `deliverablePlannedStart`, `projectStart`, `projectDeadline`.
 - `DeliverableSection` menghantar `projectStartDate` dan `projectDeadline` melalui `DeliverableCard`.
 
@@ -75,14 +75,14 @@ Format: **terbaru di atas**.
 **Project Details > Deliverable — Add Task popover sync (follow-up)**
 
 - Selaraskan label & mandatory field dengan Team Kanban:
-  - `Task Title` → `Task Category *`
-  - `Description` → `Specific Task/scope *`
-  - `Est. Mandays` dijadikan required.
+   - `Task Title` → `Task Category *`
+   - `Description` → `Specific Task/scope *`
+   - `Est. Mandays` dijadikan required.
 - Tambah validasi form sebelum submit:
-  - kategori wajib,
-  - scope wajib,
-  - est. mandays wajib,
-  - block jika est. mandays melebihi baki bajet deliverable.
+   - kategori wajib,
+   - scope wajib,
+   - est. mandays wajib,
+   - block jika est. mandays melebihi baki bajet deliverable.
 - Tambah popover `or task preset` pada `Task Category` (catalog category + sample task, klik untuk autofill).
 - Tambah popover `scope guide` pada `Specific Task/scope` (checklist ringkas output/acceptance/data-role-validation).
 - Tambah helper dinamik `Specific Task/scope` ikut kategori task terpilih (`buildScopePlaceholder`).
