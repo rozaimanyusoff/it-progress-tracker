@@ -102,17 +102,16 @@ export async function POST(req: NextRequest) {
   })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
-  // Linked tasks always inherit predefined values from deliverable.
+  // Linked tasks inherit due date from deliverable, but priority is task-level.
   // Standalone tasks can define due date / priority manually.
   let resolvedDueDate: Date | null = null
   let resolvedPriority: string = priority || 'medium'
   if (deliverable_id) {
     const deliv = await prisma.deliverable.findUnique({
       where: { id: Number(deliverable_id) },
-      select: { planned_end: true, priority: true },
+      select: { planned_end: true },
     })
     resolvedDueDate = deliv?.planned_end ?? null
-    resolvedPriority = deliv?.priority ?? 'medium'
   } else if (due_date) {
     resolvedDueDate = new Date(due_date)
   }

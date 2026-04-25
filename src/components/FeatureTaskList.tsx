@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, X } from 'lucide-react'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
 
@@ -114,6 +115,16 @@ function buildScopePlaceholder(taskCategory: string): string {
   if (c.includes('report') || c.includes('export')) return 'Report/export apa? Nyatakan format, filter range, layout, dan expected output.'
   if (c.includes('test') || c.includes('qa') || c.includes('uat')) return 'Scenario test apa? Nyatakan scope, test data, expected result, dan pass criteria.'
   return `Nyatakan skop spesifik untuk "${taskCategory}" termasuk output dan acceptance criteria.`
+}
+
+function taskDetailText(task: Task): string {
+  return (task.description ?? task.title ?? '').trim()
+}
+
+function notifyProjectDetailChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('project-detail-data-changed'))
+  }
 }
 
 // ── Assignee Chip ──────────────────────────────────────────────────
@@ -261,6 +272,7 @@ function AssigneeCheckList({
 
 export default function FeatureTaskList({ featureId, deliverableId, deliverableTitle, deliverableMandays, deliverablePlannedStart, deliverablePlannedEnd, projectStart, projectDeadline, userRole, developers }: Props) {
   const STANDALONE = ''
+  const router = useRouter()
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -289,6 +301,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [editForm, setEditForm] = useState({ title: '', description: '', assigneeIds: [] as number[], est_mandays: '', due_date: '', priority: 'medium', actual_start: '', actual_end: '' })
+  const [editSelectedCategory, setEditSelectedCategory] = useState('')
+  const [editSelectedScope, setEditSelectedScope] = useState('')
+  const [editSelectedSpecificTask, setEditSelectedSpecificTask] = useState('')
   const [editTaskError, setEditTaskError] = useState('')
   const [editTaskSaving, setEditTaskSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
@@ -309,17 +324,19 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   }, [deliverablePlannedEnd])
 
   useEffect(() => {
-    if (!showAddTask || !deliverableId) return
+    if ((!showAddTask && !editingTask) || !deliverableId) return
     fetch(`/api/deliverables/${deliverableId}/preset-tasks`)
       .then(r => r.json())
       .then(data => {
         setPresetCatalog(Array.isArray(data) ? data : [])
-        setSelectedCategory('')
-        setSelectedScope('')
-        setSelectedSpecificTask('')
       })
       .catch(() => setPresetCatalog([]))
-  }, [showAddTask, deliverableId])
+  }, [showAddTask, editingTask, deliverableId])
+
+  function refreshProjectDetails() {
+    notifyProjectDetailChanged()
+    router.refresh()
+  }
 
   async function fetchTasks() {
     setLoading(true)
@@ -370,6 +387,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     if (res.ok) {
       const updated = await res.json()
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updated } : t))
+      refreshProjectDetails()
     }
   }
 
@@ -387,6 +405,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     if (res.ok) {
       const updated = await res.json()
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, assignees: updated.assignees } : t))
+      refreshProjectDetails()
     }
   }
 
@@ -401,18 +420,41 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       actual_start: task.actual_start ? task.actual_start.slice(0, 10) : '',
       actual_end: task.actual_end ? task.actual_end.slice(0, 10) : '',
     })
+    setEditSelectedCategory(task.dev_category ?? '')
+    setEditSelectedScope(task.dev_scope ?? '')
+    setEditSelectedSpecificTask(task.dev_task ?? '')
     setEditTaskError('')
     setEditingTask(task)
   }
 
   async function saveEditTask() {
     if (!editingTask) return
-    if (!editForm.title.trim()) { setEditTaskError('Task category is required.'); return }
+    const cleanedDetails = editForm.description.trim()
+    if (!cleanedDetails) { setEditTaskError('Specific Tasks Details is required.'); return }
+    if (!editForm.est_mandays || Number(editForm.est_mandays) <= 0) {
+      setEditTaskError('Est. mandays is required.')
+      return
+    }
+    if (deliverableMandays != null && deliverableMandays > 0) {
+      const usedMd = tasks.reduce((s, t) => {
+        if (t.id === editingTask.id) return s
+        return s + (t.est_mandays != null ? Number(t.est_mandays) : 0)
+      }, 0)
+      const remaining = deliverableMandays - usedMd
+      if (Number(editForm.est_mandays) > remaining) {
+        setEditTaskError(`Est. mandays exceeds remaining budget (${remaining.toFixed(1)} md available).`)
+        return
+      }
+    }
     setEditTaskError('')
     setEditTaskSaving(true)
+    const resolvedTitle = cleanedDetails.split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || 'Task'
     const payload: Record<string, unknown> = {
-      title: editForm.title.trim(),
-      description: editForm.description.trim() || null,
+      title: resolvedTitle,
+      description: cleanedDetails,
+      dev_category: editSelectedCategory.trim() || null,
+      dev_scope: editSelectedScope.trim() || null,
+      dev_task: editSelectedTaskLabel.trim() || null,
       assignee_ids: editForm.assigneeIds,
       est_mandays: editForm.est_mandays !== '' ? Number(editForm.est_mandays) : null,
       due_date: editForm.due_date || null,
@@ -432,6 +474,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       const updated = await res.json()
       setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...updated } : t))
       setEditingTask(null)
+      refreshProjectDetails()
     } else {
       const err = await res.json().catch(() => null)
       setEditTaskError(err?.error ?? 'Failed to save task.')
@@ -458,6 +501,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     if (res.ok) {
       setTasks(prev => prev.filter(t => t.id !== deleteConfirm.id))
       setDeleteConfirm(null)
+      refreshProjectDetails()
     }
   }
 
@@ -519,6 +563,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
         est_mandays: '',
       })
       setShowAddTask(false)
+      refreshProjectDetails()
     }
     setAddingTask(false)
   }
@@ -533,6 +578,8 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   const delivPlannedEndDate = deliverablePlannedEnd ? new Date(deliverablePlannedEnd) : null
   const newDueDateValue = newTask.due_date ? new Date(newTask.due_date) : null
   const newDueDateWarning = delivPlannedEndDate && newDueDateValue && newDueDateValue > delivPlannedEndDate
+  const editDueDateValue = editForm.due_date ? new Date(editForm.due_date) : null
+  const editDueDateWarning = delivPlannedEndDate && editDueDateValue && editDueDateValue > delivPlannedEndDate
   const selectedCategoryNode = presetCatalog.find(c => c.category === selectedCategory)
   const scopeOptions = selectedCategoryNode?.scopes ?? []
   const selectedScopeNode = scopeOptions.find(s => s.scope === selectedScope)
@@ -546,7 +593,21 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     }))
     : []
   const selectedTaskLabel = specificTaskOptions.find(opt => opt.key === selectedSpecificTask)?.task ?? ''
+  const editSelectedCategoryNode = presetCatalog.find(c => c.category === editSelectedCategory)
+  const editScopeOptions = editSelectedCategoryNode?.scopes ?? []
+  const editSelectedScopeNode = editScopeOptions.find(s => s.scope === editSelectedScope)
+  const editSpecificTaskOptions = editSelectedScopeNode
+    ? editSelectedScopeNode.tasks.map(task => ({
+      key: task.name,
+      label: task.name,
+      scope: editSelectedScopeNode.scope,
+      task: task.name,
+      est_mandays: task.est_mandays,
+    }))
+    : []
+  const editSelectedTaskLabel = editSpecificTaskOptions.find(opt => opt.key === editSelectedSpecificTask)?.task ?? editSelectedSpecificTask
   const canSubmitTaskSelection = newTask.description.trim().length > 0
+  const canSubmitEditTask = editForm.description.trim().length > 0
   const progressPct = calcProgress(tasks)
   const doneTasks = tasks.filter(t => t.status === 'Done').length
 
@@ -554,6 +615,60 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
 
   // Options for assignee picker: managers see all developers, members see all developers (for partners)
   const assigneeOptions = developers.map(d => d.user)
+
+  const currentTasksPanel = (
+    tasks.length > 0 ? (
+      <div className="rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 px-3 py-2">
+        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
+          Current tasks ({tasks.length})
+        </p>
+        <ul className="space-y-1 max-h-36 overflow-y-auto">
+          {tasks.map(t => {
+            const detail = taskDetailText(t)
+            const hasRefs = Boolean(t.dev_category || t.dev_scope || t.dev_task)
+            return (
+              <li key={t.id} className="flex items-start gap-2 text-xs">
+                <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${t.status === 'Done' ? 'bg-green-500' :
+                    t.status === 'InProgress' ? 'bg-orange-400' :
+                      t.status === 'InReview' ? 'bg-yellow-400' :
+                        t.status === 'Blocked' ? 'bg-red-400' : 'bg-slate-300'
+                  }`} />
+                <div className={`flex-1 min-w-0 ${t.status === 'Done' ? 'line-through decoration-slate-400/60' : ''}`}>
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    {hasRefs ? (
+                      <>
+                        <span className="font-medium text-emerald-700 dark:text-emerald-300">{t.dev_category || 'Standalone tasks'}</span>
+                        <span className="text-slate-300 dark:text-slate-600">›</span>
+                        <span className="font-medium text-sky-700 dark:text-sky-300">{t.dev_scope || 'Standalone tasks'}</span>
+                        <span className="text-slate-300 dark:text-slate-600">›</span>
+                        <span className="font-medium text-violet-700 dark:text-violet-300">{t.dev_task || 'Standalone tasks'}</span>
+                      </>
+                    ) : (
+                      <span className="font-medium text-violet-700 dark:text-violet-300">Standalone tasks</span>
+                    )}
+                    {detail && (
+                      <>
+                        <span className="text-slate-300 dark:text-slate-600">›</span>
+                        <span className="text-slate-700 dark:text-slate-200 break-words">{detail}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <span className="text-slate-400 dark:text-slate-500 shrink-0">
+                  {t.est_mandays != null ? `${t.est_mandays} md` : '—'}
+                </span>
+                {t.due_date && (
+                  <span className="text-slate-400 dark:text-slate-500 shrink-0">
+                    {new Date(t.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    ) : null
+  )
 
   return (
     <>
@@ -809,35 +924,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       )}
                     </div>
                   )}
-                  {tasks.length > 0 && (
-                    <div className="rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 px-3 py-2">
-                      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
-                        Current tasks ({tasks.length})
-                      </p>
-                      <ul className="space-y-0.5 max-h-36 overflow-y-auto">
-                        {tasks.map(t => (
-                          <li key={t.id} className="flex items-center gap-2 text-xs">
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${t.status === 'Done' ? 'bg-green-500' :
-                                t.status === 'InProgress' ? 'bg-orange-400' :
-                                  t.status === 'InReview' ? 'bg-yellow-400' :
-                                    t.status === 'Blocked' ? 'bg-red-400' : 'bg-slate-300'
-                              }`} />
-                            <span className={`flex-1 ${t.status === 'Done' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}>
-                              {t.title}
-                            </span>
-                            <span className="text-slate-400 dark:text-slate-500 shrink-0">
-                              {t.est_mandays != null ? `${t.est_mandays} md` : '—'}
-                            </span>
-                            {t.due_date && (
-                              <span className="text-slate-400 dark:text-slate-500 shrink-0">
-                                {new Date(t.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {currentTasksPanel}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
@@ -1067,25 +1154,96 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                           <span>{deliverablePlannedStart ? new Date(deliverablePlannedStart).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
                           <span className="text-slate-300 dark:text-slate-600">→</span>
                           <span>{deliverablePlannedEnd ? new Date(deliverablePlannedEnd).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                          {deliverableMandays != null && (
+                            <>
+                              <span className="text-slate-300 dark:text-slate-600">•</span>
+                              <span>{deliverableMandays} md budget</span>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
                   )}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task *</label>
-                    <input
-                      className={`${inputClass} w-full`}
-                      value={editForm.title}
-                      onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, title: e.target.value })) }}
-                      autoFocus
-                    />
+                  {currentTasksPanel}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
+                      <select
+                        className={`${inputClass} w-full`}
+                        value={editSelectedCategory}
+                        onChange={e => {
+                          const category = e.target.value
+                          setEditTaskError('')
+                          setEditSelectedCategory(category)
+                          if (category === STANDALONE) {
+                            setEditSelectedScope(STANDALONE)
+                            setEditSelectedSpecificTask(STANDALONE)
+                          } else {
+                            setEditSelectedScope('')
+                            setEditSelectedSpecificTask('')
+                          }
+                        }}
+                      >
+                        <option value="">{'Standalone tasks'}</option>
+                        {presetCatalog.map(c => (
+                          <option key={c.category} value={c.category}>{c.category}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
+                      <select
+                        className={`${inputClass} w-full`}
+                        value={editSelectedScope}
+                        onChange={e => {
+                          const scope = e.target.value
+                          setEditTaskError('')
+                          setEditSelectedScope(scope)
+                          setEditSelectedSpecificTask(scope === STANDALONE ? STANDALONE : '')
+                        }}
+                        disabled={!editSelectedCategory}
+                      >
+                        <option value="">{'Standalone tasks'}</option>
+                        {editScopeOptions.map(scope => (
+                          <option key={scope.scope} value={scope.scope}>{scope.scope}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Details</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
+                    <select
+                      className={`${inputClass} w-full`}
+                      value={editSelectedSpecificTask}
+                      onChange={e => {
+                        const next = e.target.value
+                        setEditTaskError('')
+                        setEditSelectedSpecificTask(next)
+                        const selected = editSpecificTaskOptions.find(opt => opt.key === next)
+                        if (!selected) return
+                        setEditForm(prev => ({
+                          ...prev,
+                          est_mandays: selected.est_mandays != null ? String(selected.est_mandays) : prev.est_mandays,
+                        }))
+                      }}
+                      disabled={!editSelectedScope}
+                    >
+                      <option value="">{'Standalone tasks'}</option>
+                      {editSpecificTaskOptions.map(opt => (
+                        <option key={opt.key} value={opt.key}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
                     <textarea
                       className={`${inputClass} w-full resize-none`}
-                      rows={3}
-                      placeholder={buildScopePlaceholder(editForm.title)}
+                      rows={2}
+                      placeholder={editSelectedTaskLabel
+                        ? `Specify details for ${editSelectedTaskLabel}...`
+                        : buildScopePlaceholder(editSelectedCategory || editSelectedScope || editForm.title)}
                       value={editForm.description}
                       onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, description: e.target.value })) }}
                     />
@@ -1116,6 +1274,29 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         value={editForm.est_mandays}
                         onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, est_mandays: e.target.value })) }}
                       />
+                      {deliverableMandays != null && deliverableMandays > 0 && editingTask && (() => {
+                        const usedMd = tasks.reduce((s, t) => {
+                          if (t.id === editingTask.id) return s
+                          return s + (t.est_mandays != null ? Number(t.est_mandays) : 0)
+                        }, 0)
+                        const remaining = deliverableMandays - usedMd
+                        const editMd = Number(editForm.est_mandays) || 0
+                        const afterEdit = remaining - editMd
+                        const pctUsed = Math.min(100, Math.round((usedMd / deliverableMandays) * 100))
+                        const pctEdit = Math.min(100 - pctUsed, Math.round((editMd / deliverableMandays) * 100))
+                        return (
+                          <div className="mt-2">
+                            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                              <span>Budget: {deliverableMandays} md total</span>
+                              <span className={afterEdit < 0 ? 'text-red-500 dark:text-red-400' : ''}>{afterEdit.toFixed(1)} md left</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden flex">
+                              <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctUsed}%` }} />
+                              <div className={`h-full transition-all ${afterEdit < 0 ? 'bg-red-400' : 'bg-blue-300'}`} style={{ width: `${pctEdit}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
@@ -1125,6 +1306,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         value={editForm.due_date}
                         onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, due_date: e.target.value })) }}
                       />
+                      {editDueDateWarning && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -1171,7 +1355,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     <button
                       type="button"
                       onClick={saveEditTask}
-                      disabled={editTaskSaving || !editForm.title.trim()}
+                      disabled={editTaskSaving || !canSubmitEditTask}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
                     >
                       {editTaskSaving ? 'Saving...' : 'Save Changes'}

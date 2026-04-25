@@ -264,8 +264,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
-  // Recalculate parent dates after task status change
-  if (body.status !== undefined) {
+  // Recalculate parent dates after changes that can affect timelines/status.
+  if (
+    body.status !== undefined ||
+    body.actual_start !== undefined ||
+    body.actual_end !== undefined ||
+    body.actual_date !== undefined
+  ) {
     if (task.feature_id != null) await recalculateFeatureDates(task.feature_id)
     if (task.deliverable_id != null) await recalculateDeliverableDates(task.deliverable_id)
   }

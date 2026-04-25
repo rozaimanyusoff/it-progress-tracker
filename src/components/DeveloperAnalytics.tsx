@@ -264,6 +264,15 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
     fetchAnalytics().catch(() => setLoading(false))
   }, [projectId, weeksCount, weeksOffset])
 
+  useEffect(() => {
+    function handleProjectDetailChanged() {
+      fetchAnalytics().catch(() => {})
+    }
+
+    window.addEventListener('project-detail-data-changed', handleProjectDetailChanged)
+    return () => window.removeEventListener('project-detail-data-changed', handleProjectDetailChanged)
+  }, [projectId, weeksCount, weeksOffset])
+
   function refresh() {
     fetchAnalytics().catch(() => {})
   }

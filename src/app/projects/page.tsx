@@ -79,21 +79,32 @@ const STATUS_LABEL: Record<string, string> = {
   Pending: 'Pending', InProgress: 'In Progress', Done: 'Done', OnHold: 'On Hold',
 }
 
+type KPITone = 'neutral' | 'good' | 'warning' | 'danger'
+
+const KPI_TONE_CLASS: Record<KPITone, string> = {
+  neutral: 'border-slate-200 bg-gray-50 dark:border-navy-700 dark:bg-navy-900/40',
+  good: 'border-green-200 bg-green-50 dark:border-green-800/70 dark:bg-green-900/20',
+  warning: 'border-yellow-200 bg-yellow-50 dark:border-yellow-800/70 dark:bg-yellow-900/20',
+  danger: 'border-red-200 bg-red-50 dark:border-red-800/70 dark:bg-red-900/20',
+}
+
 function KPIInfoCard({
   label,
   value,
   valueClassName,
+  tone = 'neutral',
   generalExplanation,
   currentExplanation,
 }: {
   label: string
   value: string
   valueClassName: string
+  tone?: KPITone
   generalExplanation: string
   currentExplanation: string
 }) {
   return (
-    <div className="rounded-md border border-slate-200 dark:border-navy-700 bg-gray-50 dark:bg-navy-900/40 px-2 py-2 relative">
+    <div className={`rounded-md border px-2 py-2 relative ${KPI_TONE_CLASS[tone]}`}>
       <div className="relative group">
         <span
           className="absolute -top-2 -right-2 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800 text-[10px] font-semibold text-slate-600 dark:text-slate-300 cursor-help"
@@ -102,12 +113,12 @@ function KPIInfoCard({
           ?
         </span>
         <div className="pointer-events-none hidden group-hover:block absolute right-0 top-4 z-40 w-64 rounded-md border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg p-2">
-          <p className="text-[10px] text-slate-500 dark:text-slate-400"><span className="font-semibold">General:</span> {generalExplanation}</p>
-          <p className="text-[10px] text-slate-600 dark:text-slate-300 mt-1"><span className="font-semibold">Current:</span> {currentExplanation}</p>
+          <p className="text-[10px] text-slate-700 dark:text-slate-200"><span className="font-semibold">General:</span> {generalExplanation}</p>
+          <p className="text-[10px] text-slate-800 dark:text-slate-100 mt-1"><span className="font-semibold">Current:</span> {currentExplanation}</p>
         </div>
       </div>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</p>
+        <p className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300 font-semibold">{label}</p>
       </div>
       <p className={`text-xs font-semibold mt-1 ${valueClassName}`}>{value}</p>
     </div>
@@ -147,7 +158,7 @@ function MonthlyComboChart({
     d.lateCompleted > 0 ||
     d.overdueOpen > 0
   )
-  if (!hasData) return <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No task data</p>
+  if (!hasData) return <p className="text-[10px] text-slate-600 dark:text-slate-300 italic">No task data</p>
 
   const activeIndexes = enrichedData
     .map((d, idx) => ({
@@ -294,15 +305,181 @@ function MonthlyComboChart({
   )
 }
 
+type MonthlyTaskFlow = NonNullable<Project['monthlyData']>[number]
+
+function recentTaskMonths(data: MonthlyTaskFlow[]) {
+  if (data.length <= 4) return data
+
+  const activeIndexes = data
+    .map((d, idx) => ({
+      idx,
+      active: (d.assigned ?? 0) > 0 || (d.completed ?? 0) > 0 || (d.overdueOpen ?? 0) > 0,
+    }))
+    .filter(x => x.active)
+    .map(x => x.idx)
+
+  const endIndex = activeIndexes.length > 0 ? activeIndexes[activeIndexes.length - 1] : data.length - 1
+  return data.slice(Math.max(0, endIndex - 3), endIndex + 1)
+}
+
+function TaskBurndownChart({ data }: { data: MonthlyTaskFlow[] }) {
+  const chartData = recentTaskMonths(data).reduce<Array<MonthlyTaskFlow & {
+    remaining: number
+    completedCumulative: number
+    idealRemaining: number
+  }>>((rows, month, idx, months) => {
+    const prev = rows[rows.length - 1]
+    const remaining = Math.max(0, (prev?.remaining ?? 0) + (month.assigned ?? 0) - (month.completed ?? 0))
+    const completedCumulative = (prev?.completedCumulative ?? 0) + (month.completed ?? 0)
+    rows.push({
+      ...month,
+      remaining,
+      completedCumulative,
+      idealRemaining: 0,
+    })
+
+    if (idx === months.length - 1) {
+      const startRemaining = rows[0]?.remaining ?? 0
+      const denominator = Math.max(1, rows.length - 1)
+      rows.forEach((row, rowIdx) => {
+        row.idealRemaining = Math.max(0, Math.round(startRemaining * (1 - rowIdx / denominator)))
+      })
+    }
+
+    return rows
+  }, [])
+
+  const hasData = chartData.some(d => d.assigned > 0 || d.completed > 0 || d.remaining > 0)
+  if (!hasData) return <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No task data</p>
+
+  return (
+    <div className="w-full">
+      <div className="h-36">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <XAxis dataKey="month" tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis width={22} tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip
+              cursor={false}
+              contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: '#cbd5e1' }}
+              formatter={(value: any, name: any) => {
+                const labelMap: Record<string, string> = {
+                  remaining: 'Remaining',
+                  completedCumulative: 'Completed',
+                  idealRemaining: 'Ideal Remaining',
+                }
+                const key = String(name ?? '')
+                return [value, labelMap[key] ?? key]
+              }}
+            />
+            <Line type="monotone" dataKey="remaining" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} name="remaining" />
+            <Line type="monotone" dataKey="idealRemaining" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="idealRemaining" />
+            <Line type="monotone" dataKey="completedCumulative" stroke="#22c55e" strokeWidth={1.5} dot={false} name="completedCumulative" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-3 text-[10px] font-medium text-slate-700 dark:text-slate-300">
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-blue-600" />Remaining</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-slate-400 border-t border-dashed border-slate-400" />Ideal</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-green-500" />Completed</span>
+      </div>
+    </div>
+  )
+}
+
+function TaskCompletionTable({ data }: { data: MonthlyTaskFlow[] }) {
+  const months = recentTaskMonths(data)
+  if (months.length === 0 || !months.some(m => m.assigned > 0 || m.completed > 0)) {
+    return <p className="text-[10px] text-slate-600 dark:text-slate-300 italic">No completion data</p>
+  }
+
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[360px] text-xs border-separate border-spacing-0">
+          <thead>
+            <tr>
+              {months.map(m => (
+                <th
+                  key={m.month}
+                  className="border border-slate-200 dark:border-navy-700 first:rounded-tl-lg last:rounded-tr-lg bg-white dark:bg-navy-800 px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
+                >
+                  {m.month}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {months.map((m, idx) => {
+                const rate = m.assigned > 0 ? Math.round((m.completed / m.assigned) * 100) : null
+                return (
+                  <td
+                    key={m.month}
+                    className={`border-x border-b border-slate-200 dark:border-navy-700 bg-slate-50/80 dark:bg-navy-900/40 px-2 py-2 ${idx === 0 ? 'rounded-bl-lg' : ''} ${idx === months.length - 1 ? 'rounded-br-lg' : ''}`}
+                  >
+                    <div className={`text-sm font-semibold ${
+                      rate == null ? 'text-slate-600 dark:text-slate-300' :
+                        rate >= 80 ? 'text-green-600 dark:text-green-400' :
+                          rate >= 50 ? 'text-yellow-600 dark:text-yellow-400' :
+                            'text-red-500 dark:text-red-400'
+                    }`}>
+                      {rate != null ? `${rate}%` : '-'}
+                    </div>
+                    <div className="mt-0.5 text-[10px] font-medium text-slate-700 dark:text-slate-300">
+                      {m.completed}/{m.assigned} completed
+                    </div>
+                  </td>
+                )
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="relative group mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-300">
+        <span>Tasks Assigned vs Completion</span>
+        <span
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800 text-[10px] font-semibold text-slate-700 dark:text-slate-200 cursor-help"
+          title="Assigned is tasks created in the month. Completed is tasks finished in the month. Completion Rate = completed / assigned. Net Flow = completed - assigned. Backlog Trend follows cumulative net flow. On-time Completion compares completed tasks against due dates."
+        >
+          ?
+        </span>
+        <div className="pointer-events-none hidden group-hover:block absolute left-0 top-5 z-40 w-80 rounded-md border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg p-2 text-[10px] leading-relaxed text-slate-700 dark:text-slate-200">
+          <p><span className="font-semibold">Assigned:</span> tasks created in the month.</p>
+          <p><span className="font-semibold">Completed:</span> tasks finished in the month.</p>
+          <p className="mt-1"><span className="font-semibold">Completion Rate:</span> completed divided by assigned.</p>
+          <p><span className="font-semibold">Net Flow:</span> completed minus assigned.</p>
+          <p><span className="font-semibold">Backlog Trend:</span> whether cumulative net flow is shrinking, growing, or stable.</p>
+          <p><span className="font-semibold">On-time Completion:</span> completed tasks finished on or before due date.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Projects List Tab ──────────────────────────────────────────────
 function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([])
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false)
+  const projectFilterRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then(d => { setProjects(d); setLoading(false) })
   }, [])
+
+  useEffect(() => {
+    if (!projectFilterOpen) return
+    function handleClick(e: MouseEvent) {
+      if (projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) {
+        setProjectFilterOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [projectFilterOpen])
 
   if (loading) return <p className="text-slate-400 py-8 text-center text-sm">Loading...</p>
 
@@ -331,11 +508,67 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
     return Math.round((elapsedMs / totalMs) * 100)
   }
   const now = new Date()
+  const selectedProjectSet = new Set(selectedProjectIds)
+  const visibleProjects = selectedProjectIds.length === 0
+    ? projects
+    : projects.filter(p => selectedProjectSet.has(p.id))
+  const filterLabel = selectedProjectIds.length === 0
+    ? 'All projects'
+    : `${selectedProjectIds.length} selected`
+
+  function toggleProjectFilter(id: number) {
+    setSelectedProjectIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400">{projects.length} project{projects.length !== 1 ? 's' : ''}</p>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div ref={projectFilterRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setProjectFilterOpen(v => !v)}
+              className="min-w-[180px] max-w-[280px] bg-white dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between gap-3"
+              aria-haspopup="listbox"
+              aria-expanded={projectFilterOpen}
+            >
+              <span className="truncate">{filterLabel}</span>
+              <span className="text-slate-400 dark:text-slate-500">▾</span>
+            </button>
+            {projectFilterOpen && (
+              <div className="absolute left-0 top-9 z-40 w-72 rounded-lg border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 shadow-xl py-1 max-h-80 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProjectIds([])}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-navy-700"
+                >
+                  <input type="checkbox" readOnly checked={selectedProjectIds.length === 0} className="rounded accent-blue-600" />
+                  <span className="font-medium">All projects</span>
+                </button>
+                <div className="my-1 border-t border-slate-100 dark:border-navy-700" />
+                {projects.map(p => (
+                  <label
+                    key={p.id}
+                    className="flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedProjectIds.includes(p.id)}
+                      onChange={() => toggleProjectFilter(p.id)}
+                      className="rounded accent-blue-600 shrink-0"
+                    />
+                    <span className="truncate">{p.title}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+            Showing {visibleProjects.length}/{projects.length} project{projects.length !== 1 ? 's' : ''}
+          </p>
+        </div>
         <button onClick={onNewProject} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">
           + New Project
         </button>
@@ -357,7 +590,7 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
         </div>
 
         {/* Rows */}
-        {projects.map((p, i) => {
+        {visibleProjects.map((p, i) => {
           const deadline = new Date(p.deadline)
           const progress = p.computedProgress ?? 0
           const plannedProgress = getPlannedProgress(p.start_date, p.deadline)
@@ -388,7 +621,7 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                       : 'on_track'
             )
           )
-          const isLast = i === projects.length - 1
+          const isLast = i === visibleProjects.length - 1
 
           return (
             <div
@@ -493,7 +726,7 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
               <div className="px-4 pb-3">
                 <div className="rounded-lg border border-slate-100 dark:border-navy-700 bg-slate-50/80 dark:bg-navy-900/50 px-3 py-2">
                   <div className="flex flex-wrap items-center gap-3 text-xs mb-2">
-                    <span className="text-slate-400 dark:text-slate-500 uppercase tracking-wide font-semibold">Project Performance</span>
+                    <span className="text-slate-700 dark:text-slate-200 uppercase tracking-wide font-semibold">Project Performance</span>
                     {displayHealthStatus && (
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
                         displayHealthStatus === 'on_track' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
@@ -506,21 +739,59 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                          displayHealthStatus === 'delayed' ? '🔴 Delayed' : '⚫ Overdue'}
                       </span>
                     )}
-                    <span className="text-slate-500 dark:text-slate-400">
+                    <span className="text-slate-700 dark:text-slate-300 font-medium">
                       Planned {plannedProgress}% vs Actual {progress}% (SV {fmtSignedPct(scheduleVariance)})
                     </span>
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_300px] items-start">
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">Tasks Monthly</p>
-                      <MonthlyComboChart data={flowData} />
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] items-start">
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.95fr)] min-w-0">
+                      <div className="min-w-0">
+                        <div className="relative group mb-1 inline-flex items-center gap-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300 font-semibold">Burndown Chart</p>
+                          <span
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800 text-[10px] font-semibold text-slate-700 dark:text-slate-200 cursor-help"
+                            title="Burndown measures remaining task backlog over time. Remaining = previous remaining + assigned - completed. Ideal shows a straight-line target toward zero. Completed is cumulative completed tasks. If remaining stays above ideal, delivery is behind expected burn rate."
+                          >
+                            ?
+                          </span>
+                          <div className="pointer-events-none hidden group-hover:block absolute left-0 top-5 z-40 w-80 rounded-md border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg p-2 text-[10px] leading-relaxed text-slate-700 dark:text-slate-200">
+                            <p><span className="font-semibold">Remaining:</span> open backlog after monthly assigned and completed movement.</p>
+                            <p><span className="font-semibold">Method:</span> previous remaining + assigned tasks - completed tasks.</p>
+                            <p><span className="font-semibold">Ideal:</span> straight-line target from current backlog toward zero.</p>
+                            <p><span className="font-semibold">Completed:</span> cumulative finished tasks across the selected months.</p>
+                            <p className="mt-1"><span className="font-semibold">Reading:</span> remaining above ideal means burn rate is behind; below ideal means backlog is clearing faster than expected.</p>
+                          </div>
+                        </div>
+                        <TaskBurndownChart data={flowData} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300 font-semibold mb-1">Task Completion - Last 4 Months</p>
+                        <TaskCompletionTable data={flowData} />
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
                       <KPIInfoCard
                         label="Completion Rate"
                         value={completionRate != null ? `${completionRate}%` : '—'}
-                        valueClassName="text-slate-700 dark:text-slate-200"
+                        valueClassName={
+                          completionRate == null
+                            ? 'text-slate-700 dark:text-slate-200'
+                            : completionRate >= 80
+                              ? 'text-green-700 dark:text-green-300'
+                              : completionRate >= 50
+                                ? 'text-yellow-700 dark:text-yellow-300'
+                                : 'text-red-600 dark:text-red-300'
+                        }
+                        tone={
+                          completionRate == null
+                            ? 'neutral'
+                            : completionRate >= 80
+                              ? 'good'
+                              : completionRate >= 50
+                                ? 'warning'
+                                : 'danger'
+                        }
                         generalExplanation="Completed tasks as a percentage of assigned tasks. Higher means better delivery throughput."
                         currentExplanation={
                           completionRate == null ? 'No assigned tasks yet.' :
@@ -533,6 +804,7 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                         label="Net Flow"
                         value={`${netFlow > 0 ? '+' : ''}${netFlow}`}
                         valueClassName={netFlow > 0 ? 'text-green-600 dark:text-green-400' : netFlow < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}
+                        tone={netFlow > 0 ? 'good' : netFlow < 0 ? 'danger' : 'neutral'}
                         generalExplanation="Completed minus assigned tasks. Positive means backlog is shrinking; negative means it is growing."
                         currentExplanation={
                           netFlow > 0 ? 'Team is burning down backlog faster than new scope arrives.' :
@@ -544,6 +816,7 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                         label="Backlog Trend"
                         value={backlogTrend}
                         valueClassName={backlogTrend === 'Shrinking' ? 'text-green-600 dark:text-green-400' : backlogTrend === 'Growing' ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}
+                        tone={backlogTrend === 'Shrinking' ? 'good' : backlogTrend === 'Growing' ? 'danger' : 'neutral'}
                         generalExplanation="Direction of outstanding work based on cumulative net flow over time."
                         currentExplanation={
                           backlogTrend === 'Shrinking' ? 'Outstanding tasks are trending down.' :
@@ -560,6 +833,15 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                             : (p.onTimeCompletionRate ?? -1) >= 75
                               ? 'text-yellow-600 dark:text-yellow-400'
                               : 'text-red-500 dark:text-red-400'
+                        }
+                        tone={
+                          p.onTimeCompletionRate == null
+                            ? 'neutral'
+                            : p.onTimeCompletionRate >= 90
+                              ? 'good'
+                              : p.onTimeCompletionRate >= 75
+                                ? 'warning'
+                                : 'danger'
                         }
                         generalExplanation="Share of completed tasks finished on or before due date."
                         currentExplanation={
@@ -578,6 +860,15 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                             : (p.scopeVolatility ?? 0) <= 30
                               ? 'text-yellow-600 dark:text-yellow-400'
                               : 'text-red-500 dark:text-red-400'
+                        }
+                        tone={
+                          p.scopeVolatility == null
+                            ? 'neutral'
+                            : p.scopeVolatility <= 15
+                              ? 'good'
+                              : p.scopeVolatility <= 30
+                                ? 'warning'
+                                : 'danger'
                         }
                         generalExplanation="Percentage of tasks added after the first 14 days of project baseline."
                         currentExplanation={

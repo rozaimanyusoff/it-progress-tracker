@@ -19,7 +19,12 @@ export default async function DashboardPage() {
     include: {
       assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
-      _count: { select: { issues: { where: { resolved: false } } } },
+      _count: {
+        select: {
+          issues: { where: { resolved: false } },
+          deliverables: true,
+        },
+      },
     },
     orderBy: { created_at: 'desc' },
   })
@@ -204,6 +209,9 @@ export default async function DashboardPage() {
       ...p,
       computedProgress,
       computedStatus,
+      totalDeliverables: p._count.deliverables,
+      totalTasks: stats ? Number(stats.total) : 0,
+      doneTasks: stats ? Number(stats.done) : 0,
       scheduleVariance,
       computedHealthStatus,
       completionRate,
@@ -215,9 +223,70 @@ export default async function DashboardPage() {
     }
   })
 
+  const assignedProjectIds = projects
+    .filter((p) => p.assignees.some((a) => a.user_id === Number(user.id)))
+    .map((p) => p.id)
+  const assignedProjectIdSet = new Set(assignedProjectIds)
+  const assignedProjects = projectsWithProgress.filter((p) => assignedProjectIdSet.has(p.id))
+
+  const teamTasks = assignedProjectIds.length > 0
+    ? await prisma.task.findMany({
+        where: {
+          assignees: { some: { user_id: Number(user.id) } },
+          OR: [
+            { deliverable: { project_id: { in: assignedProjectIds } } },
+            { feature: { project_links: { some: { project_id: { in: assignedProjectIds } } } } },
+          ],
+        },
+        select: {
+          status: true,
+          due_date: true,
+          actual_end: true,
+          completed_at: true,
+          est_mandays: true,
+          is_blocked: true,
+        },
+      })
+    : []
+
+  const teamDoneTasks = teamTasks.filter((t) => t.status === 'Done').length
+  const teamTimedDoneTasks = teamTasks.filter((t) => t.status === 'Done' && (t.actual_end || t.completed_at))
+  const teamOnTimeDoneTasks = teamTimedDoneTasks.filter((t) => {
+    const doneAt = t.actual_end ?? t.completed_at
+    if (!doneAt) return false
+    if (!t.due_date) return true
+    return doneAt <= t.due_date
+  }).length
+  const teamSummary = {
+    assignedProjectCount: assignedProjects.length,
+    activeProjectCount: assignedProjects.filter((p) => p.computedStatus !== 'Done' && p.computedStatus !== 'OnHold').length,
+    doneProjectCount: assignedProjects.filter((p) => p.computedStatus === 'Done').length,
+    avgProjectProgress: assignedProjects.length > 0
+      ? Math.round(assignedProjects.reduce((sum, p) => sum + (p.computedProgress ?? 0), 0) / assignedProjects.length)
+      : 0,
+    totalTasks: teamTasks.length,
+    todoTasks: teamTasks.filter((t) => t.status === 'Todo').length,
+    inProgressTasks: teamTasks.filter((t) => t.status === 'InProgress').length,
+    reviewTasks: teamTasks.filter((t) => t.status === 'InReview').length,
+    blockedTasks: teamTasks.filter((t) => t.status === 'Blocked' || t.is_blocked).length,
+    doneTasks: teamDoneTasks,
+    overdueTasks: teamTasks.filter((t) => {
+      if (!t.due_date || t.status === 'Done') return false
+      return t.due_date < now
+    }).length,
+    estimatedMandays: Math.round(teamTasks.reduce((sum, t) => sum + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0) * 10) / 10,
+    completionRate: teamTasks.length > 0 ? Math.round((teamDoneTasks / teamTasks.length) * 100) : null,
+    onTimeRate: teamTimedDoneTasks.length > 0 ? Math.round((teamOnTimeDoneTasks / teamTimedDoneTasks.length) * 100) : null,
+  }
+
   return (
     <AppLayout>
-      <DashboardClient projects={JSON.parse(JSON.stringify(projectsWithProgress))} session={JSON.parse(JSON.stringify(session))} />
+      <DashboardClient
+        projects={JSON.parse(JSON.stringify(projectsWithProgress))}
+        teamProjects={JSON.parse(JSON.stringify(assignedProjects))}
+        teamSummary={JSON.parse(JSON.stringify(teamSummary))}
+        session={JSON.parse(JSON.stringify(session))}
+      />
     </AppLayout>
   )
 }

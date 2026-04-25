@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import FeatureTaskList from './FeatureTaskList'
 import { Pencil, Trash2, X } from 'lucide-react'
 
@@ -91,6 +92,12 @@ function fmt(dateStr?: string | null) {
 function toInputDate(iso?: string | null) {
   if (!iso) return ''
   return iso.slice(0, 10)
+}
+
+function notifyProjectDetailChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('project-detail-data-changed'))
+  }
 }
 
 function countWorkdays(start: string, end: string): number {
@@ -259,6 +266,7 @@ function DeliverableCard({
 }
 
 export default function DeliverableSection({ projectId, projectTitle, userRole, projectStartDate, projectDeadline }: Props) {
+  const router = useRouter()
   const projMin = toInputDate(projectStartDate)
   const projMax = toInputDate(projectDeadline)
 
@@ -310,6 +318,11 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
     const delivData = await fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json())
     setDeliverables(delivData)
     setLoading(false)
+  }
+
+  function refreshProjectDetails() {
+    notifyProjectDetailChanged()
+    router.refresh()
   }
 
   function openAddDeliv() {
@@ -412,6 +425,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
 
       setShowDelivModal(false)
       fetchAll()
+      refreshProjectDetails()
     } catch (err: any) {
       setDelivError(err.message || 'Something went wrong')
     } finally {
@@ -433,6 +447,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
     if (res.ok) {
       setDeliverables(prev => prev.filter(d => d.id !== deleteConfirm.id))
       setDeleteConfirm(null)
+      refreshProjectDetails()
     } else {
       const data = await res.json().catch(() => ({}))
       setDeleteError(data.error || 'Delete failed')
@@ -469,6 +484,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
         return d
       })
     )
+    refreshProjectDetails()
   }
 
   const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'

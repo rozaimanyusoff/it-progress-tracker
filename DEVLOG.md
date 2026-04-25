@@ -9,6 +9,62 @@ Format: **terbaru di atas**.
 
 > Perubahan yang sedang dalam pembangunan, belum di-commit/deploy.
 
+### Ditambah
+
+**Operational Dashboard**
+
+- Project cards kini disusun maksimum 3 per row pada desktop dengan struktur card yang lebih stabil:
+  - header/progress
+  - description
+  - team + dates
+  - deliverables, tasks, open issues
+  - KPI performance
+  - footer action
+- Project card kini memaparkan:
+  - jumlah deliverables
+  - task done/total
+  - open issues
+- Tambah `Team Dashboard` untuk user yang merupakan assignee kepada project, termasuk manager yang turut assigned:
+  - Assigned projects
+  - Active/done project metrics
+  - Assigned/done/review/overdue/blocked task metrics
+  - Estimated mandays
+  - Personal completion rate, on-time completion, active workload indicators
+
+**Project View > Project Performance**
+
+- Tambah multi-select project filter dengan checkbox pada label projects.
+- Label counter ditukar kepada `Showing x/x projects`.
+- `Tasks Monthly` diganti dengan burndown chart.
+- Tambah table `Task Completion - Last 4 Months` dengan completion rate dan completed/assigned count.
+- Tambah helper `Tasks Assigned vs Completion` dengan `?` popover untuk explain Completion Rate, Net Flow, Backlog Trend, dan On-time Completion.
+- Tambah `?` helper pada Burndown Chart untuk explain Remaining, Ideal, Completed, dan method ukuran.
+- KPI cards diberi background/border contextual berdasarkan status metric.
+
+### Diubah
+
+**Project Details > Add/Edit Task**
+
+- Add/Edit Task form diselaraskan supaya Edit Task menggunakan struktur field yang sama seperti Add Task:
+  - Current tasks
+  - Tasks Category (Dev)
+  - Scope (Dev)
+  - Task (Dev)
+  - Specific Tasks Details
+  - Est. Mandays budget bar
+  - Due Date
+  - Priority
+- Edit Task kekalkan PM Override actual dates untuk manager.
+- Current tasks list kini memaparkan `category > scope > task > specific task details` dengan warna teks berbeza yang sesuai light/dark mode.
+- Gantt chart, burndown, milestone, dan developer analytics di Project Details dipaksa refresh selepas add/update/delete/reorder deliverables atau tasks.
+- Operational Dashboard top summary cards dikekalkan kepada project/status/issues sahaja; deliverables dan tasks dipindahkan ke setiap project card.
+
+### Diperbaiki
+
+- Bug task priority fixed: linked deliverable task kini menyimpan priority yang dipilih di form dan tidak lagi dioverwrite kepada priority deliverable.
+- PM Override actual date pada task kini trigger recalculation parent deliverable/project timeline.
+- Build verification: `npm run build` lulus.
+
 ---
 
 ## 2026-04-24 — Add Task Form Refactor + Dev Reference Schema + Kanban Column Search
