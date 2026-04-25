@@ -15,9 +15,9 @@ export async function GET(req: NextRequest) {
   const projectWhere = user.role === 'manager'
     ? (projectId ? { id: Number(projectId) } : {})
     : {
-        assignees: { some: { user_id: Number(user.id) } },
-        ...(projectId ? { id: Number(projectId) } : {}),
-      }
+      assignees: { some: { user_id: Number(user.id) } },
+      ...(projectId ? { id: Number(projectId) } : {}),
+    }
 
   const projects = await prisma.project.findMany({
     where: projectWhere,
@@ -26,14 +26,17 @@ export async function GET(req: NextRequest) {
   const projectIds = projects.map((p: { id: number }) => p.id)
   const orConditions: any[] = []
   if (projectIds.length > 0) {
+    const assigneeFilter = { assignees: { some: { user_id: Number(user.id) } } }
     orConditions.push(
       {
+        ...assigneeFilter,
         feature: {
           project_links: { some: { project_id: { in: projectIds } } },
           ...(featureId ? { id: Number(featureId) } : {}),
         },
       },
       {
+        ...assigneeFilter,
         deliverable: {
           project_id: { in: projectIds },
         },
@@ -63,7 +66,7 @@ export async function GET(req: NextRequest) {
           project_links: {
             select: {
               project: { select: { id: true, title: true } },
-              module:  { select: { id: true, title: true } },
+              module: { select: { id: true, title: true } },
             },
             take: 1,
           },
@@ -75,7 +78,7 @@ export async function GET(req: NextRequest) {
           title: true,
           mandays: true,
           project: { select: { id: true, title: true } },
-          module:  { select: { id: true, title: true } },
+          module: { select: { id: true, title: true } },
         },
       },
       assignees: { include: { user: { select: { id: true, name: true } } } },
@@ -88,18 +91,18 @@ export async function GET(req: NextRequest) {
 
   const createLogs = taskIds.length > 0
     ? await prisma.auditLog.findMany({
-        where: {
-          target_type: 'Task',
-          action: 'CREATE',
-          target_id: { in: taskIds },
-        },
-        select: {
-          target_id: true,
-          created_at: true,
-          user: { select: { name: true } },
-        },
-        orderBy: { created_at: 'asc' },
-      })
+      where: {
+        target_type: 'Task',
+        action: 'CREATE',
+        target_id: { in: taskIds },
+      },
+      select: {
+        target_id: true,
+        created_at: true,
+        user: { select: { name: true } },
+      },
+      orderBy: { created_at: 'asc' },
+    })
     : []
   const creatorByTaskId = new Map<number, string>()
   for (const log of createLogs) {
@@ -110,10 +113,10 @@ export async function GET(req: NextRequest) {
 
   const usedMandaysRows = deliverableIds.length > 0
     ? await prisma.task.groupBy({
-        by: ['deliverable_id'],
-        where: { deliverable_id: { in: deliverableIds }, is_predefined: false },
-        _sum: { est_mandays: true },
-      })
+      by: ['deliverable_id'],
+      where: { deliverable_id: { in: deliverableIds }, is_predefined: false },
+      _sum: { est_mandays: true },
+    })
     : []
   const usedMandaysByDeliverable = new Map<number, number>()
   for (const row of usedMandaysRows) {

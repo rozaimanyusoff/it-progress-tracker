@@ -501,8 +501,8 @@ function AddTaskModal({
                       <label
                         key={m.id}
                         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${assigneeIds.includes(m.id)
-                            ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                            : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+                          ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+                          : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
                           }`}
                       >
                         <input
@@ -814,6 +814,7 @@ export default function TeamKanbanBoard() {
   const currentUserId = Number((session?.user as any)?.id)
   const [board, setBoard] = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)
+  const [activeCol, setActiveCol] = useState('Todo')
 
   // Filter state
   const [projects, setProjects] = useState<Project[]>([])
@@ -1032,8 +1033,8 @@ export default function TeamKanbanBoard() {
             <button
               onClick={() => setSelectedProjectId('')}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${selectedProjectId === ''
-                  ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
                 }`}
               title="Show all projects"
             >
@@ -1048,8 +1049,8 @@ export default function TeamKanbanBoard() {
                   key={p.id}
                   onClick={() => setSelectedProjectId(String(p.id))}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${isActive
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
                     }`}
                   title={p.title}
                 >
@@ -1182,7 +1183,147 @@ export default function TeamKanbanBoard() {
           <div className="flex items-center justify-center h-48 text-slate-400">Loading...</div>
         ) : (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="grid grid-cols-4 gap-4 items-start">
+            {/* Mobile: tab switcher — one column at a time */}
+            <div className="sm:hidden">
+              <div className="flex rounded-lg border border-slate-200 dark:border-navy-700 overflow-hidden mb-3">
+                {COLUMNS.map(col => (
+                  <button
+                    key={col.id}
+                    onClick={() => setActiveCol(col.id)}
+                    className={`flex-1 py-2 text-[11px] font-semibold text-center transition-colors relative ${activeCol === col.id
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-navy-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'
+                      }`}
+                  >
+                    {col.label}
+                    <span className={`ml-1 text-[10px] font-bold ${activeCol === col.id ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'
+                      }`}>{filteredBoard[col.id].length}</span>
+                  </button>
+                ))}
+              </div>
+              {COLUMNS.filter(col => col.id === activeCol).map(col => (
+                <div key={col.id}>
+                  <div className={`rounded-lg px-3 py-2 mb-2 flex flex-col ${col.color}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm">{col.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium opacity-70">{filteredBoard[col.id].length}</span>
+                        {col.id === 'Todo' && (
+                          <button
+                            onClick={() => { setEditingTaskId(null); setShowAddModal(true) }}
+                            className="w-5 h-5 flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold leading-none"
+                            title="Add task"
+                          >+</button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[10px] opacity-60 mt-0.5 leading-snug">{col.description}</p>
+                    <input
+                      value={columnSearch[col.id] ?? ''}
+                      onChange={e => setColumnSearch(prev => ({ ...prev, [col.id]: e.target.value }))}
+                      placeholder="Search task/deliverable..."
+                      className="mt-2 w-full bg-white/70 dark:bg-navy-900/80 border border-slate-300/60 dark:border-navy-600 rounded px-2 py-1 text-[11px] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <Droppable droppableId={col.id}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`flex flex-col gap-2 min-h-32 rounded-lg p-1 transition-colors ${snapshot.isDraggingOver ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
+                      >
+                        {filteredBoard[col.id].length === 0 && !snapshot.isDraggingOver && (
+                          <div className="rounded-lg border-2 border-dashed border-slate-100 dark:border-navy-700 py-6 text-center text-xs text-slate-300 dark:text-slate-600">
+                            No tasks
+                          </div>
+                        )}
+                        {filteredBoard[col.id].map((task, index) => (
+                          <Draggable key={task.id} draggableId={String(task.id)} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : 'hover:shadow-md'}`}
+                              >
+                                <div className="flex items-start justify-between gap-1 mb-0.5">
+                                  <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{cardHeaderScope(task)}</p>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {task.review_count > 0 && task.status !== 'Todo' && (
+                                      <span title={`Reviewed ${task.review_count} time${task.review_count > 1 ? 's' : ''}`} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 whitespace-nowrap">
+                                        ↩ {task.review_count}
+                                      </span>
+                                    )}
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}>{task.priority}</span>
+                                  </div>
+                                </div>
+                                {task.is_blocked && (
+                                  <div className="flex items-center gap-1 mb-0.5">
+                                    <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
+                                    {task.blocked_reason && <span className="text-[10px] text-red-400 dark:text-red-500 italic truncate">{task.blocked_reason}</span>}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <span className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable' ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300' : task.context.type === 'feature' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>
+                                    {task.context.type === 'deliverable' ? 'Deliv' : task.context.type === 'feature' ? 'Feat' : 'Task'}
+                                  </span>
+                                  <p className="text-xs text-blue-600 dark:text-blue-400 truncate">{task.context.title}</p>
+                                </div>
+                                <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
+                                {task.status === 'InProgress' && task.actual_start && (
+                                  <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
+                                )}
+                                {task.due_date && (
+                                  <div className="mt-1">{dueDateDisplay(task.due_date, task.status, task.actual_end ?? null)}</div>
+                                )}
+                                <div className="flex items-center justify-between mt-2 gap-1">
+                                  {task.assignees.length > 0 ? (
+                                    <span className="flex items-center gap-0.5 min-w-0 flex-wrap">
+                                      {task.assignees.map(a => (
+                                        <span key={a.user.id} title={a.user.name}><AssigneeAvatar name={a.user.name} /></span>
+                                      ))}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
+                                  )}
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {(() => {
+                                      const canInteract = isManager || task.assignees.some(a => a.user.id === currentUserId)
+                                      const showPrev = canInteract && col.id !== 'Todo' && (isManager || col.id !== 'Done')
+                                      const showNext = canInteract && col.id !== 'Done' && (isManager || col.id !== 'InReview')
+                                      return (
+                                        <>
+                                          {showPrev && <button onClick={(e) => { e.stopPropagation(); moveTask(task.id, col.id, 'prev') }} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700" title="Move back">←</button>}
+                                          {showNext && <button onClick={(e) => { e.stopPropagation(); moveTask(task.id, col.id, 'next') }} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700" title="Move forward">→</button>}
+                                        </>
+                                      )
+                                    })()}
+                                    {task.status === 'InReview' && (
+                                      <button onClick={() => setActiveTaskId(task.id)} className="text-xs px-2 py-0.5 rounded border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-medium">Review</button>
+                                    )}
+                                    {isManager && task.status !== 'InReview' && (
+                                      task.status === 'Todo' ? (
+                                        <button onClick={() => { setEditingTaskId(task.id); setShowAddModal(true) }} className="p-1 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Edit task"><Pencil className="w-3.5 h-3.5" /></button>
+                                      ) : (
+                                        <button onClick={() => setActiveTaskId(task.id)} className={`text-xs px-2 py-0.5 rounded border ${task.status === 'InProgress' ? 'border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium' : 'border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'}`}>{task.status === 'InProgress' ? 'Update' : 'View'}</button>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: full 4-column grid */}
+            <div className="hidden sm:grid grid-cols-4 gap-4 items-start">
               {COLUMNS.map(col => (
                 <div key={col.id} className="flex flex-col">
                   {/* Column header */}
@@ -1266,10 +1407,10 @@ export default function TeamKanbanBoard() {
                                 <div className="flex items-center gap-1 mt-0.5">
                                   <span
                                     className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable'
-                                        ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
-                                        : task.context.type === 'feature'
-                                          ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
-                                          : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                                      ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
+                                      : task.context.type === 'feature'
+                                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
+                                        : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
                                       }`}
                                   >
                                     {task.context.type === 'deliverable' ? 'Deliv' : task.context.type === 'feature' ? 'Feat' : 'Task'}
@@ -1400,7 +1541,7 @@ export default function TeamKanbanBoard() {
             onStatusChange={handleStatusChange}
           />
         )}
-      </div>
+      </div >
     </>
   )
 }

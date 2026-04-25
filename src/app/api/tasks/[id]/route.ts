@@ -6,7 +6,6 @@ import {
   sendTaskSubmittedForReview,
   sendTaskRejected,
   sendTaskApproved,
-  sendTaskAssigned,
 } from '@/lib/email'
 import { filterUsersCanReceiveNotifications, canReceiveNotifications } from '@/lib/role-prefs'
 
@@ -255,12 +254,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await prisma.taskAssignee.createMany({
         data: newIds.map((uid) => ({ task_id: taskId, user_id: uid })),
       })
-    }
-    // Notify newly added assignees
-    const addedIds = newIds.filter((id) => !oldIds.includes(id))
-    for (const uid of addedIds) {
-      const assignee = await prisma.user.findUnique({ where: { id: uid }, select: { email: true, name: true, role: true, display_role: true } })
-      if (assignee && await canReceiveNotifications(assignee)) sendTaskAssigned(assignee.email, assignee.name, task.title).catch(() => { })
     }
   }
 

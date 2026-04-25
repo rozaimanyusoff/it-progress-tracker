@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { mkdir, writeFile } from 'fs/promises'
 import path from 'path'
-import { sendWeeklyPendingTasksReminder } from '@/lib/email'
+import { sendWeeklyProgressUpdate, WeeklyProgressData, WeeklyProjectData, WeeklyDevAnalytic } from '@/lib/email'
 
 const UPLOAD_PUBLIC_URL = process.env.UPLOAD_PUBLIC_URL ?? '/uploads'
 const UPLOAD_BASE = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'public', UPLOAD_PUBLIC_URL)
@@ -136,64 +136,174 @@ async function runBackupJob(force = false) {
   return { ok: true, filename }
 }
 
-async function runPendingNotifyJob(force = false) {
+async function runWeeklyProgressJob(force = false) {
   const enabled = await getSettingBool('cron_pending_notify_enabled')
-  if (!enabled) return { ok: true, skipped: true, reason: 'pending notify cron disabled' }
+  if (!enabled) return { ok: true, skipped: true, reason: 'weekly progress cron disabled' }
 
   const timeZone = await getSettingStr('cron_timezone', 'Asia/Kuala_Lumpur')
   const scheduleDay = await getSettingStr('cron_pending_notify_day', '1')
   const scheduleTime = await getSettingStr('cron_pending_notify_time', '09:00')
   const nowParts = getTimePartsInZone(new Date(), timeZone)
   const scheduleMatched = matchesDay(scheduleDay, nowParts.dayOfWeek) && scheduleTime === nowParts.hhmm
-  const slotKey = `pending:${nowParts.dateKey}:${scheduleTime}:${timeZone}`
+  const slotKey = `weekly:${nowParts.dateKey}:${scheduleTime}:${timeZone}`
   const lastRun = await prisma.appSetting.findUnique({ where: { key: 'cron_pending_last_run_slot' } })
   if (!force) {
     if (!scheduleMatched) return { ok: true, skipped: true, reason: `outside schedule (${scheduleDay} ${scheduleTime} ${timeZone})` }
     if (lastRun?.value === slotKey) return { ok: true, skipped: true, reason: 'already executed for this slot' }
   }
 
-  const tasks = await prisma.task.findMany({
-    where: {
-      status: { not: 'Done' },
-      assignees: { some: {} },
-    },
-    select: {
-      title: true,
-      status: true,
-      due_date: true,
-      assignees: { select: { user: { select: { id: true, name: true, email: true, is_active: true, role: true, display_role: true } } } },
-      deliverable: { select: { project: { select: { title: true } } } },
-      feature: { select: { project_links: { select: { project: { select: { title: true } } }, take: 1 } } },
-    },
-  })
+  // Read brand name
+  const brandNameRow = await prisma.appSetting.findUnique({ where: { key: 'brand_name' } })
+  const brandName = brandNameRow?.value || 'IT Tracker'
 
-  const byUser = new Map<number, { name: string; email: string; role: string; display_role: string | null; tasks: Array<{ title: string; project: string; dueDate: string; status: string }> }>()
+  // Week window: last 7 days
+  const now = new Date()
+  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const weekLabel = `${weekStart.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })} – ${now.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}`
 
-  // Load role preferences once for the whole batch
+  // Load role preferences
   const { getRolePreferences } = await import('@/lib/role-prefs')
   const rolePrefs = await getRolePreferences()
 
-  for (const t of tasks) {
-    const projectTitle = t.deliverable?.project?.title || t.feature?.project_links?.[0]?.project?.title || 'Unlinked'
-    const dueDate = t.due_date
-      ? new Date(t.due_date).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
-      : '—'
-    for (const a of t.assignees) {
-      const u = a.user
-      if (!u.is_active || !u.email) continue
-      if (!byUser.has(u.id)) byUser.set(u.id, { name: u.name, email: u.email, role: u.role, display_role: u.display_role, tasks: [] })
-      byUser.get(u.id)!.tasks.push({ title: t.title, project: projectTitle, dueDate, status: t.status })
+  // Fetch all active projects with their deliverables and tasks
+  const projects = await prisma.project.findMany({
+    where: { status: { not: 'Done' } },
+    select: {
+      id: true,
+      title: true,
+      deliverables: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          tasks: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              created_at: true,
+              actual_end: true,
+              est_mandays: true,
+              actual_mandays: true,
+              assignees: { select: { user: { select: { id: true, name: true } } } },
+            },
+          },
+        },
+      },
+      updates: {
+        where: { created_at: { gte: weekStart } },
+        select: { notes: true, created_at: true, user: { select: { name: true } } },
+        orderBy: { created_at: 'desc' },
+      },
+    },
+  })
+
+  // Build project data
+  const projectDataMap = new Map<number, WeeklyProjectData>()
+  for (const p of projects) {
+    const newTasks: WeeklyProjectData['newTasks'] = []
+    const completedTasks: WeeklyProjectData['completedTasks'] = []
+    const deliverables: WeeklyProjectData['deliverables'] = []
+
+    for (const d of p.deliverables) {
+      const totalTasks = d.tasks.length
+      const doneTasks = d.tasks.filter(t => t.status === 'Done').length
+      const WEIGHT: Record<string, number> = { Todo: 0, InProgress: 50, InReview: 80, Done: 100, Blocked: 0 }
+      const progress = totalTasks > 0
+        ? Math.round(d.tasks.reduce((s, t) => s + (WEIGHT[t.status] ?? 0), 0) / totalTasks)
+        : 0
+      deliverables.push({ title: d.title, status: d.status, progress, totalTasks, doneTasks })
+
+      for (const t of d.tasks) {
+        const assignees = t.assignees.map(a => a.user.name).join(', ')
+        if (t.created_at >= weekStart) {
+          newTasks.push({ title: t.title, deliverable: d.title, assignees })
+        }
+        if (t.status === 'Done' && t.actual_end && new Date(t.actual_end) >= weekStart) {
+          completedTasks.push({
+            title: t.title,
+            assignees,
+            completedDate: new Date(t.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }),
+          })
+        }
+      }
     }
+
+    const projectUpdates = p.updates.map(u => ({
+      content: u.notes || '(no notes)',
+      author: u.user?.name ?? '—',
+      date: u.created_at.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }),
+    }))
+
+    projectDataMap.set(p.id, { projectTitle: p.title, newTasks, completedTasks, deliverables, projectUpdates })
   }
 
+  // Developer analytics: all active users with assigned tasks
+  const allUsers = await prisma.user.findMany({
+    where: { is_active: true },
+    select: {
+      id: true, name: true, email: true, role: true, display_role: true,
+      task_assignees: {
+        select: {
+          task: {
+            select: {
+              id: true, status: true, est_mandays: true, actual_mandays: true,
+              actual_end: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  const developerAnalytics: WeeklyDevAnalytic[] = allUsers
+    .filter(u => u.email)
+    .map(u => {
+      const tasks = u.task_assignees.map(a => a.task)
+      const totalAssigned = tasks.length
+      const completedThisWeek = tasks.filter(t =>
+        t.status === 'Done' && t.actual_end && new Date(t.actual_end) >= weekStart
+      ).length
+      const inProgress = tasks.filter(t => t.status === 'InProgress' || t.status === 'InReview').length
+      const estMandays = tasks.reduce((s, t) => s + Number(t.est_mandays ?? 0), 0)
+      const actualMandays = tasks.reduce((s, t) => s + Number(t.actual_mandays ?? 0), 0)
+      const utilizationPct = estMandays > 0 ? Math.round((actualMandays / estMandays) * 100) : 0
+      return {
+        name: u.name,
+        role: u.display_role || u.role,
+        totalAssigned,
+        completedThisWeek,
+        inProgress,
+        estMandays,
+        actualMandays,
+        utilizationPct,
+      }
+    })
+    .filter(d => d.totalAssigned > 0)
+    .sort((a, b) => b.totalAssigned - a.totalAssigned)
+
+  const weeklyData: WeeklyProgressData = {
+    weekLabel,
+    projects: Array.from(projectDataMap.values()),
+    developerAnalytics,
+  }
+
+  // Determine recipients: all active users whose role has receive_notifications
+  const recipients = allUsers.filter(u => {
+    if (!u.email) return false
+    const effectiveRole = u.display_role || u.role
+    const perm = rolePrefs[effectiveRole] ?? rolePrefs[u.role]
+    return perm?.receive_notifications !== false
+  })
+
   let sent = 0
-  for (const userData of byUser.values()) {
-    if (!userData.tasks.length) continue
-    const effectiveRole = userData.display_role || userData.role
-    const rolePerm = rolePrefs[effectiveRole] ?? rolePrefs[userData.role]
-    if (rolePerm && !rolePerm.receive_notifications) continue
-    await sendWeeklyPendingTasksReminder(userData.email, userData.name, userData.tasks)
-    sent += 1
+  for (const u of recipients) {
+    try {
+      await sendWeeklyProgressUpdate(u.email!, u.name, weeklyData, brandName)
+      sent++
+    } catch {
+      // continue on individual failure
+    }
   }
 
   if (!force) await setSetting('cron_pending_last_run_slot', slotKey)
@@ -203,7 +313,7 @@ async function runPendingNotifyJob(force = false) {
     await prisma.auditLog.create({
       data: {
         user_id: actor.id,
-        action: 'PENDING_NOTIFY_CRON',
+        action: 'WEEKLY_PROGRESS_CRON',
         target_type: 'System',
         target_id: 0,
         metadata: { recipients: sent, week: getIsoWeekKey(new Date()) },
@@ -227,7 +337,7 @@ export async function POST(req: NextRequest) {
 
   const result: Record<string, any> = {}
   if (job === 'backup' || job === 'all') result.backup = await runBackupJob(force)
-  if (job === 'pending-notify' || job === 'all') result.pendingNotify = await runPendingNotifyJob(force)
+  if (job === 'pending-notify' || job === 'all') result.pendingNotify = await runWeeklyProgressJob(force)
 
   return NextResponse.json({ ok: true, result })
 }

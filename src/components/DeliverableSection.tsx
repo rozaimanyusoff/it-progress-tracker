@@ -155,6 +155,7 @@ function DeliverableCard({
   const { done, total, pct } = taskProgress(deliverable.tasks)
   const isExpanded = expandedId === deliverable.id
   const openIssueCount = (deliverable._count?.issues ?? 0) + deliverable.tasks.reduce((s, t) => s + (t._count?.issues ?? 0), 0)
+  const allocatedMd = deliverable.tasks.reduce((s, t) => s + Number(t.est_mandays ?? 0), 0)
 
   return (
     <div className="border border-slate-200 dark:border-navy-700 rounded-lg overflow-hidden">
@@ -170,7 +171,9 @@ function DeliverableCard({
               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${PRIORITY_BADGE[deliverable.priority ?? 'medium']}`}>
                 {deliverable.priority ?? 'medium'}
               </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">{deliverable.mandays} md</span>
+              <span className="text-xs font-medium text-amber-500 dark:text-amber-400">
+                {allocatedMd}/{deliverable.mandays} md
+              </span>
               {openIssueCount > 0 && (
                 <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Open issues">
                   ⚠ {openIssueCount} issue{openIssueCount > 1 ? 's' : ''}
@@ -294,6 +297,14 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
     fetchAll()
     fetch('/api/users?include_managers=true').then(r => r.json()).then(setMembers)
   }, [projectId])
+
+  useEffect(() => {
+    function handleTaskChanged() {
+      fetchAll()
+    }
+    window.addEventListener('project-detail-data-changed', handleTaskChanged)
+    return () => window.removeEventListener('project-detail-data-changed', handleTaskChanged)
+  }, [])
 
   useEffect(() => {
     if (!showHelp) return

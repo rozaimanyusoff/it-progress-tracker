@@ -1244,8 +1244,8 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
         </div>
         <label className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">Weekly Pending Task Reminder</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Allow external cron to send weekly pending-task email reminder to owners.</p>
+            <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">Weekly Progress Update</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Allow external cron to send weekly progress summary (tasks, deliverables, projects, developer analytics) to all roles with Receive Updates enabled.</p>
           </div>
           <input
             type="checkbox"
@@ -1256,7 +1256,7 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
         </label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 -mt-2">
           <div>
-            <label className="text-[11px] text-slate-500 dark:text-slate-400">Pending notify day</label>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Notify day</label>
             <div className="mt-1 grid grid-cols-2 gap-1.5 rounded-lg border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-900 p-2">
               {dayOptions.map(d => (
                 <label key={`pending-day-${d.value}`} className="inline-flex items-center gap-1.5 text-[11px] text-slate-700 dark:text-slate-300">
@@ -1272,7 +1272,7 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
             </div>
           </div>
           <div>
-            <label className="text-[11px] text-slate-500 dark:text-slate-400">Pending notify time</label>
+            <label className="text-[11px] text-slate-500 dark:text-slate-400">Notify time</label>
             <input
               type="time"
               value={cronCfg.pendingTime}
@@ -1301,7 +1301,7 @@ function BackupTab({ showToast }: { showToast: (t: 'success' | 'error', m: strin
             disabled={cronRunning === 'pending-notify'}
             className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-navy-700 disabled:opacity-50"
           >
-            {cronRunning === 'pending-notify' ? 'Running...' : 'Run Pending Notify Cron Now'}
+            {cronRunning === 'pending-notify' ? 'Running...' : 'Run Weekly Progress Update Now'}
           </button>
         </div>
       </div>

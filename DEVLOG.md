@@ -5,6 +5,62 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-25 — Weekly Progress Update Email, Brand Logo Favicon, Kanban & UI Fixes
+
+### Ditambah
+
+**Weekly Progress Update (Email Digest)**
+
+- Ganti "Weekly Pending Task Reminder" dengan **Weekly Progress Update** — digest mingguan yang lebih kaya kandungan.
+- `src/lib/email.ts` ditulis semula sepenuhnya:
+   - Helper `emailLayout(brandName, accentColor, body)` untuk template HTML yang seragam.
+   - Helper `fromAddress(brandName)` menggunakan brand name dari `AppSetting`.
+   - Semua fungsi email sedia ada kini menerima parameter pilihan `brandName`.
+   - Fungsi baharu `sendWeeklyProgressUpdate(email, name, data, brandName)` dengan template HTML penuh.
+   - Interface yang diekspot: `WeeklyProgressData`, `WeeklyProjectData`, `WeeklyDevAnalytic`.
+   - `sendWeeklyPendingTasksReminder` dikekalkan sebagai `@deprecated` wrapper.
+- `src/app/api/cron/run/route.ts` — `runPendingNotifyJob` diganti dengan `runWeeklyProgressJob`:
+   - Tetingkap minggu = 7 hari lepas dari sekarang.
+   - Data dikumpul per-projek: task baharu, task selesai, kemajuan deliverable, project updates.
+   - Analitik pembangun: total tugasan, selesai minggu ini, dalam progres, est/actual mandays, utilization %.
+   - Hantar kepada penerima mengikut kebenaran role (`receive_notifications !== false`).
+   - Kemasukan audit `WEEKLY_PROGRESS_CRON` ditulis selepas selesai.
+   - Dedup menggunakan slot `weekly:` dalam `cron_pending_last_run_slot`.
+- Settings UI label dikemas kini:
+   - "Weekly Pending Task Reminder" → "Weekly Progress Update"
+   - "Pending notify day/time" → "Notify day/time"
+   - Butang "Run Pending Notify Cron Now" → "Run Weekly Progress Update Now"
+
+**Brand Logo pada Browser Tab (Favicon)**
+
+- `generateMetadata()` dalam `src/app/layout.tsx` kini fetch `brand_logo_url` dari `AppSetting`.
+- Jika logo URL wujud, ia diaplikasikan sebagai `icons.icon` (favicon) dan `icons.apple` (Apple touch icon).
+- Fetch `brand_name` dan `brand_logo_url` dibuat secara selari menggunakan `Promise.all`.
+
+**Mobile-friendly Kanban Board**
+
+- Tab switcher pada mobile (`sm:hidden`) — satu kolum pada satu masa.
+- Desktop kekal grid 4 kolum (`hidden sm:grid`).
+- Semua role (termasuk manager) hanya nampak task yang mereka sendiri assigned.
+
+### Diubah
+
+- Notifikasi email per-tindakan bagi penugasan task (`sendTaskAssigned`) dibuang daripada `POST /api/tasks` dan `PUT /api/tasks/[id]` — diganti oleh digest mingguan.
+- Notifikasi status-based (submit for review, approve, reject) dikekalkan.
+
+### Diperbaiki
+
+- Bug `allocated md` pada header Deliverable menunjukkan concatenation string ("0205") — diperbaiki dengan `Number()` coercion pada `est_mandays`.
+- `DeliverableSection` kini auto-refresh allocated md apabila task ditambah/diubah melalui event listener `project-detail-data-changed`.
+- Build error Kanban: lebihan tag `</div>` sebelum `</DragDropContext>` dibuang.
+- `ProjectUpdate` query dalam cron route menggunakan `notes` (bukan `content`) mengikut schema Prisma.
+- Hubungan Prisma pada User untuk task assignees diperbetul: `task_assignees` (bukan `assignedTasks`).
+- `ProjectStatus` enum diperbetul: `Done` (bukan `Completed`) dalam cron where clause.
+- Fungsi email pendua dibuang daripada `src/lib/email.ts` (476 baris lama yang tertinggal selepas rewrite).
+- Build verification: `npm run build` lulus.
+
+---
+
 ## [Unreleased]
 
 > Perubahan yang sedang dalam pembangunan, belum di-commit/deploy.
@@ -14,22 +70,22 @@ Format: **terbaru di atas**.
 **Operational Dashboard**
 
 - Project cards kini disusun maksimum 3 per row pada desktop dengan struktur card yang lebih stabil:
-  - header/progress
-  - description
-  - team + dates
-  - deliverables, tasks, open issues
-  - KPI performance
-  - footer action
+   - header/progress
+   - description
+   - team + dates
+   - deliverables, tasks, open issues
+   - KPI performance
+   - footer action
 - Project card kini memaparkan:
-  - jumlah deliverables
-  - task done/total
-  - open issues
+   - jumlah deliverables
+   - task done/total
+   - open issues
 - Tambah `Team Dashboard` untuk user yang merupakan assignee kepada project, termasuk manager yang turut assigned:
-  - Assigned projects
-  - Active/done project metrics
-  - Assigned/done/review/overdue/blocked task metrics
-  - Estimated mandays
-  - Personal completion rate, on-time completion, active workload indicators
+   - Assigned projects
+   - Active/done project metrics
+   - Assigned/done/review/overdue/blocked task metrics
+   - Estimated mandays
+   - Personal completion rate, on-time completion, active workload indicators
 
 **Project View > Project Performance**
 
@@ -46,14 +102,14 @@ Format: **terbaru di atas**.
 **Project Details > Add/Edit Task**
 
 - Add/Edit Task form diselaraskan supaya Edit Task menggunakan struktur field yang sama seperti Add Task:
-  - Current tasks
-  - Tasks Category (Dev)
-  - Scope (Dev)
-  - Task (Dev)
-  - Specific Tasks Details
-  - Est. Mandays budget bar
-  - Due Date
-  - Priority
+   - Current tasks
+   - Tasks Category (Dev)
+   - Scope (Dev)
+   - Task (Dev)
+   - Specific Tasks Details
+   - Est. Mandays budget bar
+   - Due Date
+   - Priority
 - Edit Task kekalkan PM Override actual dates untuk manager.
 - Current tasks list kini memaparkan `category > scope > task > specific task details` dengan warna teks berbeza yang sesuai light/dark mode.
 - Gantt chart, burndown, milestone, dan developer analytics di Project Details dipaksa refresh selepas add/update/delete/reorder deliverables atau tasks.
@@ -80,9 +136,9 @@ Format: **terbaru di atas**.
 **Add Task payload (Kanban + Project Details)**
 
 - `POST /api/tasks` kini menerima dan menyimpan:
-  - `dev_category` (nullable)
-  - `dev_scope` (nullable)
-  - `dev_task` (nullable)
+   - `dev_category` (nullable)
+   - `dev_scope` (nullable)
+   - `dev_task` (nullable)
 - `PUT /api/tasks/[id]` kini boleh kemas kini ketiga-tiga field Dev reference tersebut.
 
 ### Diubah
@@ -90,17 +146,17 @@ Format: **terbaru di atas**.
 **Add Task form (Team Kanban + My Kanban + Project Details > Deliverable)**
 
 - Rombak aliran input:
-  - Dropdown `Tasks Category (Dev)`, `Scope (Dev)`, `Task (Dev)` dijadikan **reference sahaja**.
-  - `Specific Tasks Details` dijadikan **mandatory** untuk tujuan umum (general purpose).
-  - Field `Task (Standalone)` dibuang.
+   - Dropdown `Tasks Category (Dev)`, `Scope (Dev)`, `Task (Dev)` dijadikan **reference sahaja**.
+   - `Specific Tasks Details` dijadikan **mandatory** untuk tujuan umum (general purpose).
+   - Field `Task (Standalone)` dibuang.
 - Label diseragamkan:
-  - `Tasks Category (Dev)`
-  - `Scope (Dev)`
-  - `Task (Dev)`
-  - `Specific Tasks Details`
+   - `Tasks Category (Dev)`
+   - `Scope (Dev)`
+   - `Task (Dev)`
+   - `Specific Tasks Details`
 - Placeholder `Specific Tasks Details` diperkemas:
-  - Buang simbol `< >`
-  - Guna format `Specify details for {task}...` apabila task dev dipilih.
+   - Buang simbol `< >`
+   - Guna format `Specify details for {task}...` apabila task dev dipilih.
 - Dropdown `Task (Dev)` kini paparkan nama task sahaja (tiada format `Scope > Task`).
 - Add Task Project Details: dropdown Dev diset `w-full` untuk alignment dengan grid form.
 
@@ -114,11 +170,11 @@ Format: **terbaru di atas**.
 ### Diperbaiki
 
 - Alignment header kolum Kanban:
-  - Tinggi header diseragamkan (`min-h`) supaya semua kolum nampak rata.
-  - Ruang deskripsi distabilkan (`min-h`) dan search input dikunci di bahagian bawah (`mt-auto`).
+   - Tinggi header diseragamkan (`min-h`) supaya semua kolum nampak rata.
+   - Ruang deskripsi distabilkan (`min-h`) dan search input dikunci di bahagian bawah (`mt-auto`).
 - Build verification:
-  - `npx prisma generate` lulus.
-  - `npm run build` lulus selepas semua perubahan.
+   - `npx prisma generate` lulus.
+   - `npm run build` lulus selepas semua perubahan.
 
 ---
 

@@ -629,9 +629,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
             return (
               <li key={t.id} className="flex items-start gap-2 text-xs">
                 <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${t.status === 'Done' ? 'bg-green-500' :
-                    t.status === 'InProgress' ? 'bg-orange-400' :
-                      t.status === 'InReview' ? 'bg-yellow-400' :
-                        t.status === 'Blocked' ? 'bg-red-400' : 'bg-slate-300'
+                  t.status === 'InProgress' ? 'bg-orange-400' :
+                    t.status === 'InReview' ? 'bg-yellow-400' :
+                      t.status === 'Blocked' ? 'bg-red-400' : 'bg-slate-300'
                   }`} />
                 <div className={`flex-1 min-w-0 ${t.status === 'Done' ? 'line-through decoration-slate-400/60' : ''}`}>
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -722,6 +722,25 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   : 'text-slate-800 dark:text-slate-200'
                   }`}>
                   <div>
+                    {(task.dev_category || task.dev_scope || task.dev_task) && (
+                      <div className="flex items-center gap-1 flex-wrap mb-0.5">
+                        {task.dev_category && (
+                          <span className="flex items-center gap-1">
+                            <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{task.dev_category}</span>
+                            {(task.dev_scope || task.dev_task) && <span className="text-[10px] text-slate-300 dark:text-slate-600">›</span>}
+                          </span>
+                        )}
+                        {task.dev_scope && (
+                          <span className="flex items-center gap-1">
+                            <span className="text-[10px] font-medium text-sky-700 dark:text-sky-300">{task.dev_scope}</span>
+                            {task.dev_task && <span className="text-[10px] text-slate-300 dark:text-slate-600">›</span>}
+                          </span>
+                        )}
+                        {task.dev_task && (
+                          <span className="text-[10px] font-medium text-violet-700 dark:text-violet-300">{task.dev_task}</span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}>
                         {task.priority}
