@@ -10,8 +10,11 @@ interface Props {
    taskScope?: string | null
    targetStatus: StatusTarget
    projectTitle?: string | null
+   projectStartDate?: string | null
+   projectDeadline?: string | null
    linkedTitle?: string | null
    linkedType?: 'deliverable' | 'feature' | 'standalone' | null
+   deliverablePlannedEnd?: string | null
    createdByName?: string | null
    estMandays?: number | string | null
    deliverableBudgetMandays?: number | string | null
@@ -88,8 +91,11 @@ export default function StatusChangeModal({
    taskScope,
    targetStatus,
    projectTitle,
+   projectStartDate,
+   projectDeadline,
    linkedTitle,
    linkedType,
+   deliverablePlannedEnd,
    createdByName,
    estMandays,
    deliverableBudgetMandays,
@@ -109,10 +115,14 @@ export default function StatusChangeModal({
    useEffect(() => {
       if (targetStatus === 'Done' && actualStartDate) {
          setDate(actualStartDate.slice(0, 10))
+      } else if (targetStatus === 'InProgress' && dueDate) {
+         // Default near the due date so calendar opens there; clamp to today if due date is future
+         const due = dueDate.slice(0, 10)
+         setDate(due <= today ? due : today)
       } else {
-         setDate(todayStr())
+         setDate(today)
       }
-   }, [targetStatus, actualStartDate])
+   }, [targetStatus, actualStartDate, dueDate])
 
    // Date constraints
    const today = todayStr()
@@ -171,14 +181,50 @@ export default function StatusChangeModal({
 
             <div className="mb-4 rounded-lg border border-slate-200 dark:border-navy-700 bg-slate-50/70 dark:bg-navy-900/40 p-3">
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Task:</span> <span className="text-slate-700 dark:text-slate-200">{taskTitle}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">{linkedLabel}:</span> <span className="text-slate-700 dark:text-slate-200">{linkedTitle || '—'}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Project:</span> <span className="text-slate-700 dark:text-slate-200">{projectTitle || '—'}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Created By:</span> <span className="text-slate-700 dark:text-slate-200">{createdByName || '—'}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Due Date:</span> <span className="text-slate-700 dark:text-slate-200">{formatDateLabel(dueDate)}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Defined Mandays:</span> <span className="text-slate-700 dark:text-slate-200">{formatMandays(estMandays)}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Budget:</span> <span className="text-slate-700 dark:text-slate-200">{formatMandays(deliverableBudgetMandays)}</span></p>
-                  <p className="text-slate-500 dark:text-slate-400"><span className="font-medium">Remaining:</span> <span className={`${remaining != null && remaining < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{remaining == null ? '—' : `${remaining.toFixed(1)} md`}</span></p>
+                  {/* Row 1: Task + Deliverable (with due date) */}
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Task:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{taskTitle}</span>
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">{linkedLabel}:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{linkedTitle || '—'}</span>
+                     {deliverablePlannedEnd && (
+                        <span className="ml-1 text-slate-400 dark:text-slate-500">(Due: {formatDateLabel(deliverablePlannedEnd)})</span>
+                     )}
+                  </p>
+                  {/* Row 2: Project (with dates) + Created By */}
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Project:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{projectTitle || '—'}</span>
+                     {(projectStartDate || projectDeadline) && (
+                        <span className="ml-1 text-slate-400 dark:text-slate-500">
+                           ({formatDateLabel(projectStartDate)} – {formatDateLabel(projectDeadline)})
+                        </span>
+                     )}
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Created By:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{createdByName || '—'}</span>
+                  </p>
+                  {/* Row 3: Task Due Date + Allocated/Budget md */}
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Task Due:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{formatDateLabel(dueDate)}</span>
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Allocated/Budget:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">
+                        {formatMandays(estMandays)} / {formatMandays(deliverableBudgetMandays)}
+                     </span>
+                  </p>
+                  {/* Row 4: Utilised/Remaining md */}
+                  <p className="text-slate-500 dark:text-slate-400">
+                     <span className="font-medium">Utilised/Remaining:</span>{' '}
+                     <span className={remaining != null && remaining < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}>
+                        {used != null ? `${used.toFixed(1)} md` : '—'} / {remaining == null ? '—' : `${remaining.toFixed(1)} md`}
+                     </span>
+                  </p>
                </div>
                <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-navy-700/80">
                   <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -232,10 +278,10 @@ export default function StatusChangeModal({
                <button
                   onClick={handleConfirm}
                   className={`px-4 py-2 text-sm rounded-lg font-medium text-white ${targetStatus === 'Blocked'
-                        ? 'bg-red-500 hover:bg-red-600'
-                        : targetStatus === 'Unblock'
-                           ? 'bg-green-500 hover:bg-green-600'
-                           : 'bg-blue-600 hover:bg-blue-700'
+                     ? 'bg-red-500 hover:bg-red-600'
+                     : targetStatus === 'Unblock'
+                        ? 'bg-green-500 hover:bg-green-600'
+                        : 'bg-blue-600 hover:bg-blue-700'
                      }`}
                >
                   {targetStatus === 'Unblock' ? 'Unblock' : 'Confirm'}

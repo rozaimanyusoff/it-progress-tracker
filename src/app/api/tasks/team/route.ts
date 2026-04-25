@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
           title: true,
           project_links: {
             select: {
-              project: { select: { id: true, title: true } },
+              project: { select: { id: true, title: true, start_date: true, deadline: true } },
               module: { select: { id: true, title: true } },
             },
             take: 1,
@@ -77,7 +77,8 @@ export async function GET(req: NextRequest) {
           id: true,
           title: true,
           mandays: true,
-          project: { select: { id: true, title: true } },
+          planned_end: true,
+          project: { select: { id: true, title: true, start_date: true, deadline: true } },
           module: { select: { id: true, title: true } },
         },
       },
@@ -132,35 +133,44 @@ export async function GET(req: NextRequest) {
     const deliverableUsedMandays = t.deliverable_id != null
       ? Number(usedMandaysByDeliverable.get(t.deliverable_id) ?? 0)
       : null
+    const deliverablePlannedEnd = t.deliverable?.planned_end?.toISOString() ?? null
 
     if (t.feature) {
       const link = t.feature.project_links[0]
+      const proj = link?.project ?? null
       return {
         ...t,
         created_by_name: creatorName,
         deliverable_budget_mandays: deliverableBudgetMandays,
         deliverable_used_mandays: deliverableUsedMandays,
+        deliverable_planned_end: null,
+        project_start_date: proj ? (proj as any).start_date?.toISOString?.() ?? null : null,
+        project_deadline: proj ? (proj as any).deadline?.toISOString?.() ?? null : null,
         context: {
           type: 'feature' as const,
           id: t.feature.id,
           title: t.feature.title,
           module: link?.module ?? null,
-          project: link?.project ?? { id: 0, title: 'Unknown' },
+          project: proj ? { id: proj.id, title: proj.title } : { id: 0, title: 'Unknown' },
         },
       }
     }
     if (t.deliverable) {
+      const proj = t.deliverable.project
       return {
         ...t,
         created_by_name: creatorName,
         deliverable_budget_mandays: deliverableBudgetMandays,
         deliverable_used_mandays: deliverableUsedMandays,
+        deliverable_planned_end: deliverablePlannedEnd,
+        project_start_date: (proj as any).start_date?.toISOString?.() ?? null,
+        project_deadline: (proj as any).deadline?.toISOString?.() ?? null,
         context: {
           type: 'deliverable' as const,
           id: t.deliverable.id,
           title: t.deliverable.title,
           module: t.deliverable.module ?? null,
-          project: t.deliverable.project,
+          project: { id: proj.id, title: proj.title },
         },
       }
     }
@@ -169,6 +179,9 @@ export async function GET(req: NextRequest) {
       created_by_name: creatorName,
       deliverable_budget_mandays: null,
       deliverable_used_mandays: null,
+      deliverable_planned_end: null,
+      project_start_date: null,
+      project_deadline: null,
       context: {
         type: 'standalone' as const,
         id: t.id,

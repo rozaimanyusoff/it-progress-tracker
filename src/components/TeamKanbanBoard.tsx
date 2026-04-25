@@ -28,6 +28,9 @@ interface Task {
   created_by_name?: string | null
   deliverable_budget_mandays?: number | null
   deliverable_used_mandays?: number | null
+  deliverable_planned_end?: string | null
+  project_start_date?: string | null
+  project_deadline?: string | null
   is_blocked: boolean
   blocked_reason: string | null
   context: {
@@ -1012,8 +1015,11 @@ export default function TeamKanbanBoard() {
           taskScope={pendingTask.description ?? null}
           targetStatus={pendingStatus.target}
           projectTitle={pendingTask.context.project?.title ?? null}
+          projectStartDate={pendingTask.project_start_date ?? null}
+          projectDeadline={pendingTask.project_deadline ?? null}
           linkedTitle={pendingTask.context.title}
           linkedType={pendingTask.context.type}
+          deliverablePlannedEnd={pendingTask.deliverable_planned_end ?? null}
           createdByName={pendingTask.created_by_name ?? null}
           estMandays={pendingTask.est_mandays}
           deliverableBudgetMandays={pendingTask.deliverable_budget_mandays ?? null}

@@ -138,7 +138,8 @@ async function runBackupJob(force = false) {
 
 async function runWeeklyProgressJob(force = false) {
   const enabled = await getSettingBool('cron_pending_notify_enabled')
-  if (!enabled) return { ok: true, skipped: true, reason: 'weekly progress cron disabled' }
+  // force=true (manual "Run Now") bypasses enabled toggle and schedule checks
+  if (!force && !enabled) return { ok: true, skipped: true, reason: 'weekly progress cron disabled' }
 
   const timeZone = await getSettingStr('cron_timezone', 'Asia/Kuala_Lumpur')
   const scheduleDay = await getSettingStr('cron_pending_notify_day', '1')
