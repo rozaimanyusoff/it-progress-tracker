@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
           id: true,
           title: true,
           mandays: true,
+          planned_start: true,
           planned_end: true,
           project: { select: { id: true, title: true, start_date: true, deadline: true } },
           module: { select: { id: true, title: true } },
@@ -133,6 +134,7 @@ export async function GET(req: NextRequest) {
     const deliverableUsedMandays = t.deliverable_id != null
       ? Number(usedMandaysByDeliverable.get(t.deliverable_id) ?? 0)
       : null
+    const deliverablePlannedStart = t.deliverable?.planned_start?.toISOString() ?? null
     const deliverablePlannedEnd = t.deliverable?.planned_end?.toISOString() ?? null
 
     if (t.feature) {
@@ -143,6 +145,7 @@ export async function GET(req: NextRequest) {
         created_by_name: creatorName,
         deliverable_budget_mandays: deliverableBudgetMandays,
         deliverable_used_mandays: deliverableUsedMandays,
+        deliverable_planned_start: null,
         deliverable_planned_end: null,
         project_start_date: proj ? (proj as any).start_date?.toISOString?.() ?? null : null,
         project_deadline: proj ? (proj as any).deadline?.toISOString?.() ?? null : null,
@@ -162,6 +165,7 @@ export async function GET(req: NextRequest) {
         created_by_name: creatorName,
         deliverable_budget_mandays: deliverableBudgetMandays,
         deliverable_used_mandays: deliverableUsedMandays,
+        deliverable_planned_start: deliverablePlannedStart,
         deliverable_planned_end: deliverablePlannedEnd,
         project_start_date: (proj as any).start_date?.toISOString?.() ?? null,
         project_deadline: (proj as any).deadline?.toISOString?.() ?? null,
@@ -179,6 +183,7 @@ export async function GET(req: NextRequest) {
       created_by_name: creatorName,
       deliverable_budget_mandays: null,
       deliverable_used_mandays: null,
+      deliverable_planned_start: null,
       deliverable_planned_end: null,
       project_start_date: null,
       project_deadline: null,

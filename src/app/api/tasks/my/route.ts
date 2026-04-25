@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
           id: true,
           title: true,
           mandays: true,
+          planned_start: true,
+          planned_end: true,
           project: { select: { id: true, title: true } },
         },
       },
@@ -80,11 +82,15 @@ export async function GET(req: NextRequest) {
     const deliverableUsedMandays = t.deliverable_id != null
       ? Number(usedMandaysByDeliverable.get(t.deliverable_id) ?? 0)
       : null
+    const deliverablePlannedStart = t.deliverable?.planned_start?.toISOString() ?? null
+    const deliverablePlannedEnd = t.deliverable?.planned_end?.toISOString() ?? null
     return {
       ...t,
       created_by_name: creatorName,
       deliverable_budget_mandays: deliverableBudgetMandays,
       deliverable_used_mandays: deliverableUsedMandays,
+      deliverable_planned_start: deliverablePlannedStart,
+      deliverable_planned_end: deliverablePlannedEnd,
       project: link?.project ?? t.deliverable?.project ?? null,
       module: link?.module ?? null,
     }

@@ -61,6 +61,33 @@ Format: **terbaru di atas**.
 
 ---
 
+## 2026-04-26 — Kanban Date Display, Completed On Picker Fix, Move-Back No Popup
+
+### Ditambah
+
+**InReview Card: Task Started & Completed Dates**
+
+- `TeamKanbanBoard.tsx` — Kad berstatus `InReview` kini memaparkan:
+   - **Started:** tarikh `actual_start` (emerald)
+   - **Completed:** tarikh `actual_end` (sky blue)
+   - Dipaparkan dalam kedua-dua blok kad — mobile tab switcher dan desktop grid.
+- `KanbanBoard.tsx` — Kad InReview pada Personal Kanban board turut dipaparkan dengan dates yang sama.
+
+### Diperbaiki
+
+**TaskUpdateModal — "Completed on" picker tidak boleh pilih tarikh lebih awal dari "Started on"**
+
+- Tambah `useEffect` yang clamp `completedOn` ke `startedOn` apabila user menukar tarikh started kepada tarikh yang lebih lewat.
+- `min={startedOn || undefined}` sudah sedia ada pada input — effect baharu ini memastikan nilai juga disesuaikan secara programatik, bukan hanya UI disable.
+
+**KanbanBoard — `←` dari InReview masih prompts popup "When did you actually..."**
+
+- `moveTask` dalam `KanbanBoard.tsx` tiada bypass untuk `direction === 'prev'`.
+- Tambah: apabila `direction === 'prev'`, terus panggil `doStatusUpdate` dan `return` sebelum semak `POPUP_STATUSES`.
+- `TeamKanbanBoard.tsx` sudah betul dari sesi sebelumnya.
+
+---
+
 ## [Unreleased]
 
 > Perubahan yang sedang dalam pembangunan, belum di-commit/deploy.

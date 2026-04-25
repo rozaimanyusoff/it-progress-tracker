@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
-import { Trash2, X } from 'lucide-react'
+import { Pencil, Trash2, X } from 'lucide-react'
 import TaskUpdateModal from './TaskUpdateModal'
 import StatusChangeModal, { StatusTarget } from './StatusChangeModal'
 
@@ -28,6 +28,8 @@ interface Task {
   created_by_name?: string | null
   deliverable_budget_mandays?: number | null
   deliverable_used_mandays?: number | null
+  deliverable_planned_start?: string | null
+  deliverable_planned_end?: string | null
   is_blocked: boolean
   blocked_reason: string | null
   assignees: { user: { id: number; name: string } }[]
@@ -75,7 +77,7 @@ function startedDateDisplay(started: string | null | undefined, status: string):
   const d = new Date(started)
   if (isNaN(d.getTime())) return null
   const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
-  return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {dateStr}</span>
+  return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Task started: {dateStr}</span>
 }
 
 const COLUMNS: { id: string; label: string; color: string; description: string }[] = [
@@ -111,11 +113,100 @@ function cardHeaderScope(task: Task): string {
   return task.description?.trim() || task.title
 }
 
+function AssigneeInitials({ assignees }: { assignees: Task['assignees'] }) {
+  if (assignees.length === 0) return null
+  return (
+    <div className="mt-1 flex items-center gap-1">
+      {assignees.slice(0, 4).map(a => (
+        <span
+          key={a.user.id}
+          title={a.user.name}
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40 text-[10px] font-semibold text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800"
+        >
+          {a.user.name.slice(0, 1).toUpperCase()}
+        </span>
+      ))}
+      {assignees.length > 4 && (
+        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">+{assignees.length - 4}</span>
+      )}
+    </div>
+  )
+}
+
+function formatShortDate(date?: string | null): string | null {
+  if (!date) return null
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return null
+  return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' })
+}
+
+function devReferenceLine(task: Task): React.ReactNode {
+  const category = task.dev_category?.trim()
+  const scope = task.dev_scope?.trim()
+  const devTask = task.dev_task?.trim()
+
+  if (!category && !scope && !devTask) return null
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug">
+      {category && <span className="font-medium text-emerald-700 dark:text-emerald-300">{category}</span>}
+      {category && scope && <span className="text-slate-300 dark:text-slate-600">›</span>}
+      {scope && <span className="font-medium text-sky-700 dark:text-sky-300">{scope}</span>}
+      {(category || scope) && devTask && <span className="text-slate-300 dark:text-slate-600">›</span>}
+      {devTask && <span className="font-medium text-violet-700 dark:text-violet-300">{devTask}</span>}
+    </div>
+  )
+}
+
+function dueStatusLabel(task: Pick<Task, 'due_date' | 'status' | 'actual_end'>): React.ReactNode {
+  if (!task.due_date) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const due = new Date(task.due_date); due.setHours(0, 0, 0, 0)
+  if (task.status === 'Done') return null
+  if (task.status === 'InReview' && task.actual_end) {
+    const completed = new Date(task.actual_end); completed.setHours(0, 0, 0, 0)
+    return completed > due
+      ? <span className="font-semibold text-red-500 dark:text-red-400">Overdue</span>
+      : <span className="font-semibold text-green-600 dark:text-green-400">Submitted</span>
+  }
+  if (due < today) return <span className="font-semibold text-red-500 dark:text-red-400">Overdue</span>
+  if (due.getTime() === today.getTime()) return <span className="font-semibold text-amber-600 dark:text-amber-400">Due today</span>
+  return null
+}
+
+function deliverableTimelineLine(task: Task): React.ReactNode {
+  if (!task.deliverable) return null
+  const startLabel = formatShortDate(task.deliverable_planned_start)
+  const dueLabel = formatShortDate(task.deliverable_planned_end ?? task.due_date)
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-snug">
+      <span className="font-semibold uppercase text-violet-700 dark:text-violet-300">DELIV</span>
+      <span className="min-w-0 max-w-full truncate text-blue-700 dark:text-blue-300">{task.deliverable.title}</span>
+      {startLabel && <span className="font-medium text-emerald-700 dark:text-emerald-300">Start: {startLabel}</span>}
+      {dueLabel && (
+        <span className="font-medium text-amber-700 dark:text-amber-300">
+          Due: {dueLabel} {dueStatusLabel(task)}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ── Add Task Modal ────────────────────────────────────────────────
-function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (task: Task) => void }) {
+function AddTaskModal({
+  onClose,
+  onAdded,
+  initialTask,
+}: {
+  onClose: () => void
+  onAdded: (task: Task) => void
+  initialTask?: Task | null
+}) {
   const STANDALONE = ''
   const { data: session } = useSession()
   const currentUserId = Number((session?.user as any)?.id)
+  const isEditMode = Boolean(initialTask)
   const [projects, setProjects] = useState<Project[]>([])
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [allUsers, setAllUsers] = useState<{ id: number; name: string }[]>([])
@@ -152,16 +243,33 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
   }, [])
 
   useEffect(() => {
+    if (!initialTask) return
+    setProjectId(initialTask.project?.id ? String(initialTask.project.id) : '')
+    setDeliverableId(initialTask.deliverable?.id ? String(initialTask.deliverable.id) : '')
+    setDescription(initialTask.description ?? '')
+    setDueDate(initialTask.due_date ? initialTask.due_date.slice(0, 10) : '')
+    setPriority(initialTask.priority ?? 'medium')
+    setEstMandays(initialTask.est_mandays != null ? String(initialTask.est_mandays) : '')
+    setPartnerIds(initialTask.assignees.map(a => a.user.id).filter(id => id !== currentUserId))
+    setSelectedCategory(initialTask.dev_category ?? '')
+    setSelectedScope(initialTask.dev_scope ?? '')
+    setSelectedSpecificTask('')
+    setError('')
+  }, [initialTask, currentUserId])
+
+  useEffect(() => {
     if (!projectId) {
       setDeliverables([])
       setDeliverableId('')
       return
     }
     fetch(`/api/projects/${projectId}/deliverables`).then(r => r.json()).then((data: any[]) => {
-      setDeliverables(data.map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null })))
-      setDeliverableId('')
+      const mapped = data.map((d: any) => ({ id: d.id, title: d.title, planned_end: d.planned_end ?? null }))
+      setDeliverables(mapped)
+      const initialDeliverableId = initialTask?.deliverable?.id ? String(initialTask.deliverable.id) : ''
+      setDeliverableId(initialDeliverableId && mapped.some((d: Deliverable) => String(d.id) === initialDeliverableId) ? initialDeliverableId : '')
     })
-  }, [projectId])
+  }, [projectId, initialTask])
 
   useEffect(() => {
     if (!deliverableId) { setPresetCatalog([]); return }
@@ -177,6 +285,23 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
       })
       .catch(() => setPresetCatalog([]))
   }, [deliverableId])
+
+  useEffect(() => {
+    if (!initialTask || presetCatalog.length === 0) return
+    const category = initialTask.dev_category?.trim()
+    const scope = initialTask.dev_scope?.trim()
+    const devTask = initialTask.dev_task?.trim()
+    if (!category || !scope || !devTask) return
+    const match = presetCatalog
+      .find(c => c.category === category)
+      ?.scopes
+      .filter(s => s.scope === scope)
+      .flatMap(s => s.tasks.map(t => ({ key: `${s.scope}|||${t.name}`, task: t.name })))
+      .find(t => t.task === devTask)
+    setSelectedCategory(category)
+    setSelectedScope(scope)
+    setSelectedSpecificTask(match?.key ?? '')
+  }, [initialTask, presetCatalog])
 
   const selectedDeliverable = deliverables.find(d => d.id === Number(deliverableId))
   const delivPlannedEnd = selectedDeliverable?.planned_end ? new Date(selectedDeliverable.planned_end) : null
@@ -198,11 +323,11 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
     const taskTitle = cleanedDetails.split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || 'Task'
     const devCategoryRef = selectedCategory.trim() || null
     const devScopeRef = selectedScope.trim() || null
-    const devTaskRef = selectedTaskLabel.trim() || null
+    const devTaskRef = selectedTaskLabel.trim() || (isEditMode ? initialTask?.dev_task?.trim() : '') || null
     setSaving(true); setError('')
 
-    const res = await fetch('/api/tasks', {
-      method: 'POST',
+    const res = await fetch(isEditMode && initialTask ? `/api/tasks/${initialTask.id}` : '/api/tasks', {
+      method: isEditMode ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         deliverable_id: Number(deliverableId),
@@ -211,14 +336,14 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
         dev_category: devCategoryRef,
         dev_scope: devScopeRef,
         dev_task: devTaskRef,
-        assignee_ids: partnerIds, // member's own ID is added server-side
+        assignee_ids: isEditMode ? [currentUserId, ...partnerIds] : partnerIds, // member's own ID is added server-side on create
         due_date: dueDate || null,
         priority,
         est_mandays: estMandays ? Number(estMandays) : null,
       }),
     })
     if (!res.ok) {
-      setError((await res.json()).error || 'Failed to create task')
+      setError((await res.json()).error || (isEditMode ? 'Failed to update task' : 'Failed to create task'))
       setSaving(false); return
     }
     const task = await res.json()
@@ -230,7 +355,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Add Task to Board</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{isEditMode ? 'Edit Task' : 'Add Task to Board'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 leading-none"><X className="w-4 h-4" /></button>
         </div>
 
@@ -238,7 +363,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
           {/* 1. Project */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project *</label>
-            <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)}>
+            <select className={inputClass} value={projectId} onChange={e => setProjectId(e.target.value)} disabled={isEditMode}>
               <option value="">Select project...</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
@@ -248,7 +373,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
           {projectId && (
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable *</label>
-              <select className={inputClass} value={deliverableId} onChange={e => setDeliverableId(e.target.value)}>
+              <select className={inputClass} value={deliverableId} onChange={e => setDeliverableId(e.target.value)} disabled={isEditMode}>
                 <option value="">Select deliverable...</option>
                 {deliverables.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
               </select>
@@ -368,11 +493,10 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
                 {allUsers.filter(u => u.id !== currentUserId).map(u => (
                   <label
                     key={u.id}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${
-                      partnerIds.includes(u.id)
-                        ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
-                    }`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${partnerIds.includes(u.id)
+                      ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-700 dark:text-blue-300'
+                      : 'bg-white dark:bg-navy-900 border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-800'
+                      }`}
                   >
                     <input
                       type="checkbox"
@@ -421,7 +545,7 @@ function AddTaskModal({ onClose, onAdded }: { onClose: () => void; onAdded: (tas
           <div className="flex gap-3 pt-1">
             <button type="submit" disabled={saving}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg text-sm transition-colors">
-              {saving ? 'Adding...' : 'Add to Board'}
+              {saving ? (isEditMode ? 'Saving...' : 'Adding...') : (isEditMode ? 'Save Changes' : 'Add to Board')}
             </button>
             <button type="button" onClick={onClose}
               className="flex-1 border border-slate-300 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 py-2 rounded-lg text-sm">
@@ -451,6 +575,7 @@ export default function KanbanBoard() {
   const [loading, setLoading] = useState(true)
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; title: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<{ taskId: number; target: StatusTarget } | null>(null)
@@ -525,7 +650,7 @@ export default function KanbanBoard() {
   })
 
   function handleTaskAdded(task: Task) {
-    setAllTasks(prev => [...prev, task])
+    setAllTasks(prev => prev.some(t => t.id === task.id) ? prev.map(t => t.id === task.id ? { ...t, ...task } : t) : [...prev, task])
   }
 
   async function handleDragEnd(result: DropResult) {
@@ -564,6 +689,12 @@ export default function KanbanBoard() {
     if (!isManager && newStatus === 'InReview' && currentStatus !== 'InProgress') return
     // Only managers can move to Done
     if (newStatus === 'Done' && !isManager) return
+
+    // Moving backwards: skip popup, update directly
+    if (direction === 'prev') {
+      await doStatusUpdate(taskId, newStatus, {})
+      return
+    }
 
     const POPUP_STATUSES: StatusTarget[] = ['InProgress', 'InReview', 'Done', 'Blocked']
     if (POPUP_STATUSES.includes(newStatus as StatusTarget)) {
@@ -628,6 +759,7 @@ export default function KanbanBoard() {
   }
 
   const activeTask = activeTaskId !== null ? findTask(board, activeTaskId) : null
+  const editingTask = editingTaskId !== null ? allTasks.find(t => t.id === editingTaskId) ?? null : null
   const totalVisible = visibleTasks.length
   const pendingTask = pendingStatus ? allTasks.find(t => t.id === pendingStatus.taskId) : null
 
@@ -638,6 +770,9 @@ export default function KanbanBoard() {
           taskId={pendingTask.id}
           taskTitle={pendingTask.title}
           taskScope={pendingTask.description ?? null}
+          devCategory={pendingTask.dev_category ?? null}
+          devScope={pendingTask.dev_scope ?? null}
+          devTask={pendingTask.dev_task ?? null}
           targetStatus={pendingStatus.target}
           projectTitle={pendingTask.project?.title ?? null}
           linkedTitle={pendingTask.feature?.title ?? pendingTask.deliverable?.title ?? null}
@@ -646,6 +781,8 @@ export default function KanbanBoard() {
           estMandays={pendingTask.est_mandays}
           deliverableBudgetMandays={pendingTask.deliverable_budget_mandays ?? null}
           deliverableUsedMandays={pendingTask.deliverable_used_mandays ?? null}
+          deliverablePlannedStart={pendingTask.deliverable_planned_start ?? null}
+          deliverablePlannedEnd={pendingTask.deliverable_planned_end ?? null}
           actualStartDate={(pendingTask as any).actual_start ?? null}
           dueDate={pendingTask.due_date}
           isManager={isManager}
@@ -880,9 +1017,7 @@ export default function KanbanBoard() {
                                   </span>
                                 </div>
                               </div>
-                              {task.description?.trim() && (
-                                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">Category: {task.title}</p>
-                              )}
+                              {devReferenceLine(task)}
                               {task.is_blocked && (
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
@@ -892,35 +1027,60 @@ export default function KanbanBoard() {
                               {task.module && (
                                 <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.module.title}</p>
                               )}
-                              {(task.feature || task.deliverable) && (
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 truncate">{task.feature?.title ?? task.deliverable?.title}</p>
+                              {task.feature && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 truncate">{task.feature.title}</p>
                               )}
+                              {deliverableTimelineLine(task)}
                               {task.project && (
                                 <p className="text-xs text-slate-400 truncate">{task.project.title}</p>
                               )}
+                              <AssigneeInitials assignees={task.assignees} />
                               <div className="flex items-center gap-2 mt-1">
                                 {task.is_predefined && <span className="text-xs text-slate-400">SDLC</span>}
                               </div>
                               {task.status === 'InProgress' && task.actual_start && (
                                 <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
                               )}
-                              {task.due_date && (
+                              {task.status === 'InReview' && (
+                                <div className="mt-1 flex flex-col gap-0.5">
+                                  {task.actual_start && (
+                                    <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                  )}
+                                  {task.actual_end && (
+                                    <span className="text-[10px] text-sky-500 dark:text-sky-400">Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                  )}
+                                </div>
+                              )}
+                              {task.due_date && !task.deliverable && (
                                 <div className="mt-1">{dueDateDisplay(task.due_date, task.status, task.actual_end ?? null)}</div>
                               )}
-                              <div className="flex items-center justify-between mt-2 gap-1">
-                                <div className="flex gap-1">
-                                  {col.id !== 'Todo' && (
-                                    <button onClick={() => moveTask(task.id, col.id, 'prev')} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 hover:bg-slate-50" title="Move back">←</button>
+                              <div className="flex items-center justify-end mt-2 gap-1">
+                                <div className="flex items-center justify-end gap-1">
+                                  {(task.status === 'Todo' || task.status === 'Blocked') && (
+                                    <>
+                                      <button
+                                        onClick={() => setEditingTaskId(task.id)}
+                                        className="p-1 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                        title="Edit task"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => toggleBlock(task)}
+                                        className={`px-1.5 py-0.5 rounded text-base leading-none ${task.is_blocked || task.status === 'Blocked' ? 'text-green-500 hover:text-green-700' : 'text-red-400 hover:text-red-600'}`}
+                                        title={task.is_blocked || task.status === 'Blocked' ? 'Unblock' : 'Block'}
+                                      >
+                                        {task.is_blocked || task.status === 'Blocked' ? '✓' : '⊘'}
+                                      </button>
+                                    </>
                                   )}
-                                  {col.id !== 'Done' && (
-                                    <button onClick={() => moveTask(task.id, col.id, 'next')} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-500 hover:bg-slate-50" title="Move forward">→</button>
-                                  )}                                  <button
-                                    onClick={() => toggleBlock(task)}
-                                    className={`p-1 rounded text-xs ${task.is_blocked || task.status === 'Blocked' ? 'text-green-500 hover:text-green-700' : 'text-red-400 hover:text-red-600'}`}
-                                    title={task.is_blocked || task.status === 'Blocked' ? 'Unblock' : 'Block'}
-                                  >
-                                    {task.is_blocked || task.status === 'Blocked' ? '✓' : '🚫'}
-                                  </button>                                  {col.id === 'Todo' && !task.is_predefined && (
+                                  {(task.status === 'InProgress' || task.status === 'InReview') && (
+                                    <button onClick={() => moveTask(task.id, col.id, 'prev')} className="text-xs px-1.5 py-0.5 rounded border border-slate-200 dark:border-navy-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700" title="Move back">←</button>
+                                  )}
+                                  {col.id !== 'Done' && (isManager || col.id !== 'InReview') && (
+                                    <button onClick={() => moveTask(task.id, col.id, 'next')} className="text-xs px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Move forward">→</button>
+                                  )}
+                                  {isManager && col.id === 'Todo' && !task.is_predefined && (
                                     <button
                                       onClick={() => setDeleteConfirm({ id: task.id, title: task.title })}
                                       className="p-1 rounded border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
@@ -930,11 +1090,12 @@ export default function KanbanBoard() {
                                     </button>
                                   )}
                                 </div>
-                                <button
-                                  onClick={() => setActiveTaskId(task.id)}
-                                  disabled={!isManager && task.status === 'InReview'}
-                                  className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                                >Update</button>
+                                {task.status === 'InProgress' && (
+                                  <button
+                                    onClick={() => setActiveTaskId(task.id)}
+                                    className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                  >Update</button>
+                                )}
                               </div>
                             </div>
                           )}
@@ -950,6 +1111,16 @@ export default function KanbanBoard() {
         </DragDropContext>
 
         {showAddModal && <AddTaskModal onClose={() => setShowAddModal(false)} onAdded={handleTaskAdded} />}
+        {editingTask && (
+          <AddTaskModal
+            initialTask={editingTask}
+            onClose={() => setEditingTaskId(null)}
+            onAdded={(task) => {
+              handleTaskAdded(task)
+              setEditingTaskId(null)
+            }}
+          />
+        )}
 
         {deleteConfirm && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -983,6 +1154,9 @@ export default function KanbanBoard() {
             taskId={activeTask.id}
             taskTitle={activeTask.title}
             taskScope={activeTask.description ?? null}
+            devCategory={activeTask.dev_category ?? null}
+            devScope={activeTask.dev_scope ?? null}
+            devTask={activeTask.dev_task ?? null}
             moduleTitle={activeTask.module?.title ?? null}
             featureTitle={activeTask.feature?.title ?? activeTask.deliverable?.title ?? null}
             projectTitle={activeTask.project?.title ?? null}
@@ -995,6 +1169,8 @@ export default function KanbanBoard() {
             estMandays={activeTask.est_mandays}
             deliverableBudgetMandays={activeTask.deliverable_budget_mandays ?? null}
             deliverableUsedMandays={activeTask.deliverable_used_mandays ?? null}
+            deliverablePlannedStart={activeTask.deliverable_planned_start ?? null}
+            deliverablePlannedEnd={activeTask.deliverable_planned_end ?? null}
             initialActualMandays={activeTask.actual_mandays}
             onClose={() => { setActiveTaskId(null); loadMyTasks() }}
             onStatusChange={handleStatusChange}

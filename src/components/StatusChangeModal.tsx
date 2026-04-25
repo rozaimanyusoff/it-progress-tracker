@@ -8,12 +8,16 @@ interface Props {
    taskId: number
    taskTitle: string
    taskScope?: string | null
+   devCategory?: string | null
+   devScope?: string | null
+   devTask?: string | null
    targetStatus: StatusTarget
    projectTitle?: string | null
    projectStartDate?: string | null
    projectDeadline?: string | null
    linkedTitle?: string | null
    linkedType?: 'deliverable' | 'feature' | 'standalone' | null
+   deliverablePlannedStart?: string | null
    deliverablePlannedEnd?: string | null
    createdByName?: string | null
    estMandays?: number | string | null
@@ -89,12 +93,16 @@ export default function StatusChangeModal({
    taskId,
    taskTitle,
    taskScope,
+   devCategory,
+   devScope,
+   devTask,
    targetStatus,
    projectTitle,
    projectStartDate,
    projectDeadline,
    linkedTitle,
    linkedType,
+   deliverablePlannedStart,
    deliverablePlannedEnd,
    createdByName,
    estMandays,
@@ -115,20 +123,23 @@ export default function StatusChangeModal({
    useEffect(() => {
       if (targetStatus === 'Done' && actualStartDate) {
          setDate(actualStartDate.slice(0, 10))
+      } else if (targetStatus === 'InProgress' && deliverablePlannedStart) {
+         setDate(deliverablePlannedStart.slice(0, 10))
+      } else if ((targetStatus === 'InReview' || targetStatus === 'Done') && dueDate) {
+         setDate(dueDate.slice(0, 10))
       } else if (targetStatus === 'InProgress' && dueDate) {
-         // Default near the due date so calendar opens there; clamp to today if due date is future
-         const due = dueDate.slice(0, 10)
-         setDate(due <= today ? due : today)
+         setDate(dueDate.slice(0, 10))
       } else {
          setDate(today)
       }
-   }, [targetStatus, actualStartDate, dueDate])
+   }, [targetStatus, actualStartDate, dueDate, deliverablePlannedStart])
 
    // Date constraints
    const today = todayStr()
    // Managers can backdate freely — only apply min restriction for members
-   const minDate = isManager ? undefined : (() => {
+   const minDate = (() => {
       if (targetStatus === 'InProgress') {
+         if (deliverablePlannedStart) return deliverablePlannedStart.slice(0, 10)
          if (dueDate) {
             const d = new Date(dueDate)
             d.setDate(d.getDate() - 90)
@@ -143,12 +154,16 @@ export default function StatusChangeModal({
       }
       return undefined
    })()
+   const maxDate = (() => {
+      if ((targetStatus === 'InReview' || targetStatus === 'Done') && dueDate) return dueDate.slice(0, 10)
+      return today
+   })()
 
    function handleConfirm() {
       setError('')
       if (cfg.showDate) {
          if (!date) { setError('Date is required.'); return }
-         if (date > today) { setError('Date cannot be in the future.'); return }
+         if (maxDate && date > maxDate) { setError(`Date cannot be after ${maxDate}.`); return }
          if (minDate && date < minDate) { setError(`Date cannot be before ${minDate}.`); return }
       }
       if (cfg.showReason && !reason.trim()) {
@@ -173,10 +188,11 @@ export default function StatusChangeModal({
    const budget = toNum(deliverableBudgetMandays)
    const used = toNum(deliverableUsedMandays)
    const remaining = budget != null && used != null ? budget - used : null
+   const hasDevReference = Boolean(devCategory?.trim() || devScope?.trim() || devTask?.trim())
 
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-         <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl w-full max-w-xl mx-4 p-6">
+         <div className="bg-white dark:bg-navy-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 p-6">
             <h2 className="text-base font-semibold text-slate-900 dark:text-white mb-1">{displayTitle}</h2>
 
             <div className="mb-4 rounded-lg border border-slate-200 dark:border-navy-700 bg-slate-50/70 dark:bg-navy-900/40 p-3">
@@ -189,6 +205,9 @@ export default function StatusChangeModal({
                   <p className="text-slate-500 dark:text-slate-400">
                      <span className="font-medium">{linkedLabel}:</span>{' '}
                      <span className="text-slate-700 dark:text-slate-200">{linkedTitle || '—'}</span>
+                     {deliverablePlannedStart && (
+                        <span className="ml-1 text-slate-400 dark:text-slate-500">(Start: {formatDateLabel(deliverablePlannedStart)})</span>
+                     )}
                      {deliverablePlannedEnd && (
                         <span className="ml-1 text-slate-400 dark:text-slate-500">(Due: {formatDateLabel(deliverablePlannedEnd)})</span>
                      )}
@@ -227,10 +246,20 @@ export default function StatusChangeModal({
                   </p>
                </div>
                <div className="mt-2 pt-2 border-t border-slate-200/80 dark:border-navy-700/80">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                     <span className="font-medium">Specific Scope:</span>{' '}
-                     <span className="text-slate-700 dark:text-slate-200">{taskScope?.trim() ? taskScope : '—'}</span>
-                  </p>
+                  {hasDevReference ? (
+                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug">
+                        {devCategory?.trim() && <span className="font-medium text-emerald-700 dark:text-emerald-300">{devCategory.trim()}</span>}
+                        {devCategory?.trim() && devScope?.trim() && <span className="text-slate-300 dark:text-slate-600">›</span>}
+                        {devScope?.trim() && <span className="font-medium text-sky-700 dark:text-sky-300">{devScope.trim()}</span>}
+                        {(devCategory?.trim() || devScope?.trim()) && devTask?.trim() && <span className="text-slate-300 dark:text-slate-600">›</span>}
+                        {devTask?.trim() && <span className="font-medium text-violet-700 dark:text-violet-300">{devTask.trim()}</span>}
+                     </div>
+                  ) : (
+                     <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-medium">Task:</span>{' '}
+                        <span className="text-slate-700 dark:text-slate-200">{taskScope?.trim() ? taskScope : '—'}</span>
+                     </p>
+                  )}
                </div>
             </div>
 
@@ -243,7 +272,7 @@ export default function StatusChangeModal({
                      type="date"
                      className="w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                      value={date}
-                     max={today}
+                     max={maxDate}
                      min={minDate}
                      onChange={(e) => setDate(e.target.value)}
                   />

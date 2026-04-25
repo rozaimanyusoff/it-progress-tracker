@@ -18,11 +18,16 @@ interface Props {
   taskId: number
   taskTitle: string
   taskScope?: string | null
+  devCategory?: string | null
+  devScope?: string | null
+  devTask?: string | null
   moduleTitle: string | null
   featureTitle: string | null
   projectTitle: string | null
   createdByName?: string | null
   dueDate?: string | null
+  deliverablePlannedStart?: string | null
+  deliverablePlannedEnd?: string | null
   actualStartDate?: string | null
   actualEndDate?: string | null
   currentStatus: string
@@ -70,6 +75,18 @@ const REVIEW_ISSUES = [
   'Incomplete Implementation',
 ]
 
+const ATTACHMENT_ACCEPT = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]
+const ATTACHMENT_ACCEPT_ATTR = 'image/jpeg,image/png,image/gif,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.jpg,.jpeg,.png,.gif,.webp,.pdf,.docx,.xlsx'
+const MAX_ATTACHMENT_FILES = 10
+
 const STATUS_LABEL: Record<string, string> = {
   Todo: 'To Do',
   InProgress: 'In Progress',
@@ -103,11 +120,16 @@ export default function TaskUpdateModal({
   taskId,
   taskTitle,
   taskScope,
+  devCategory,
+  devScope,
+  devTask,
   moduleTitle,
   featureTitle,
   projectTitle,
   createdByName,
   dueDate,
+  deliverablePlannedStart,
+  deliverablePlannedEnd,
   actualStartDate,
   actualEndDate,
   currentStatus,
@@ -127,6 +149,7 @@ export default function TaskUpdateModal({
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
+  const [draggingFiles, setDraggingFiles] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState(currentStatus)
@@ -135,8 +158,10 @@ export default function TaskUpdateModal({
   )
   const [progressAction, setProgressAction] = useState<'keep' | 'for_review' | 'blocked' | 'resume'>('keep')
   const [blockedReason, setBlockedReason] = useState('')
-  const [startedOn, setStartedOn] = useState(actualStartDate ? actualStartDate.slice(0, 10) : new Date().toISOString().slice(0, 10))
-  const [completedOn, setCompletedOn] = useState(new Date().toISOString().slice(0, 10))
+  const defaultStartedOn = actualStartDate?.slice(0, 10) || deliverablePlannedStart?.slice(0, 10) || new Date().toISOString().slice(0, 10)
+  const defaultCompletedOn = dueDate?.slice(0, 10) || deliverablePlannedEnd?.slice(0, 10) || new Date().toISOString().slice(0, 10)
+  const [startedOn, setStartedOn] = useState(defaultStartedOn)
+  const [completedOn, setCompletedOn] = useState(defaultCompletedOn)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Manager review state
@@ -160,14 +185,30 @@ export default function TaskUpdateModal({
     loadHistory()
   }, [taskId])
 
-  function handleFiles(selected: FileList | null) {
+  function handleFiles(selected: FileList | File[] | null) {
     if (!selected) return
     const newFiles = Array.from(selected)
+    if (files.length + newFiles.length > MAX_ATTACHMENT_FILES) {
+      setError(`Maximum ${MAX_ATTACHMENT_FILES} attachments per update.`)
+      return
+    }
+    const invalid = newFiles.find(f => !ATTACHMENT_ACCEPT.includes(f.type))
+    if (invalid) {
+      setError(`${invalid.name} is not supported. Upload images, PDF, DOCX, or XLSX only.`)
+      return
+    }
+    setError('')
     setFiles((prev) => [...prev, ...newFiles])
     newFiles.forEach((f) => {
       const url = URL.createObjectURL(f)
       setPreviews((prev) => [...prev, url])
     })
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDraggingFiles(false)
+    handleFiles(Array.from(e.dataTransfer.files))
   }
 
   function removeFile(index: number) {
@@ -183,8 +224,21 @@ export default function TaskUpdateModal({
   }, [status])
 
   useEffect(() => {
-    setStartedOn(actualStartDate ? actualStartDate.slice(0, 10) : new Date().toISOString().slice(0, 10))
-  }, [actualStartDate, taskId])
+    setStartedOn(actualStartDate?.slice(0, 10) || deliverablePlannedStart?.slice(0, 10) || new Date().toISOString().slice(0, 10))
+  }, [actualStartDate, deliverablePlannedStart, taskId])
+
+  useEffect(() => {
+    if (progressAction === 'for_review') {
+      setCompletedOn(dueDate?.slice(0, 10) || deliverablePlannedEnd?.slice(0, 10) || new Date().toISOString().slice(0, 10))
+    }
+  }, [progressAction, dueDate, deliverablePlannedEnd, taskId])
+
+  // Clamp completedOn to startedOn if user picks a later start date
+  useEffect(() => {
+    if (startedOn && completedOn && completedOn < startedOn) {
+      setCompletedOn(startedOn)
+    }
+  }, [startedOn])
 
   useEffect(() => {
     const endDate = progressAction === 'for_review' ? completedOn : new Date().toISOString().slice(0, 10)
@@ -221,9 +275,8 @@ export default function TaskUpdateModal({
       setError('Task must be In Progress before submitting for review.')
       return
     }
-    // For blocked flow, blocker reason is the required note.
-    if (progressAction !== 'blocked' && !notes.trim() && files.length === 0) {
-      setError('Please add a note or attach media.')
+    if (!notes.trim()) {
+      setError('Progress note is required.')
       return
     }
     setError('')
@@ -354,6 +407,12 @@ export default function TaskUpdateModal({
   function handleReviewFiles(selected: FileList | null) {
     if (!selected) return
     const newFiles = Array.from(selected)
+    const invalid = newFiles.find(f => !ATTACHMENT_ACCEPT.includes(f.type))
+    if (invalid) {
+      setReviewError(`${invalid.name} is not supported. Upload images, PDF, DOCX, or XLSX only.`)
+      return
+    }
+    setReviewError('')
     setReviewFiles(prev => [...prev, ...newFiles])
     newFiles.forEach(f => setReviewPreviews(prev => [...prev, URL.createObjectURL(f)]))
   }
@@ -422,6 +481,12 @@ export default function TaskUpdateModal({
   const dueDateLabel = dueDate
     ? new Date(dueDate).toLocaleDateString('en-GB')
     : '—'
+  const plannedStartLabel = deliverablePlannedStart
+    ? new Date(deliverablePlannedStart).toLocaleDateString('en-GB')
+    : '—'
+  const plannedDueLabel = (deliverablePlannedEnd || dueDate)
+    ? new Date(deliverablePlannedEnd || dueDate || '').toLocaleDateString('en-GB')
+    : '—'
   const startedOnLabel = actualStartDate
     ? new Date(actualStartDate).toLocaleDateString('en-GB')
     : '—'
@@ -431,14 +496,28 @@ export default function TaskUpdateModal({
   const scopeHeadline = taskScope?.trim() || taskTitle
   const deliverableProjectLine = [featureTitle, projectTitle].filter(Boolean).join(' · ')
   const budgetLabel = deliverableBudgetMandays != null ? `${Number(deliverableBudgetMandays).toFixed(1)} md` : '—'
-  const definedMdLabel = estMandays != null ? `${Number(estMandays).toFixed(1)} md` : '—'
+  const allocatedMdLabel = estMandays != null ? `${Number(estMandays).toFixed(1)} md` : '—'
   const remainingLabel = remainingMandays != null ? `${remainingMandays.toFixed(1)} md` : '—'
+  const actualMandaysNumber = actualMandays ? Number(actualMandays) : null
+  const allocatedMandaysNumber = estMandays != null ? Number(estMandays) : null
+  const isOverAllocated =
+    actualMandaysNumber != null &&
+    allocatedMandaysNumber != null &&
+    Number.isFinite(actualMandaysNumber) &&
+    Number.isFinite(allocatedMandaysNumber) &&
+    actualMandaysNumber > allocatedMandaysNumber
+  const overAllocatedBy = isOverAllocated && actualMandaysNumber != null && allocatedMandaysNumber != null
+    ? actualMandaysNumber - allocatedMandaysNumber
+    : 0
   const headerUtilizedMd =
     initialActualMandays != null
       ? `${Number(initialActualMandays).toFixed(1)} md`
       : actualMandays
         ? `${Number(actualMandays).toFixed(1)} md`
         : '—'
+  const utilizedAllocatedLabel = `${headerUtilizedMd} / ${allocatedMdLabel}`
+  const todayInput = new Date().toISOString().slice(0, 10)
+  const hasDevReference = Boolean(devCategory?.trim() || devScope?.trim() || devTask?.trim())
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -448,25 +527,32 @@ export default function TaskUpdateModal({
         <div className="flex items-start justify-between p-5 border-b border-slate-200 dark:border-navy-700">
           <div className="flex-1 min-w-0 pr-4">
             <h2 className="font-semibold text-slate-900 dark:text-white text-base leading-tight break-words">
-              <span className="text-slate-400 dark:text-slate-500 text-sm">Specific Scope:</span>{' '}
+              <span className="text-slate-400 dark:text-slate-500 text-sm">Task:</span>{' '}
               {scopeHeadline}
             </h2>
             <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 break-words">{deliverableProjectLine || '—'}</p>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 break-words">
-              <span className="font-medium">Due Date:</span> <span className="text-slate-700 dark:text-slate-200">{dueDateLabel}</span>
+              <span className="font-medium">Deliv Planned:</span> <span className="text-slate-700 dark:text-slate-200">{plannedStartLabel} / {plannedDueLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
-              <span className="font-medium">Budget:</span> <span className={`${remainingMandays != null && remainingMandays < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{budgetLabel}{remainingLabel !== '—' ? ` (remaining ${remainingLabel})` : ''}</span>
-              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
-              <span className="font-medium">Defined MD:</span> <span className="text-slate-700 dark:text-slate-200">{definedMdLabel}</span>
+              <span className="font-medium">Remaining/Budget MD:</span> <span className={`${remainingMandays != null && remainingMandays < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{remainingLabel} / {budgetLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
               <span className="font-medium">Started On:</span> <span className="text-slate-700 dark:text-slate-200">{startedOnLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
               <span className="font-medium">Completed On:</span> <span className="text-slate-700 dark:text-slate-200">{completedOnLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
-              <span className="font-medium">MD Utilized:</span> <span className="text-slate-700 dark:text-slate-200">{headerUtilizedMd}</span>
+              <span className="font-medium">Utilized/Allocated MD:</span> <span className={isOverAllocated ? 'font-semibold text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}>{utilizedAllocatedLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
               <span className="font-medium">Created By:</span> <span className="text-slate-700 dark:text-slate-200">{createdByName || '—'}</span>
             </p>
+            {hasDevReference && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug">
+                {devCategory?.trim() && <span className="font-medium text-emerald-700 dark:text-emerald-300">{devCategory.trim()}</span>}
+                {devCategory?.trim() && devScope?.trim() && <span className="text-slate-300 dark:text-slate-600">›</span>}
+                {devScope?.trim() && <span className="font-medium text-sky-700 dark:text-sky-300">{devScope.trim()}</span>}
+                {(devCategory?.trim() || devScope?.trim()) && devTask?.trim() && <span className="text-slate-300 dark:text-slate-600">›</span>}
+                {devTask?.trim() && <span className="font-medium text-violet-700 dark:text-violet-300">{devTask.trim()}</span>}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {reviewCount > 0 && (
@@ -524,15 +610,15 @@ export default function TaskUpdateModal({
                   >
                     <span>📎</span> Attach evidence
                   </button>
-                  <input ref={reviewFileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={e => handleReviewFiles(e.target.files)} />
+                  <input ref={reviewFileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT_ATTR} className="hidden" onChange={e => handleReviewFiles(e.target.files)} />
                   {reviewPreviews.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
                       {reviewPreviews.map((url, i) => (
                         <div key={i} className="relative group w-16 h-16 shrink-0">
-                          {reviewFiles[i]?.name.toLowerCase().endsWith('.pdf') ? (
+                          {isDoc(reviewFiles[i]?.name ?? '') ? (
                             <div className="w-16 h-16 flex flex-col items-center justify-center rounded border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 gap-0.5">
-                              <span className="text-xl">📄</span>
-                              <span className="text-[9px] font-semibold text-yellow-700 dark:text-yellow-400 uppercase">PDF</span>
+                              <span className="text-xl">{docLabel(reviewFiles[i]?.name ?? '').icon}</span>
+                              <span className="text-[9px] font-semibold text-yellow-700 dark:text-yellow-400 uppercase">{docLabel(reviewFiles[i]?.name ?? '').ext}</span>
                             </div>
                           ) : isVideo(reviewFiles[i]?.name ?? '') ? (
                             <video src={url} className="w-16 h-16 object-cover rounded border border-yellow-200 dark:border-yellow-800" muted />
@@ -593,7 +679,7 @@ export default function TaskUpdateModal({
                 <hr className="border-slate-100 dark:border-navy-700 mb-3" />
 
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Progress Note
+                  Progress Note <span className="text-red-500">*</span>
                 </label>
                 {isManager && (
                   <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">
@@ -644,7 +730,8 @@ export default function TaskUpdateModal({
                       <input
                         type="date"
                         value={startedOn}
-                        max={new Date().toISOString().slice(0, 10)}
+                        min={deliverablePlannedStart?.slice(0, 10)}
+                        max={todayInput}
                         onChange={(e) => setStartedOn(e.target.value)}
                         className="w-40 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
@@ -655,7 +742,7 @@ export default function TaskUpdateModal({
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                          Est: <strong className="text-slate-700 dark:text-slate-200">{estMandays != null ? `${Number(estMandays).toFixed(1)}` : '—'} md</strong>
+                          Allocated: <strong className="text-slate-700 dark:text-slate-200">{estMandays != null ? `${Number(estMandays).toFixed(1)}` : '—'} md</strong>
                         </span>
                         <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">MD utilized:</label>
                         <input
@@ -667,13 +754,24 @@ export default function TaskUpdateModal({
                           className="w-24 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <span className="text-xs text-slate-400">md</span>
+                        {isOverAllocated && (
+                          <span className="inline-flex items-center rounded-full border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:text-red-300">
+                            Over allocated by {overAllocatedBy.toFixed(1)} md
+                          </span>
+                        )}
                       </div>
+                      {isOverAllocated && (
+                        <p className="text-xs text-red-500 dark:text-red-400">
+                          Indicator: actual utilized mandays exceeds allocated mandays for this task.
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 flex-wrap">
                         <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">Started on:</label>
                         <input
                           type="date"
                           value={startedOn}
-                          max={new Date().toISOString().slice(0, 10)}
+                          min={deliverablePlannedStart?.slice(0, 10)}
+                          max={todayInput}
                           onChange={(e) => setStartedOn(e.target.value)}
                           className="w-40 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
@@ -681,7 +779,8 @@ export default function TaskUpdateModal({
                         <input
                           type="date"
                           value={completedOn}
-                          max={new Date().toISOString().slice(0, 10)}
+                          min={startedOn || undefined}
+                          max={todayInput}
                           onChange={(e) => setCompletedOn(e.target.value)}
                           className="w-40 bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
@@ -700,61 +799,72 @@ export default function TaskUpdateModal({
                   )}
                 </div>
 
-                {/* File previews before submit */}
-                {previews.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-xs text-slate-400 mb-1.5">{previews.length} file{previews.length > 1 ? 's' : ''} attached</p>
-                    <div className="flex flex-wrap gap-2">
-                      {previews.map((url, i) => {
-                        const name = files[i]?.name ?? ''
-                        const isPdf = name.toLowerCase().endsWith('.pdf')
-                        return (
-                          <div key={i} className="relative group w-20 shrink-0">
-                            {isPdf ? (
-                              <div className="w-20 h-20 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 gap-1">
-                                <span className="text-2xl">📄</span>
-                                <span className="text-[10px] font-semibold text-slate-500 uppercase">PDF</span>
-                              </div>
-                            ) : isVideo(name) ? (
-                              <>
-                                <video src={url} className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" muted />
-                                <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 pointer-events-none">
-                                  <span className="text-white text-lg">▶</span>
-                                </span>
-                              </>
-                            ) : (
-                              <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
-                            )}
-                            <button
-                              onClick={() => removeFile(i)}
-                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            >×</button>
-                            <p className="text-xs text-slate-400 truncate w-20 mt-0.5 text-center">{name}</p>
-                          </div>
-                        )
-                      })}
+                <div
+                  onDragEnter={(e) => { e.preventDefault(); setDraggingFiles(true) }}
+                  onDragOver={(e) => { e.preventDefault(); setDraggingFiles(true) }}
+                  onDragLeave={(e) => { e.preventDefault(); setDraggingFiles(false) }}
+                  onDrop={handleDrop}
+                  className={`mt-3 rounded-lg border border-dashed px-4 py-3 transition-colors ${draggingFiles
+                    ? 'border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-900/20'
+                    : 'border-slate-300 bg-slate-50/70 dark:border-navy-600 dark:bg-navy-900/40'
+                    }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Drop attachments here</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">Multiple images, PDF, DOCX, XLSX. Max {MAX_ATTACHMENT_FILES} files, 50MB each.</p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 dark:border-navy-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-navy-700 transition-colors"
+                    >
+                      <span>Attach</span>
+                    </button>
                   </div>
-                )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept={ATTACHMENT_ACCEPT_ATTR}
+                    className="hidden"
+                    onChange={(e) => handleFiles(e.target.files)}
+                  />
+                  {previews.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-slate-400 mb-1.5">{previews.length} file{previews.length > 1 ? 's' : ''} attached</p>
+                      <div className="flex flex-wrap gap-2">
+                        {previews.map((url, i) => {
+                          const file = files[i]
+                          const name = file?.name ?? ''
+                          const isImage = file?.type.startsWith('image/')
+                          const doc = docLabel(name)
+                          return (
+                            <div key={i} className="relative group w-24 shrink-0">
+                              {isImage ? (
+                                <img src={url} alt="" className="w-24 h-20 object-cover rounded-lg border border-slate-200 dark:border-navy-600" />
+                              ) : (
+                                <div className="w-24 h-20 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-900 gap-1">
+                                  <span className="text-xl">{doc.icon}</span>
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase">{doc.ext}</span>
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeFile(i)}
+                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              >×</button>
+                              <p className="text-xs text-slate-400 truncate w-24 mt-0.5 text-center">{name}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Actions row */}
-                <div className="flex items-center justify-between mt-3 gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 dark:border-navy-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors"
-                    >
-                      <span>📎</span> Attach
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      accept="image/*,video/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => handleFiles(e.target.files)}
-                    />
-                  </div>
+                <div className="flex items-center justify-end mt-3 gap-2 flex-wrap">
 
                   <div className="flex items-center gap-2">
                     <button

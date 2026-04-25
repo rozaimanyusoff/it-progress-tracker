@@ -28,6 +28,7 @@ interface Task {
   created_by_name?: string | null
   deliverable_budget_mandays?: number | null
   deliverable_used_mandays?: number | null
+  deliverable_planned_start?: string | null
   deliverable_planned_end?: string | null
   project_start_date?: string | null
   project_deadline?: string | null
@@ -775,7 +776,7 @@ function startedDateDisplay(started: string | null | undefined, status: string):
   const d = new Date(started)
   if (isNaN(d.getTime())) return null
   const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
-  return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {dateStr}</span>
+  return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Task started: {dateStr}</span>
 }
 
 function reviewCardStyle(task: { status: string; review_count: number; is_blocked?: boolean }): string {
@@ -803,11 +804,91 @@ function cardHeaderScope(task: Task): string {
   return task.description?.trim() || task.title
 }
 
+function formatShortDate(date?: string | null): string | null {
+  if (!date) return null
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return null
+  return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' })
+}
+
+function dueStatusLabel(task: Pick<Task, 'due_date' | 'status' | 'actual_end'>): React.ReactNode {
+  if (!task.due_date) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const due = new Date(task.due_date); due.setHours(0, 0, 0, 0)
+  if (task.status === 'Done') return null
+  if (task.status === 'InReview' && task.actual_end) {
+    const completed = new Date(task.actual_end); completed.setHours(0, 0, 0, 0)
+    return completed > due
+      ? <span className="font-semibold text-red-500 dark:text-red-400">Overdue</span>
+      : <span className="font-semibold text-green-600 dark:text-green-400">Submitted</span>
+  }
+  if (due < today) return <span className="font-semibold text-red-500 dark:text-red-400">Overdue</span>
+  if (due.getTime() === today.getTime()) return <span className="font-semibold text-amber-600 dark:text-amber-400">Due today</span>
+  return null
+}
+
+function devReferenceLine(task: Task): React.ReactNode {
+  const category = task.dev_category?.trim()
+  const scope = task.dev_scope?.trim()
+  const devTask = task.dev_task?.trim()
+
+  if (!category && !scope && !devTask) return null
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-snug">
+      {category && <span className="font-medium text-emerald-700 dark:text-emerald-300">{category}</span>}
+      {category && scope && <span className="text-slate-300 dark:text-slate-600">›</span>}
+      {scope && <span className="font-medium text-sky-700 dark:text-sky-300">{scope}</span>}
+      {(category || scope) && devTask && <span className="text-slate-300 dark:text-slate-600">›</span>}
+      {devTask && <span className="font-medium text-violet-700 dark:text-violet-300">{devTask}</span>}
+    </div>
+  )
+}
+
+function contextLine(task: Task): React.ReactNode {
+  const plannedStartLabel = task.context.type === 'deliverable' ? formatShortDate(task.deliverable_planned_start) : null
+  const plannedDueLabel = task.context.type === 'deliverable' ? formatShortDate(task.deliverable_planned_end ?? task.due_date) : null
+  return (
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-1 min-w-0 text-[11px] leading-snug">
+      <span className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable' ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300' : task.context.type === 'feature' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>
+        {task.context.type === 'deliverable' ? 'Deliv' : task.context.type === 'feature' ? 'Feat' : 'Task'}
+      </span>
+      <span className="min-w-0 max-w-full truncate text-blue-700 dark:text-blue-300">{task.context.title}</span>
+      {plannedStartLabel && (
+        <span className="shrink-0 font-medium text-emerald-700 dark:text-emerald-300">
+          Start: {plannedStartLabel}
+        </span>
+      )}
+      {plannedDueLabel && (
+        <span className="shrink-0 font-medium text-amber-700 dark:text-amber-300">
+          Due: {plannedDueLabel} {dueStatusLabel(task)}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function AssigneeAvatar({ name }: { name: string }) {
   return (
     <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-semibold shrink-0">
       {name[0].toUpperCase()}
     </span>
+  )
+}
+
+function AssigneeInitials({ assignees }: { assignees: Task['assignees'] }) {
+  if (assignees.length === 0) return null
+  return (
+    <div className="mt-1 flex items-center gap-1">
+      {assignees.slice(0, 4).map(a => (
+        <span key={a.user.id} title={a.user.name}>
+          <AssigneeAvatar name={a.user.name} />
+        </span>
+      ))}
+      {assignees.length > 4 && (
+        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">+{assignees.length - 4}</span>
+      )}
+    </div>
   )
 }
 
@@ -997,6 +1078,12 @@ export default function TeamKanbanBoard() {
     // Only managers can move to Done
     if (newStatus === 'Done' && !isManager) return
 
+    // Moving backwards: no date prompt needed, just update directly
+    if (direction === 'prev') {
+      await doStatusUpdate(taskId, newStatus, {})
+      return
+    }
+
     const POPUP_STATUSES: StatusTarget[] = ['InProgress', 'InReview', 'Done', 'Blocked']
     if (POPUP_STATUSES.includes(newStatus as StatusTarget)) {
       setPendingStatus({ taskId, target: newStatus as StatusTarget })
@@ -1013,12 +1100,16 @@ export default function TeamKanbanBoard() {
           taskId={pendingTask.id}
           taskTitle={pendingTask.title}
           taskScope={pendingTask.description ?? null}
+          devCategory={pendingTask.dev_category ?? null}
+          devScope={pendingTask.dev_scope ?? null}
+          devTask={pendingTask.dev_task ?? null}
           targetStatus={pendingStatus.target}
           projectTitle={pendingTask.context.project?.title ?? null}
           projectStartDate={pendingTask.project_start_date ?? null}
           projectDeadline={pendingTask.project_deadline ?? null}
           linkedTitle={pendingTask.context.title}
           linkedType={pendingTask.context.type}
+          deliverablePlannedStart={pendingTask.deliverable_planned_start ?? null}
           deliverablePlannedEnd={pendingTask.deliverable_planned_end ?? null}
           createdByName={pendingTask.created_by_name ?? null}
           estMandays={pendingTask.est_mandays}
@@ -1263,35 +1354,33 @@ export default function TeamKanbanBoard() {
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.medium}`}>{task.priority}</span>
                                   </div>
                                 </div>
+                                {devReferenceLine(task)}
                                 {task.is_blocked && (
                                   <div className="flex items-center gap-1 mb-0.5">
                                     <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
                                     {task.blocked_reason && <span className="text-[10px] text-red-400 dark:text-red-500 italic truncate">{task.blocked_reason}</span>}
                                   </div>
                                 )}
-                                <div className="flex items-center gap-1 mt-0.5">
-                                  <span className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable' ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300' : task.context.type === 'feature' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>
-                                    {task.context.type === 'deliverable' ? 'Deliv' : task.context.type === 'feature' ? 'Feat' : 'Task'}
-                                  </span>
-                                  <p className="text-xs text-blue-600 dark:text-blue-400 truncate">{task.context.title}</p>
-                                </div>
+                                {contextLine(task)}
                                 <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
+                                <AssigneeInitials assignees={task.assignees} />
                                 {task.status === 'InProgress' && task.actual_start && (
                                   <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
                                 )}
-                                {task.due_date && (
+                                {task.status === 'InReview' && (
+                                  <div className="mt-1 flex flex-col gap-0.5">
+                                    {task.actual_start && (
+                                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                    )}
+                                    {task.actual_end && (
+                                      <span className="text-[10px] text-sky-500 dark:text-sky-400">Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {task.due_date && task.context.type !== 'deliverable' && (
                                   <div className="mt-1">{dueDateDisplay(task.due_date, task.status, task.actual_end ?? null)}</div>
                                 )}
-                                <div className="flex items-center justify-between mt-2 gap-1">
-                                  {task.assignees.length > 0 ? (
-                                    <span className="flex items-center gap-0.5 min-w-0 flex-wrap">
-                                      {task.assignees.map(a => (
-                                        <span key={a.user.id} title={a.user.name}><AssigneeAvatar name={a.user.name} /></span>
-                                      ))}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
-                                  )}
+                                <div className="flex items-center justify-end mt-2 gap-1">
                                   <div className="flex items-center gap-1 shrink-0">
                                     {(() => {
                                       const canInteract = isManager || task.assignees.some(a => a.user.id === currentUserId)
@@ -1307,12 +1396,15 @@ export default function TeamKanbanBoard() {
                                     {task.status === 'InReview' && (
                                       <button onClick={() => setActiveTaskId(task.id)} className="text-xs px-2 py-0.5 rounded border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-medium">Review</button>
                                     )}
-                                    {isManager && task.status !== 'InReview' && (
+                                    {isManager && task.status !== 'InReview' && task.status !== 'InProgress' && (
                                       task.status === 'Todo' ? (
                                         <button onClick={() => { setEditingTaskId(task.id); setShowAddModal(true) }} className="p-1 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Edit task"><Pencil className="w-3.5 h-3.5" /></button>
                                       ) : (
                                         <button onClick={() => setActiveTaskId(task.id)} className={`text-xs px-2 py-0.5 rounded border ${task.status === 'InProgress' ? 'border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium' : 'border-slate-300 dark:border-navy-600 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-navy-700'}`}>{task.status === 'InProgress' ? 'Update' : 'View'}</button>
                                       )
+                                    )}
+                                    {task.status === 'InProgress' && (isManager || task.assignees.some(a => a.user.id === currentUserId)) && (
+                                      <button onClick={() => setActiveTaskId(task.id)} className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium">Update</button>
                                     )}
                                   </div>
                                 </div>
@@ -1397,9 +1489,7 @@ export default function TeamKanbanBoard() {
                                     </span>
                                   </div>
                                 </div>
-                                {task.description?.trim() && (
-                                  <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">Category: {task.title}</p>
-                                )}
+                                {devReferenceLine(task)}
                                 {task.is_blocked && (
                                   <div className="flex items-center gap-1 mb-0.5">
                                     <span className="text-[10px] font-semibold text-red-500 dark:text-red-400">🚫 Blocked</span>
@@ -1410,42 +1500,30 @@ export default function TeamKanbanBoard() {
                                 {task.context.module && (
                                   <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5 truncate font-medium">{task.context.module.title}</p>
                                 )}
-                                <div className="flex items-center gap-1 mt-0.5">
-                                  <span
-                                    className={`text-[10px] px-1 py-px rounded font-semibold uppercase ${task.context.type === 'deliverable'
-                                      ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'
-                                      : task.context.type === 'feature'
-                                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
-                                        : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
-                                      }`}
-                                  >
-                                    {task.context.type === 'deliverable' ? 'Deliv' : task.context.type === 'feature' ? 'Feat' : 'Task'}
-                                  </span>
-                                  <p className="text-xs text-blue-600 dark:text-blue-400 truncate">{task.context.title}</p>
-                                </div>
+                                {contextLine(task)}
                                 <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
+                                <AssigneeInitials assignees={task.assignees} />
 
-                                {/* Due date */}
+                                {/* Dates */}
                                 {task.status === 'InProgress' && task.actual_start && (
                                   <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
                                 )}
-                                {task.due_date && (
+                                {task.status === 'InReview' && (
+                                  <div className="mt-1 flex flex-col gap-0.5">
+                                    {task.actual_start && (
+                                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                    )}
+                                    {task.actual_end && (
+                                      <span className="text-[10px] text-sky-500 dark:text-sky-400">Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {task.due_date && task.context.type !== 'deliverable' && (
                                   <div className="mt-1">{dueDateDisplay(task.due_date, task.status, task.actual_end ?? null)}</div>
                                 )}
 
                                 {/* Assignees + Update */}
-                                <div className="flex items-center justify-between mt-2 gap-1">
-                                  {task.assignees.length > 0 ? (
-                                    <span className="flex items-center gap-0.5 min-w-0 flex-wrap">
-                                      {task.assignees.map(a => (
-                                        <span key={a.user.id} title={a.user.name}>
-                                          <AssigneeAvatar name={a.user.name} />
-                                        </span>
-                                      ))}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-slate-300 dark:text-slate-600 italic">Unassigned</span>
-                                  )}
+                                <div className="flex items-center justify-end mt-2 gap-1">
                                   <div className="flex items-center gap-1 shrink-0">
                                     {/* ← → move buttons */}
                                     {(() => {
@@ -1479,7 +1557,7 @@ export default function TeamKanbanBoard() {
                                         Review
                                       </button>
                                     )}
-                                    {isManager && task.status !== 'InReview' && (
+                                    {isManager && task.status !== 'InReview' && task.status !== 'InProgress' && (
                                       task.status === 'Todo' ? (
                                         <button
                                           onClick={() => { setEditingTaskId(task.id); setShowAddModal(true) }}
@@ -1499,6 +1577,14 @@ export default function TeamKanbanBoard() {
                                           {task.status === 'InProgress' ? 'Update' : 'View'}
                                         </button>
                                       )
+                                    )}
+                                    {task.status === 'InProgress' && (isManager || task.assignees.some(a => a.user.id === currentUserId)) && (
+                                      <button
+                                        onClick={() => setActiveTaskId(task.id)}
+                                        className="text-xs px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium"
+                                      >
+                                        Update
+                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -1530,11 +1616,16 @@ export default function TeamKanbanBoard() {
             taskId={activeTask.id}
             taskTitle={activeTask.title}
             taskScope={activeTask.description ?? null}
+            devCategory={activeTask.dev_category ?? null}
+            devScope={activeTask.dev_scope ?? null}
+            devTask={activeTask.dev_task ?? null}
             moduleTitle={activeTask.context.module?.title ?? null}
             featureTitle={activeTask.context.title}
             projectTitle={activeTask.context.project?.title ?? 'No Project Link'}
             createdByName={activeTask.created_by_name ?? null}
             dueDate={activeTask.due_date}
+            deliverablePlannedStart={activeTask.deliverable_planned_start ?? null}
+            deliverablePlannedEnd={activeTask.deliverable_planned_end ?? null}
             actualStartDate={activeTask.actual_start ?? null}
             actualEndDate={activeTask.actual_end ?? null}
             currentStatus={activeTask.status}
