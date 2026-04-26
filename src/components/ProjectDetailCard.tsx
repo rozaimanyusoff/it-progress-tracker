@@ -84,6 +84,32 @@ function fmt(iso?: string | null) {
    return new Date(iso).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+const MS_PER_DAY = 1000 * 60 * 60 * 24
+
+function startOfDay(d: Date): Date {
+   const x = new Date(d)
+   x.setHours(0, 0, 0, 0)
+   return x
+}
+
+function dayDiff(from: Date, to: Date): number {
+   return Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / MS_PER_DAY)
+}
+
+function timelineVarianceDays(plannedEnd: string | null, actualStart: string | null, actualEnd: string | null, refDate: Date): number {
+   if (!plannedEnd || !actualStart) return 0
+   const planned = startOfDay(new Date(plannedEnd))
+   const effectiveEnd = startOfDay(actualEnd ? new Date(actualEnd) : refDate)
+   return dayDiff(planned, effectiveEnd)
+}
+
+function actualDurationDays(actualStart: string | null, actualEnd: string | null, refDate: Date): number {
+   if (!actualStart) return 0
+   const start = startOfDay(new Date(actualStart))
+   const end = startOfDay(actualEnd ? new Date(actualEnd) : refDate)
+   return Math.max(1, dayDiff(start, end) + 1)
+}
+
 export default function ProjectDetailCard({
    project,
    isManager,
@@ -120,6 +146,17 @@ export default function ProjectDetailCard({
    const offset = circumference - (latestProgress / 100) * circumference
 
    const allTasks = ganttDeliverables.flatMap(d => d.tasks)
+   const today = new Date()
+   const riskSummary = ganttDeliverables.reduce(
+      (acc, d) => {
+         const dateVariance = timelineVarianceDays(d.planned_end, d.actual_start, d.actual_end, today)
+         const mdVariance = d.actual_start ? actualDurationDays(d.actual_start, d.actual_end, today) - d.mandays : 0
+         if (dateVariance > 0) acc.dateOverrun += 1
+         if (mdVariance > 0) acc.mdOverrun += 1
+         return acc
+      },
+      { dateOverrun: 0, mdOverrun: 0 }
+   )
 
    return (
       <div className="rounded-xl border mb-6 bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700 overflow-hidden">
@@ -138,6 +175,21 @@ export default function ProjectDetailCard({
                   {project.health_status === 'on_track' ? '🟢 On Track' :
                    project.health_status === 'at_risk'  ? '🟡 At Risk'  :
                    project.health_status === 'delayed'  ? '🔴 Delayed'  : '⚫ Overdue'}
+               </span>
+            )}
+            {riskSummary.dateOverrun > 0 && (
+               <span className="px-2 py-0.5 rounded-full text-xs font-semibold border bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300">
+                  Date Overrun: {riskSummary.dateOverrun}
+               </span>
+            )}
+            {riskSummary.mdOverrun > 0 && (
+               <span className="px-2 py-0.5 rounded-full text-xs font-semibold border bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
+                  MD Overrun: {riskSummary.mdOverrun}
+               </span>
+            )}
+            {riskSummary.dateOverrun === 0 && riskSummary.mdOverrun === 0 && (
+               <span className="px-2 py-0.5 rounded-full text-xs font-semibold border bg-green-50 border-green-300 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300">
+                  Timeline Within Plan
                </span>
             )}
          </div>

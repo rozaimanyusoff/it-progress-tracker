@@ -1370,10 +1370,10 @@ export default function TeamKanbanBoard() {
                                 {task.status === 'InReview' && (
                                   <div className="mt-1 flex flex-col gap-0.5">
                                     {task.actual_start && (
-                                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Task Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                     )}
                                     {task.actual_end && (
-                                      <span className="text-[10px] text-sky-500 dark:text-sky-400">Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                      <span className="text-[10px] text-sky-500 dark:text-sky-400">Task Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                     )}
                                   </div>
                                 )}
@@ -1511,10 +1511,10 @@ export default function TeamKanbanBoard() {
                                 {task.status === 'InReview' && (
                                   <div className="mt-1 flex flex-col gap-0.5">
                                     {task.actual_start && (
-                                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                      <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Task Started: {new Date(task.actual_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                     )}
                                     {task.actual_end && (
-                                      <span className="text-[10px] text-sky-500 dark:text-sky-400">Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                      <span className="text-[10px] text-sky-500 dark:text-sky-400">Task Completed: {new Date(task.actual_end).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                     )}
                                   </div>
                                 )}

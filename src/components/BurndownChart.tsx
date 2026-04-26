@@ -15,13 +15,14 @@ interface Props {
    tasks: Task[]
    projectStart: string
    projectDeadline: string
+   compact?: boolean
 }
 
 function fmt(d: Date): string {
    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
-export default function BurndownChart({ tasks, projectStart, projectDeadline }: Props) {
+export default function BurndownChart({ tasks, projectStart, projectDeadline, compact = false }: Props) {
    const [showHelp, setShowHelp] = useState(false)
    const helpRef = useRef<HTMLDivElement>(null)
 
@@ -102,17 +103,18 @@ export default function BurndownChart({ tasks, projectStart, projectDeadline }: 
 
    if (tasks.length === 0) {
       return (
-         <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
+         <div className={`${compact ? 'py-4' : 'p-8'} text-center text-slate-400 dark:text-slate-500 text-sm`}>
             No tasks found. Add tasks to deliverables to see the burndown chart.
          </div>
       )
    }
 
    // Reduce X-axis label density: show at most ~10 evenly-spaced ticks
-   const tickInterval = Math.max(1, Math.floor(data.length / 10))
+   const tickInterval = Math.max(1, Math.floor(data.length / (compact ? 4 : 10)))
 
    return (
-      <div className="p-6">
+      <div className={compact ? 'px-0 py-1' : 'p-6'}>
+         {!compact && (
          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Burndown Chart</h3>
@@ -180,7 +182,8 @@ export default function BurndownChart({ tasks, projectStart, projectDeadline }: 
                </span>
             </div>
          </div>
-         <ResponsiveContainer width="100%" height={280}>
+         )}
+         <ResponsiveContainer width="100%" height={compact ? 150 : 280}>
             <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                <XAxis
@@ -203,7 +206,7 @@ export default function BurndownChart({ tasks, projectStart, projectDeadline }: 
                   x={todayLabel}
                   stroke="#f59e0b"
                   strokeDasharray="4 2"
-                  label={{ value: 'Today', position: 'top', fontSize: 10, fill: '#f59e0b' }}
+                  label={compact ? undefined : { value: 'Today', position: 'top', fontSize: 10, fill: '#f59e0b' }}
                />
                <Line
                   type="linear"
@@ -224,9 +227,11 @@ export default function BurndownChart({ tasks, projectStart, projectDeadline }: 
                />
             </LineChart>
          </ResponsiveContainer>
-         <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 text-center">
-            {tasks.length} total tasks · {tasks.filter(t => t.status === 'Done').length} completed
-         </p>
+         {!compact && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 text-center">
+               {tasks.length} total tasks · {tasks.filter(t => t.status === 'Done').length} completed
+            </p>
+         )}
       </div>
    )
 }

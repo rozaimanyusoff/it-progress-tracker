@@ -121,6 +121,32 @@ function taskDetailText(task: Task): string {
   return (task.description ?? task.title ?? '').trim()
 }
 
+function countWorkdays(startDate: string, endDate: string): number {
+  const s = new Date(startDate)
+  const e = new Date(endDate)
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) return 1
+
+  let count = 0
+  const cur = new Date(s)
+  while (cur <= e) {
+    const day = cur.getDay()
+    if (day !== 0 && day !== 6) count += 1
+    cur.setDate(cur.getDate() + 1)
+  }
+  return Math.max(1, count)
+}
+
+function estimateMandaysFromDueDate(
+  dueDate: string,
+  deliverablePlannedStart?: string | null,
+  projectStart?: string | null
+): string {
+  if (!dueDate) return ''
+  const start = (deliverablePlannedStart ?? projectStart ?? '').slice(0, 10)
+  if (!start) return ''
+  return String(countWorkdays(start, dueDate))
+}
+
 function notifyProjectDetailChanged() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('project-detail-data-changed'))
@@ -1083,14 +1109,19 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       })()}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
                         value={newTask.due_date}
                         onChange={e => {
                           setAddTaskError('')
-                          setNewTask(p => ({ ...p, due_date: e.target.value }))
+                          const dueDate = e.target.value
+                          setNewTask(p => ({
+                            ...p,
+                            due_date: dueDate,
+                            est_mandays: estimateMandaysFromDueDate(dueDate, deliverablePlannedStart, projectStart) || p.est_mandays,
+                          }))
                         }}
                       />
                       {newDueDateWarning && (
@@ -1318,12 +1349,20 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       })()}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
                         value={editForm.due_date}
-                        onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, due_date: e.target.value })) }}
+                        onChange={e => {
+                          setEditTaskError('')
+                          const dueDate = e.target.value
+                          setEditForm(f => ({
+                            ...f,
+                            due_date: dueDate,
+                            est_mandays: estimateMandaysFromDueDate(dueDate, deliverablePlannedStart, projectStart) || f.est_mandays,
+                          }))
+                        }}
                       />
                       {editDueDateWarning && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>

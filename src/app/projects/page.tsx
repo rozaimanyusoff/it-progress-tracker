@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLayout from '@/components/Layout'
+import BurndownChart from '@/components/BurndownChart'
 import { ComposedChart, Bar, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { createPortal } from 'react-dom'
 
@@ -20,12 +21,18 @@ type Project = {
   computedProgress: number
   computedStatus: string
   monthlyData?: {
+    monthKey: string
     month: string
     assigned: number
     completed: number
     onTimeCompleted: number
     lateCompleted: number
     overdueOpen: number
+  }[]
+  burndownTasks?: {
+    id: number
+    status: string
+    actual_end: string | null
   }[]
 }
 type Feature = {
@@ -310,86 +317,28 @@ type MonthlyTaskFlow = NonNullable<Project['monthlyData']>[number]
 function recentTaskMonths(data: MonthlyTaskFlow[]) {
   if (data.length <= 4) return data
 
-  const activeIndexes = data
-    .map((d, idx) => ({
-      idx,
-      active: (d.assigned ?? 0) > 0 || (d.completed ?? 0) > 0 || (d.overdueOpen ?? 0) > 0,
-    }))
-    .filter(x => x.active)
-    .map(x => x.idx)
+  const now = new Date()
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonthKey = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`
 
-  const endIndex = activeIndexes.length > 0 ? activeIndexes[activeIndexes.length - 1] : data.length - 1
-  return data.slice(Math.max(0, endIndex - 3), endIndex + 1)
-}
-
-function TaskBurndownChart({ data }: { data: MonthlyTaskFlow[] }) {
-  const chartData = recentTaskMonths(data).reduce<Array<MonthlyTaskFlow & {
-    remaining: number
-    completedCumulative: number
-    idealRemaining: number
-  }>>((rows, month, idx, months) => {
-    const prev = rows[rows.length - 1]
-    const remaining = Math.max(0, (prev?.remaining ?? 0) + (month.assigned ?? 0) - (month.completed ?? 0))
-    const completedCumulative = (prev?.completedCumulative ?? 0) + (month.completed ?? 0)
-    rows.push({
-      ...month,
-      remaining,
-      completedCumulative,
-      idealRemaining: 0,
-    })
-
-    if (idx === months.length - 1) {
-      const startRemaining = rows[0]?.remaining ?? 0
-      const denominator = Math.max(1, rows.length - 1)
-      rows.forEach((row, rowIdx) => {
-        row.idealRemaining = Math.max(0, Math.round(startRemaining * (1 - rowIdx / denominator)))
-      })
+  let endIndex = -1
+  for (let i = data.length - 1; i >= 0; i -= 1) {
+    if ((data[i].monthKey ?? '') <= prevMonthKey) {
+      endIndex = i
+      break
     }
+  }
 
-    return rows
-  }, [])
+  // If project starts in current/future month, fall back to earliest 4 project months.
+  if (endIndex < 0) endIndex = Math.min(data.length - 1, 3)
 
-  const hasData = chartData.some(d => d.assigned > 0 || d.completed > 0 || d.remaining > 0)
-  if (!hasData) return <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No task data</p>
-
-  return (
-    <div className="w-full">
-      <div className="h-36">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-            <XAxis dataKey="month" tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-            <YAxis width={22} tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <Tooltip
-              cursor={false}
-              contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: '#cbd5e1' }}
-              formatter={(value: any, name: any) => {
-                const labelMap: Record<string, string> = {
-                  remaining: 'Remaining',
-                  completedCumulative: 'Completed',
-                  idealRemaining: 'Ideal Remaining',
-                }
-                const key = String(name ?? '')
-                return [value, labelMap[key] ?? key]
-              }}
-            />
-            <Line type="monotone" dataKey="remaining" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} name="remaining" />
-            <Line type="monotone" dataKey="idealRemaining" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="idealRemaining" />
-            <Line type="monotone" dataKey="completedCumulative" stroke="#22c55e" strokeWidth={1.5} dot={false} name="completedCumulative" />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-3 text-[10px] font-medium text-slate-700 dark:text-slate-300">
-        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-blue-600" />Remaining</span>
-        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-slate-400 border-t border-dashed border-slate-400" />Ideal</span>
-        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-green-500" />Completed</span>
-      </div>
-    </div>
-  )
+  const startIndex = Math.max(0, endIndex - 3)
+  return data.slice(startIndex, endIndex + 1)
 }
 
 function TaskCompletionTable({ data }: { data: MonthlyTaskFlow[] }) {
   const months = recentTaskMonths(data)
-  if (months.length === 0 || !months.some(m => m.assigned > 0 || m.completed > 0)) {
+  if (months.length === 0) {
     return <p className="text-[10px] text-slate-600 dark:text-slate-300 italic">No completion data</p>
   }
 
@@ -751,19 +700,23 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
                           <p className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300 font-semibold">Burndown Chart</p>
                           <span
                             className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800 text-[10px] font-semibold text-slate-700 dark:text-slate-200 cursor-help"
-                            title="Burndown measures remaining task backlog over time. Remaining = previous remaining + assigned - completed. Ideal shows a straight-line target toward zero. Completed is cumulative completed tasks. If remaining stays above ideal, delivery is behind expected burn rate."
+                            title="Burndown measures remaining tasks over time from project start to deadline. Ideal is a straight line from total tasks to zero. Actual uses real task completion dates."
                           >
                             ?
                           </span>
                           <div className="pointer-events-none hidden group-hover:block absolute left-0 top-5 z-40 w-80 rounded-md border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg p-2 text-[10px] leading-relaxed text-slate-700 dark:text-slate-200">
-                            <p><span className="font-semibold">Remaining:</span> open backlog after monthly assigned and completed movement.</p>
-                            <p><span className="font-semibold">Method:</span> previous remaining + assigned tasks - completed tasks.</p>
-                            <p><span className="font-semibold">Ideal:</span> straight-line target from current backlog toward zero.</p>
-                            <p><span className="font-semibold">Completed:</span> cumulative finished tasks across the selected months.</p>
-                            <p className="mt-1"><span className="font-semibold">Reading:</span> remaining above ideal means burn rate is behind; below ideal means backlog is clearing faster than expected.</p>
+                            <p><span className="font-semibold">Remaining:</span> total tasks minus tasks completed by each date.</p>
+                            <p><span className="font-semibold">Ideal:</span> straight-line target from total tasks to zero by deadline.</p>
+                            <p><span className="font-semibold">Actual:</span> calculated from each done task's actual completion date.</p>
+                            <p className="mt-1"><span className="font-semibold">Reading:</span> actual above ideal means behind schedule; at/below ideal means on track or faster.</p>
                           </div>
                         </div>
-                        <TaskBurndownChart data={flowData} />
+                        <BurndownChart
+                          tasks={p.burndownTasks ?? []}
+                          projectStart={p.start_date}
+                          projectDeadline={p.deadline}
+                          compact
+                        />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300 font-semibold mb-1">Task Completion - Last 4 Months</p>

@@ -123,6 +123,7 @@ export async function GET(req: NextRequest) {
           deliverable: { project_id: { in: projectIds } },
         },
         select: {
+          id: true,
           created_at: true,
           due_date: true,
           status: true,
@@ -186,6 +187,7 @@ export async function GET(req: NextRequest) {
     }
 
     const monthlyData = monthLabels.map(m => ({
+      monthKey: m,
       month: new Date(m + '-02').toLocaleDateString('en-MY', { month: 'short', year: '2-digit' }),
       assigned: monthlyAssignedMap.get(p.id)?.get(m) ?? 0,
       completed: monthlyCompletedMap.get(p.id)?.get(m) ?? 0,
@@ -238,6 +240,11 @@ export async function GET(req: NextRequest) {
       onTimeCompletionRate,
       scopeVolatility,
       monthlyData,
+      burndownTasks: projectTasks.map(t => ({
+        id: t.id,
+        status: t.status,
+        actual_end: (t.actual_end ?? t.completed_at)?.toISOString() ?? null,
+      })),
     }
   })
 

@@ -4,6 +4,71 @@ Rekod semua perubahan, penambahan feature, dan pembaikan yang dilakukan pada cod
 Format: **terbaru di atas**.
 
 ---
+## 2026-04-26 — Team Kanban Labels, Project Burndown Alignment, Task Completion Window, Gantt Overrun Indicators, Task Due-Date Estimation
+
+### Diubah
+
+- **Team Kanban (`src/components/TeamKanbanBoard.tsx`)**
+   - Label pada kad `To Review` ditukar:
+      - `Started:` → `Task Started:`
+      - `Completed:` → `Task Completed:`
+   - Kad `Done` tidak memaparkan baris `Task Started/Task Completed` (kekal hanya untuk `InReview`).
+
+- **Project list performance burndown guna logic sama dengan Project Details**
+   - `src/app/projects/page.tsx`:
+      - `TaskBurndownChart` (monthly flow approximation) diganti dengan komponen `BurndownChart` yang sama seperti di `Project Details`.
+      - `BurndownChart` dipanggil dalam mod `compact`.
+   - `src/components/BurndownChart.tsx`:
+      - Tambah prop `compact?: boolean` untuk versi ringkas (height/legend/help/summary disesuaikan).
+   - `src/app/api/projects/route.ts`:
+      - Tambah payload `burndownTasks` per project (task-level `id`, `status`, `actual_end`) untuk chart task-based.
+
+- **Task Completion Table window ikut rule timeline projek**
+   - `src/app/projects/page.tsx`:
+      - Pemilihan 4 bulan untuk table kini berdasarkan **bulan lepas relative semasa** (contoh pada `2026-04-26`, cutoff = `2026-03`) dalam range bulan projek.
+      - Jika tiada bulan <= cutoff (projek masa hadapan), fallback ke 4 bulan awal range projek.
+      - Table tetap render walaupun nilai assigned/completed = 0.
+   - `src/app/api/projects/route.ts`:
+      - Tambah `monthKey` (`YYYY-MM`) dalam `monthlyData` supaya pemilihan bulan stabil/tepat.
+
+- **Gantt Chart: indicator overrun tarikh & mandays**
+   - `src/components/GanttChart.tsx`:
+      - Tambah pengiraan `Date Variance` dan `MD Variance`.
+      - Tambah segmen merah hujung bar `Actual` bila melepasi `planned_end`, beserta label `+Nd`.
+      - Tambah badge row deliverable: `+Nd late` dan `MD +X`.
+      - Tooltip `Actual` kini paparkan actual range, date variance, actual duration, MD variance.
+      - Header chart tambah summary pills:
+         - `Date Overrun: X`
+         - `MD Overrun: Y`
+         - `Max +Nd`
+      - Legend tambah item `Overrun Segment (+days)`.
+   - `src/components/ProjectDetailCard.tsx`:
+      - Tambah summary pills pada strip status atas:
+         - `Date Overrun: X`
+         - `MD Overrun: Y`
+         - atau `Timeline Within Plan` jika tiada overrun.
+
+- **Project Details > Deliverable > Add/Edit Task form**
+   - `src/components/FeatureTaskList.tsx`:
+      - Label `Due Date` ditukar ke **`Est. Task Due Date`** (Add + Edit form).
+      - Bila user ubah `Est. Task Due Date`, `Est. Mandays` auto-kira semula berdasarkan working days:
+         - Anchor utama: `deliverablePlannedStart`
+         - Fallback: `projectStart`
+      - Ditambah helper:
+         - `countWorkdays(startDate, endDate)`
+         - `estimateMandaysFromDueDate(dueDate, deliverablePlannedStart, projectStart)`
+
+### Diperbaiki
+
+- Ketidakselarasan paparan burndown antara:
+   - `Projects > Project Performance` vs
+   - `Project Details > Burndown Chart`
+  kini disatukan kepada logic task-based yang sama.
+
+- Isu table completion nampak kosong/kurang tepat akibat pemilihan bulan berdasarkan active/current behavior kini diperbetulkan kepada rule timeline projek + cutoff bulan lepas.
+
+---
+
 
 ## 2026-04-25 — Weekly Progress Update Email, Brand Logo Favicon, Kanban & UI Fixes
 

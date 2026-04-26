@@ -48,6 +48,35 @@ interface Props {
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24
 
+function startOfDay(d: Date): Date {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function dayDiff(from: Date, to: Date): number {
+  return Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / MS_PER_DAY)
+}
+
+function actualDurationDays(actualStart: string | null, actualEnd: string | null, refDate: Date): number {
+  if (!actualStart) return 0
+  const start = startOfDay(new Date(actualStart))
+  const end = startOfDay(actualEnd ? new Date(actualEnd) : refDate)
+  return Math.max(1, dayDiff(start, end) + 1)
+}
+
+function timelineVarianceDays(
+  plannedEnd: string | null,
+  actualStart: string | null,
+  actualEnd: string | null,
+  refDate: Date
+): number {
+  if (!plannedEnd || !actualStart) return 0
+  const planned = startOfDay(new Date(plannedEnd))
+  const effectiveEnd = startOfDay(actualEnd ? new Date(actualEnd) : refDate)
+  return dayDiff(planned, effectiveEnd)
+}
+
 function dateToPercent(date: Date, rangeStart: Date, totalDays: number): number {
   const diffDays = (date.getTime() - rangeStart.getTime()) / MS_PER_DAY
   return Math.max(0, Math.min(100, (diffDays / totalDays) * 100))
@@ -183,6 +212,13 @@ function DeliverableRow({
   const [expanded, setExpanded] = useState(false)
   const today = new Date()
   const color = barColor(deliverable.actual_start, deliverable.actual_end, deadline)
+  const plannedEndDate = deliverable.planned_end ? new Date(deliverable.planned_end) : null
+  const effectiveActualEnd = deliverable.actual_start
+    ? (deliverable.actual_end ? new Date(deliverable.actual_end) : today)
+    : null
+  const dateVariance = timelineVarianceDays(deliverable.planned_end, deliverable.actual_start, deliverable.actual_end, today)
+  const mdActualDays = actualDurationDays(deliverable.actual_start, deliverable.actual_end, today)
+  const mdVariance = deliverable.actual_start ? (mdActualDays - deliverable.mandays) : 0
   const actualStyle = barStyle(
     deliverable.actual_start ? new Date(deliverable.actual_start) : null,
     deliverable.actual_end ? new Date(deliverable.actual_end) : null,
@@ -193,6 +229,9 @@ function DeliverableRow({
     deliverable.planned_end ? new Date(deliverable.planned_end) : null,
     rangeStart, totalDays
   )
+  const overrunStyle = dateVariance > 0 && plannedEndDate && effectiveActualEnd
+    ? barStyle(plannedEndDate, effectiveActualEnd, rangeStart, totalDays)
+    : null
 
   const LABEL_W = 240
 
@@ -217,6 +256,16 @@ function DeliverableRow({
                 {deliverable.status === 'InProgress' ? 'In Progress' : deliverable.status}
               </span>
               <span className="text-xs text-slate-400">{deliverable.mandays}md</span>
+              {dateVariance > 0 && (
+                <span className="inline-block px-1.5 py-px rounded text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  +{dateVariance}d late
+                </span>
+              )}
+              {mdVariance > 0 && (
+                <span className="inline-block px-1.5 py-px rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  MD +{mdVariance}
+                </span>
+              )}
             </div>
             {(deliverable.planned_start || deliverable.planned_end) && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
@@ -242,9 +291,23 @@ function DeliverableRow({
             <div
               className={`absolute ${color} rounded-sm flex items-center transition-all duration-100 hover:brightness-125 hover:scale-y-125 origin-center cursor-pointer`}
               style={{ ...actualStyle, top: 22, height: 12 }}
-              title={`Actual: ${deliverable.actual_start ? new Date(deliverable.actual_start).toLocaleDateString() : 'Not started'} → ${deliverable.actual_end ? new Date(deliverable.actual_end).toLocaleDateString() : 'In progress'}`}
+              title={[
+                `Actual: ${deliverable.actual_start ? new Date(deliverable.actual_start).toLocaleDateString('en-GB') : 'Not started'} → ${deliverable.actual_end ? new Date(deliverable.actual_end).toLocaleDateString('en-GB') : 'In progress'}`,
+                `Date Variance: ${dateVariance > 0 ? `+${dateVariance} day(s) late` : dateVariance < 0 ? `${dateVariance} day(s) early` : 'On schedule'}`,
+                `Actual Duration: ${mdActualDays} day(s)`,
+                `MD Variance: ${deliverable.actual_start ? (mdVariance > 0 ? `+${mdVariance}` : `${mdVariance}`) : '—'}`,
+              ].join('\n')}
             >
               <span className="text-xs px-1 truncate text-white select-none" style={{ fontSize: 9 }}>Actual</span>
+            </div>
+          )}
+          {overrunStyle && (
+            <div
+              className="absolute bg-red-500/85 border border-red-300 dark:border-red-700 rounded-sm"
+              style={{ ...overrunStyle, top: 22, height: 12 }}
+              title={`Late segment: +${dateVariance} day(s) beyond planned end`}
+            >
+              <span className="absolute -right-1 -top-4 text-[10px] font-semibold text-red-600 dark:text-red-300 whitespace-nowrap">+{dateVariance}d</span>
             </div>
           )}
           {!plannedStyle && !actualStyle && (
@@ -295,6 +358,18 @@ export default function GanttChart({ project, deliverables, modules: _modules, e
   const [viewMode, setViewMode] = useState<ViewMode>('week')
 
   const deadline = new Date(project.deadline)
+  const today = new Date()
+  const summary = deliverables.reduce(
+    (acc, d) => {
+      const dateVariance = timelineVarianceDays(d.planned_end, d.actual_start, d.actual_end, today)
+      const mdVariance = d.actual_start ? actualDurationDays(d.actual_start, d.actual_end, today) - d.mandays : 0
+      if (dateVariance > 0) acc.dateOverrun += 1
+      if (mdVariance > 0) acc.mdOverrun += 1
+      if (dateVariance > acc.maxDateVariance) acc.maxDateVariance = dateVariance
+      return acc
+    },
+    { dateOverrun: 0, mdOverrun: 0, maxDateVariance: 0 }
+  )
 
   if (deliverables.length === 0) {
     return (
@@ -307,7 +382,6 @@ export default function GanttChart({ project, deliverables, modules: _modules, e
 
   const { rangeStart, rangeEnd, totalDays } = getViewRange(viewMode, deliverables, project.start_date, project.deadline)
   const ticks = generateTicks(rangeStart, rangeEnd, totalDays, viewMode)
-  const today = new Date()
   const todayLeft = dateToPercent(today, rangeStart, totalDays)
   const deadlineLeft = dateToPercent(deadline, rangeStart, totalDays)
 
@@ -320,6 +394,27 @@ export default function GanttChart({ project, deliverables, modules: _modules, e
       {/* Legend */}
       <div className="flex items-center gap-5 px-5 py-3 border-b border-slate-200 dark:border-navy-700 flex-wrap">
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Actual Work Timeline</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          {summary.dateOverrun > 0 ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              Date Overrun: {summary.dateOverrun}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+              Date On Track
+            </span>
+          )}
+          {summary.mdOverrun > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              MD Overrun: {summary.mdOverrun}
+            </span>
+          )}
+          {summary.maxDateVariance > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 dark:bg-navy-700 dark:text-slate-300">
+              Max +{summary.maxDateVariance}d
+            </span>
+          )}
+        </div>
         {/* View mode toggle */}
         <div className="flex items-center rounded-lg border border-slate-200 dark:border-navy-600 overflow-hidden text-xs">
           {(['day', 'week', 'month'] as ViewMode[]).map((mode) => (
@@ -342,6 +437,7 @@ export default function GanttChart({ project, deliverables, modules: _modules, e
             { color: 'bg-red-500', label: 'Done (Late)' },
             { color: 'bg-emerald-400', label: 'In Progress' },
             { color: 'bg-pink-400', label: 'In Progress (Past Deadline)' },
+            { color: 'bg-red-500/85', label: 'Overrun Segment (+days)' },
           ].map(item => (
             <span key={item.label} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <span className={`inline-block w-4 h-3 rounded-sm ${item.color}`} />
