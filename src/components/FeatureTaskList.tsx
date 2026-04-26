@@ -249,7 +249,7 @@ function AssigneePicker({
                   onChange={() => toggle(u.id)}
                   className="rounded accent-blue-600 shrink-0"
                 />
-                <span className="text-sm text-slate-700 dark:text-slate-200">{u.name}</span>
+                <span className="text-xs text-slate-700 dark:text-slate-200">{u.name}</span>
               </label>
             ))
           )}
@@ -609,9 +609,9 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     setAddingTask(false)
   }
 
-  if (loading) return <div className="py-4 text-center text-sm text-slate-500">Loading tasks...</div>
+  if (loading) return <div className="py-4 text-center text-xs text-slate-500">Loading tasks...</div>
 
-  const inputClass = 'bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded px-2 py-1 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500'
+  const inputClass = 'bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500'
 
   const totalTaskMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
   const showMdWarning = deliverableMandays != null && deliverableMandays > 0 && totalTaskMd > deliverableMandays
@@ -735,7 +735,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
             ⚠ Tasks total ({totalTaskMd} md) exceeds deliverable estimate ({deliverableMandays} md)
           </div>
         )}
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead>
             <tr className="bg-slate-50 dark:bg-navy-900 text-left">
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 w-8">#</th>
@@ -942,7 +942,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
               setSelectedSpecificTask('')
               setShowAddTask(true)
             }}
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
           >
             + Add Task
           </button>
@@ -1001,7 +1001,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   {currentTasksPanel}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
                       <select
                         className={`${inputClass} w-full`}
                         value={selectedCategory}
@@ -1025,7 +1025,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
                       <select
                         className={`${inputClass} w-full`}
                         value={selectedScope}
@@ -1045,7 +1045,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
                     <select
                       className={`${inputClass} w-full`}
                       value={selectedSpecificTask}
@@ -1073,7 +1073,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
                     <textarea
                       className={`${inputClass} w-full resize-none`}
                       rows={2}
@@ -1088,7 +1088,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                       {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
                     </label>
                     {assigneeOptions.length > 0 ? (
@@ -1103,7 +1103,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
@@ -1116,7 +1116,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
@@ -1140,7 +1140,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
                       <input
                         type="number"
                         min="0.5"
@@ -1175,7 +1175,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       })()}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
                     <select
                       className={`${inputClass} w-full`}
                       value={newTask.priority}
@@ -1190,7 +1190,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       <option value="critical">Critical</option>
                     </select>
                   </div>
-                  {addTaskError && <p className="text-sm text-red-500">{addTaskError}</p>}
+                  {addTaskError && <p className="text-xs text-red-500">{addTaskError}</p>}
                   <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-navy-700">
                     <button
                       type="button"
@@ -1203,7 +1203,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         setSelectedSpecificTask('')
                         setNewTask({ title: '', description: '', assigneeIds: [], planned_start: deliverablePlannedStart ? deliverablePlannedStart.slice(0, 10) : '', due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                       }}
-                      className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                      className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                     >
                       Cancel
                     </button>
@@ -1211,7 +1211,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       type="button"
                       onClick={addCustomTask}
                       disabled={addingTask || !canSubmitTaskSelection}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium"
                     >
                       {addingTask ? 'Adding...' : 'Add Task'}
                     </button>
@@ -1262,7 +1262,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   {currentTasksPanel}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Tasks Category (Dev)</label>
                       <select
                         className={`${inputClass} w-full`}
                         value={editSelectedCategory}
@@ -1286,7 +1286,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Scope (Dev)</label>
                       <select
                         className={`${inputClass} w-full`}
                         value={editSelectedScope}
@@ -1306,7 +1306,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Task (Dev)</label>
                     <select
                       className={`${inputClass} w-full`}
                       value={editSelectedSpecificTask}
@@ -1332,7 +1332,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Specific Tasks Details</label>
                     <textarea
                       className={`${inputClass} w-full resize-none`}
                       rows={2}
@@ -1344,7 +1344,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                       {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
                     </label>
                     {assigneeOptions.length > 0 ? (
@@ -1359,7 +1359,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
@@ -1368,7 +1368,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
                       <input
                         type="date"
                         className={`${inputClass} w-full`}
@@ -1392,7 +1392,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
                       <input
                         type="number"
                         min="0.5"
@@ -1427,7 +1427,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       })()}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
                     <select
                       className={`${inputClass} w-full`}
                       value={editForm.priority}
@@ -1464,14 +1464,14 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       </div>
                     </div>
                   )}
-                  {editTaskError && <p className="text-sm text-red-500">{editTaskError}</p>}
+                  {editTaskError && <p className="text-xs text-red-500">{editTaskError}</p>}
                   <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 dark:border-navy-700">
-                    <button type="button" onClick={() => setEditingTask(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">Cancel</button>
+                    <button type="button" onClick={() => setEditingTask(null)} className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">Cancel</button>
                     <button
                       type="button"
                       onClick={saveEditTask}
                       disabled={editTaskSaving || !canSubmitEditTask}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium"
                     >
                       {editTaskSaving ? 'Saving...' : 'Save Changes'}
                     </button>
@@ -1486,21 +1486,21 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-sm rounded-2xl p-6 border bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700">
               <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Delete Task</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
                 Delete <span className="font-medium text-slate-700 dark:text-slate-300">"{deleteConfirm.title}"</span>? This cannot be undone.
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={confirmDeleteTask}
                   disabled={deleting}
-                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium"
+                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white py-2 rounded-lg text-xs font-medium"
                 >
                   {deleting ? 'Deleting...' : 'Delete'}
                 </button>
                 <button
                   onClick={() => setDeleteConfirm(null)}
                   disabled={deleting}
-                  className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-sm"
+                  className="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 py-2 rounded-lg text-xs"
                 >
                   Cancel
                 </button>

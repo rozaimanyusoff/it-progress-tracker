@@ -164,7 +164,7 @@ function DeliverableCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2 py-0.5 rounded text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 uppercase tracking-wide">Deliverable</span>
-              <h4 className="font-medium text-slate-900 dark:text-white text-sm">{deliverable.title}</h4>
+              <h4 className="font-medium text-slate-900 dark:text-white text-xs">{deliverable.title}</h4>
               <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[deliverable.status]}`}>
                 {STATUS_LABELS[deliverable.status]}
               </span>
@@ -498,7 +498,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
     refreshProjectDetails()
   }
 
-  const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const inputClass = 'w-full bg-slate-50 dark:bg-navy-900 border border-slate-300 dark:border-navy-600 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
   const sortedDeliverables = [...deliverables].sort((a, b) => a.order - b.order)
 
   return (
@@ -552,15 +552,15 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
           )}
         </div>
 
-        <button onClick={openAddDeliv} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg">
+        <button onClick={openAddDeliv} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg">
           + Add Deliverable
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sm text-slate-500 py-4 text-center">Loading...</p>
+        <p className="text-xs text-slate-500 py-4 text-center">Loading...</p>
       ) : sortedDeliverables.length === 0 ? (
-        <p className="text-sm text-slate-400 py-4 text-center">No deliverables yet. Click &quot;+ Add Deliverable&quot; to create one.</p>
+        <p className="text-xs text-slate-400 py-4 text-center">No deliverables yet. Click &quot;+ Add Deliverable&quot; to create one.</p>
       ) : (
         <div className="space-y-2">
           {sortedDeliverables.map((d, idx) => (
@@ -626,12 +626,12 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
             <div className="space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Title *</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">Title *</label>
                   <div className="relative" ref={titleHelpRef}>
                     <button
                       type="button"
                       onClick={() => setShowTitleHelp(v => !v)}
-                      className="w-5 h-5 text-sm font-bold flex items-center justify-center text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
+                      className="w-5 h-5 text-xs font-bold flex items-center justify-center text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
                       aria-label="Deliverable title examples"
                     >
                       ?
@@ -662,13 +662,13 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
                 <textarea className={`${inputClass} resize-none`} rows={2} value={delivForm.description} onChange={e => setDelivForm({ ...delivForm, description: e.target.value })} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned Start *</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Planned Start *</label>
                   <input
                     type="date"
                     className={inputClass}
@@ -683,7 +683,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Planned End *</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Planned End *</label>
                   <input
                     type="date"
                     className={inputClass}
@@ -744,12 +744,12 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
                   <input type="number" min="1" className={inputClass} value={delivForm.mandays} onChange={e => setDelivForm({ ...delivForm, mandays: e.target.value })} />
                   <p className="mt-1 text-[11px] text-slate-400">Auto-calculation from Planned Start/End excludes weekends.</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority *</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Priority *</label>
                   <select className={inputClass} value={delivForm.priority} onChange={e => setDelivForm({ ...delivForm, priority: e.target.value })}>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -761,7 +761,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
 
               {editingDeliv && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
                   <select className={inputClass} value={delivForm.status} onChange={e => setDelivForm({ ...delivForm, status: e.target.value })}>
                     <option value="Pending">Pending</option>
                     <option value="InProgress">In Progress</option>
@@ -771,12 +771,12 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
                 </div>
               )}
 
-              {delivError && <p className="text-sm text-red-500">{delivError}</p>}
+              {delivError && <p className="text-xs text-red-500">{delivError}</p>}
             </div>
 
             <div className="flex justify-end gap-3 pt-4">
-              <button onClick={() => setShowDelivModal(false)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700">Cancel</button>
-              <button onClick={saveDeliv} disabled={delivSaving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
+              <button onClick={() => setShowDelivModal(false)} className="px-4 py-2 text-xs rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700">Cancel</button>
+              <button onClick={saveDeliv} disabled={delivSaving} className="px-4 py-2 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
                 {delivSaving ? 'Saving...' : editingDeliv ? 'Save Changes' : 'Create Deliverable'}
               </button>
             </div>
@@ -788,26 +788,26 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Delete Deliverable</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">
               Are you sure you want to delete <strong className="text-slate-800 dark:text-white">{deleteConfirm.title}</strong>?
             </p>
             <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
               Deliverable cannot be deleted if it has tasks.
             </p>
-            {deleteError && <p className="text-sm text-red-500 mb-3">{deleteError}</p>}
+            {deleteError && <p className="text-xs text-red-500 mb-3">{deleteError}</p>}
 
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => { setDeleteConfirm(null); setDeleteError('') }}
                 disabled={deleting}
-                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-50"
+                className="px-4 py-2 text-xs rounded-lg border border-slate-300 dark:border-navy-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-navy-700 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={deleting}
-                className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50"
+                className="px-4 py-2 text-xs rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-50"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>
