@@ -50,25 +50,25 @@ export async function GET(req: NextRequest) {
       prisma.$queryRaw<MonthlyAssigned[]>(
         Prisma.sql`
             SELECT d.project_id,
-                   TO_CHAR(DATE_TRUNC('month', t.created_at), 'YYYY-MM') AS month,
+                   TO_CHAR(DATE_TRUNC('month', COALESCE(t.due_date, t.created_at)), 'YYYY-MM') AS month,
                    COUNT(t.id) AS assigned
             FROM "Task" t
             INNER JOIN "Deliverable" d ON t.deliverable_id = d.id
             WHERE d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
-            GROUP BY d.project_id, DATE_TRUNC('month', t.created_at)
+            GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.due_date, t.created_at))
           `
       ),
       prisma.$queryRaw<MonthlyCompleted[]>(
         Prisma.sql`
             SELECT d.project_id,
-                   TO_CHAR(DATE_TRUNC('month', COALESCE(t.actual_end, t.completed_at)), 'YYYY-MM') AS month,
+                   TO_CHAR(DATE_TRUNC('month', COALESCE(t.actual_end, t.completed_at, t.status_updated_at)), 'YYYY-MM') AS month,
                    COUNT(t.id) AS completed
             FROM "Task" t
             INNER JOIN "Deliverable" d ON t.deliverable_id = d.id
             WHERE t.status = 'Done'
-              AND COALESCE(t.actual_end, t.completed_at) IS NOT NULL
+              AND COALESCE(t.actual_end, t.completed_at, t.status_updated_at) IS NOT NULL
               AND d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
-            GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.actual_end, t.completed_at))
+            GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.actual_end, t.completed_at, t.status_updated_at))
           `
       ),
     ])
@@ -214,7 +214,11 @@ export async function GET(req: NextRequest) {
 
     const totalAssigned = monthlyData.reduce((s, m) => s + m.assigned, 0)
     const totalCompleted = monthlyData.reduce((s, m) => s + m.completed, 0)
-    const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null
+    // Use direct done/total counts for completion rate — monthly sums fail for projects
+    // where tasks were created/due outside the visible window (old projects).
+    const completionRate = stats && Number(stats.total) > 0
+      ? Math.round(Number(stats.done) / Number(stats.total) * 100)
+      : null
     const netFlow = totalCompleted - totalAssigned
     const latestOverdueOpen = monthlyData.length > 0 ? (monthlyData[monthlyData.length - 1].overdueOpen ?? 0) : 0
     const scheduleVariance = computedProgress - getPlannedProgress(p.start_date, p.deadline, now)
@@ -237,6 +241,7 @@ export async function GET(req: NextRequest) {
       computedProgress,
       computedStatus,
       computedHealthStatus,
+      completionRate,
       onTimeCompletionRate,
       scopeVolatility,
       monthlyData,

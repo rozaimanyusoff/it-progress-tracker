@@ -56,25 +56,25 @@ export default async function DashboardPage() {
         prisma.$queryRaw<MonthlyAssigned[]>(
           Prisma.sql`
             SELECT d.project_id,
-                   TO_CHAR(DATE_TRUNC('month', t.created_at), 'YYYY-MM') AS month,
+                   TO_CHAR(DATE_TRUNC('month', COALESCE(t.due_date, t.created_at)), 'YYYY-MM') AS month,
                    COUNT(t.id) AS assigned
             FROM "Task" t
             INNER JOIN "Deliverable" d ON t.deliverable_id = d.id
             WHERE d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
-            GROUP BY d.project_id, DATE_TRUNC('month', t.created_at)
+            GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.due_date, t.created_at))
           `
         ),
         prisma.$queryRaw<MonthlyCompleted[]>(
           Prisma.sql`
             SELECT d.project_id,
-                   TO_CHAR(DATE_TRUNC('month', COALESCE(t.completed_at, t.actual_end)), 'YYYY-MM') AS month,
+                   TO_CHAR(DATE_TRUNC('month', COALESCE(t.completed_at, t.actual_end, t.status_updated_at)), 'YYYY-MM') AS month,
                    COUNT(t.id) AS completed
             FROM "Task" t
             INNER JOIN "Deliverable" d ON t.deliverable_id = d.id
             WHERE t.status = 'Done'
-              AND COALESCE(t.completed_at, t.actual_end) IS NOT NULL
+              AND COALESCE(t.completed_at, t.actual_end, t.status_updated_at) IS NOT NULL
               AND d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
-            GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.completed_at, t.actual_end))
+            GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.completed_at, t.actual_end, t.status_updated_at))
           `
         ),
       ])
@@ -159,7 +159,9 @@ export default async function DashboardPage() {
     const projectTasks = tasksByProject.get(p.id) ?? []
     const totalAssigned = monthlyData.reduce((s, m) => s + m.assigned, 0)
     const totalCompleted = monthlyData.reduce((s, m) => s + m.completed, 0)
-    const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null
+    const completionRate = stats && Number(stats.total) > 0
+      ? Math.round(Number(stats.done) / Number(stats.total) * 100)
+      : null
     const netFlow = totalCompleted - totalAssigned
     const backlogTrend = netFlow > 0 ? 'Shrinking' : netFlow < 0 ? 'Growing' : 'Stable'
 

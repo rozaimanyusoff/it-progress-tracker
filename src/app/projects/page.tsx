@@ -13,6 +13,7 @@ type Project = {
   start_date: string; deadline: string
   health_status?: string | null
   computedHealthStatus?: 'on_track' | 'at_risk' | 'delayed' | 'overdue' | null
+  completionRate?: number | null
   onTimeCompletionRate?: number | null
   scopeVolatility?: number | null
   assignees: { user: { id: number; name: string; email: string } }[]
@@ -376,7 +377,7 @@ function TaskCompletionTable({ data }: { data: MonthlyTaskFlow[] }) {
                       {rate != null ? `${rate}%` : '-'}
                     </div>
                     <div className="mt-0.5 text-[10px] font-medium text-slate-700 dark:text-slate-300">
-                      {m.completed}/{m.assigned} completed
+                      {m.assigned}/{m.completed} completed
                     </div>
                   </td>
                 )
@@ -389,12 +390,12 @@ function TaskCompletionTable({ data }: { data: MonthlyTaskFlow[] }) {
         <span>Tasks Assigned vs Completion</span>
         <span
           className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800 text-[10px] font-semibold text-slate-700 dark:text-slate-200 cursor-help"
-          title="Assigned is tasks created in the month. Completed is tasks finished in the month. Completion Rate = completed / assigned. Net Flow = completed - assigned. Backlog Trend follows cumulative net flow. On-time Completion compares completed tasks against due dates."
+          title="Assigned is tasks due in the month. Completed is tasks finished in the month. Completion Rate = completed / assigned. Net Flow = completed - assigned. Backlog Trend follows cumulative net flow. On-time Completion compares completed tasks against due dates."
         >
           ?
         </span>
         <div className="pointer-events-none hidden group-hover:block absolute left-0 top-5 z-40 w-80 rounded-md border border-slate-200 dark:border-navy-600 bg-white dark:bg-navy-800 shadow-lg p-2 text-[10px] leading-relaxed text-slate-700 dark:text-slate-200">
-          <p><span className="font-semibold">Assigned:</span> tasks created in the month.</p>
+          <p><span className="font-semibold">Assigned:</span> tasks due in the month.</p>
           <p><span className="font-semibold">Completed:</span> tasks finished in the month.</p>
           <p className="mt-1"><span className="font-semibold">Completion Rate:</span> completed divided by assigned.</p>
           <p><span className="font-semibold">Net Flow:</span> completed minus assigned.</p>
@@ -547,7 +548,8 @@ function ProjectsTab({ onNewProject }: { onNewProject: () => void }) {
           const flowData = p.monthlyData ?? []
           const totalAssigned = flowData.reduce((sum, m) => sum + (m.assigned ?? 0), 0)
           const totalCompleted = flowData.reduce((sum, m) => sum + (m.completed ?? 0), 0)
-          const completionRate = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null
+          // Use server-computed completionRate (done/total) which handles old projects correctly
+          const completionRate = p.completionRate ?? (totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : null)
           const netFlow = totalCompleted - totalAssigned
           const backlogTrend = netFlow > 0 ? 'Shrinking' : netFlow < 0 ? 'Growing' : 'Stable'
           const overdue = p.computedStatus !== 'Done' && deadline < now
