@@ -1138,6 +1138,7 @@ export default function TeamKanbanBoard() {
           deliverableBudgetMandays={pendingTask.deliverable_budget_mandays ?? null}
           deliverableUsedMandays={pendingTask.deliverable_used_mandays ?? null}
           actualStartDate={(pendingTask as any).actual_start ?? null}
+          taskPlannedStart={pendingTask.planned_start ?? null}
           dueDate={pendingTask.due_date}
           isManager={isManager}
           onConfirm={handlePopupConfirm}

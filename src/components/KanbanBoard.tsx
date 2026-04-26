@@ -30,6 +30,7 @@ interface Task {
   deliverable_used_mandays?: number | null
   deliverable_planned_start?: string | null
   deliverable_planned_end?: string | null
+  planned_start?: string | null
   is_blocked: boolean
   blocked_reason: string | null
   assignees: { user: { id: number; name: string } }[]
@@ -784,6 +785,7 @@ export default function KanbanBoard() {
           deliverablePlannedStart={pendingTask.deliverable_planned_start ?? null}
           deliverablePlannedEnd={pendingTask.deliverable_planned_end ?? null}
           actualStartDate={(pendingTask as any).actual_start ?? null}
+          taskPlannedStart={pendingTask.planned_start ?? null}
           dueDate={pendingTask.due_date}
           isManager={isManager}
           onConfirm={handlePopupConfirm}
@@ -1161,6 +1163,7 @@ export default function KanbanBoard() {
             featureTitle={activeTask.feature?.title ?? activeTask.deliverable?.title ?? null}
             projectTitle={activeTask.project?.title ?? null}
             createdByName={activeTask.created_by_name ?? null}
+            taskPlannedStartDate={activeTask.planned_start ?? null}
             dueDate={activeTask.due_date}
             actualStartDate={activeTask.actual_start ?? null}
             actualEndDate={activeTask.actual_end ?? null}

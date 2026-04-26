@@ -25,6 +25,8 @@ interface Props {
    deliverableUsedMandays?: number | string | null
    /** Pass the task's actual_start (as ISO string) so InReview can validate date >= actual_start */
    actualStartDate?: string | null
+   /** Pass the task's planned_start (est. task start) */
+   taskPlannedStart?: string | null
    /** Pass due_date so InProgress can validate minimum date */
    dueDate?: string | null
    /** Managers can select any past date without min restriction */
@@ -109,6 +111,7 @@ export default function StatusChangeModal({
    deliverableBudgetMandays,
    deliverableUsedMandays,
    actualStartDate,
+   taskPlannedStart,
    dueDate,
    isManager,
    onConfirm,
@@ -226,10 +229,10 @@ export default function StatusChangeModal({
                      <span className="font-medium">Created By:</span>{' '}
                      <span className="text-slate-700 dark:text-slate-200">{createdByName || '—'}</span>
                   </p>
-                  {/* Row 3: Task Due Date + Allocated/Budget md */}
+                  {/* Row 3: Task Est Start/Due + Allocated/Budget md */}
                   <p className="text-slate-500 dark:text-slate-400">
-                     <span className="font-medium">Task Due:</span>{' '}
-                     <span className="text-slate-700 dark:text-slate-200">{formatDateLabel(dueDate)}</span>
+                     <span className="font-medium">Task Est:</span>{' '}
+                     <span className="text-slate-700 dark:text-slate-200">{formatDateLabel(taskPlannedStart)} / {formatDateLabel(dueDate)}</span>
                   </p>
                   <p className="text-slate-500 dark:text-slate-400">
                      <span className="font-medium">Allocated/Budget:</span>{' '}

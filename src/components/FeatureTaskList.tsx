@@ -723,6 +723,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
           taskTitle={pendingTask.title}
           targetStatus={pendingStatus.target}
           actualStartDate={pendingTask.actual_start}
+          taskPlannedStart={pendingTask.planned_start ?? null}
           dueDate={pendingTask.due_date}
           isManager={userRole === 'manager'}
           onConfirm={handleStatusConfirm}
