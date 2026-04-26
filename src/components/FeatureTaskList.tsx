@@ -1141,39 +1141,39 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
-                      <input
-                        type="number"
-                        min="0.5"
-                        step="0.5"
-                        className={`${inputClass} w-full`}
-                        placeholder="e.g. 1.5"
-                        value={newTask.est_mandays}
-                        onChange={e => {
-                          setAddTaskError('')
-                          setNewTask(p => ({ ...p, est_mandays: e.target.value }))
-                        }}
-                      />
-                      {deliverableMandays != null && deliverableMandays > 0 && (() => {
-                        const usedMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
-                        const remaining = deliverableMandays - usedMd
-                        const newMd = Number(newTask.est_mandays) || 0
-                        const afterAdd = remaining - newMd
-                        const pctUsed = Math.min(100, Math.round((usedMd / deliverableMandays) * 100))
-                        const pctNew = Math.min(100 - pctUsed, Math.round((newMd / deliverableMandays) * 100))
-                        return (
-                          <div className="mt-2">
-                            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
-                              <span>Budget: {deliverableMandays} md total</span>
-                              <span className={afterAdd < 0 ? 'text-red-500 dark:text-red-400' : ''}>{afterAdd.toFixed(1)} md left</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden flex">
-                              <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctUsed}%` }} />
-                              <div className={`h-full transition-all ${afterAdd < 0 ? 'bg-red-400' : 'bg-blue-300'}`} style={{ width: `${pctNew}%` }} />
-                            </div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      className={`${inputClass} w-full`}
+                      placeholder="e.g. 1.5"
+                      value={newTask.est_mandays}
+                      onChange={e => {
+                        setAddTaskError('')
+                        setNewTask(p => ({ ...p, est_mandays: e.target.value }))
+                      }}
+                    />
+                    {deliverableMandays != null && deliverableMandays > 0 && (() => {
+                      const usedMd = tasks.reduce((s, t) => s + (t.est_mandays != null ? Number(t.est_mandays) : 0), 0)
+                      const remaining = deliverableMandays - usedMd
+                      const newMd = Number(newTask.est_mandays) || 0
+                      const afterAdd = remaining - newMd
+                      const pctUsed = Math.min(100, Math.round((usedMd / deliverableMandays) * 100))
+                      const pctNew = Math.min(100 - pctUsed, Math.round((newMd / deliverableMandays) * 100))
+                      return (
+                        <div className="mt-2">
+                          <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                            <span>Budget: {deliverableMandays} md total</span>
+                            <span className={afterAdd < 0 ? 'text-red-500 dark:text-red-400' : ''}>{afterAdd.toFixed(1)} md left</span>
                           </div>
-                        )
-                      })()}
+                          <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden flex">
+                            <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctUsed}%` }} />
+                            <div className={`h-full transition-all ${afterAdd < 0 ? 'bg-red-400' : 'bg-blue-300'}`} style={{ width: `${pctNew}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
@@ -1393,39 +1393,39 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                     </div>
                   </div>
                   <div>
-                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
-                      <input
-                        type="number"
-                        min="0.5"
-                        step="0.5"
-                        className={`${inputClass} w-full`}
-                        placeholder="e.g. 1.5"
-                        value={editForm.est_mandays}
-                        onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, est_mandays: e.target.value })) }}
-                      />
-                      {deliverableMandays != null && deliverableMandays > 0 && editingTask && (() => {
-                        const usedMd = tasks.reduce((s, t) => {
-                          if (t.id === editingTask.id) return s
-                          return s + (t.est_mandays != null ? Number(t.est_mandays) : 0)
-                        }, 0)
-                        const remaining = deliverableMandays - usedMd
-                        const editMd = Number(editForm.est_mandays) || 0
-                        const afterEdit = remaining - editMd
-                        const pctUsed = Math.min(100, Math.round((usedMd / deliverableMandays) * 100))
-                        const pctEdit = Math.min(100 - pctUsed, Math.round((editMd / deliverableMandays) * 100))
-                        return (
-                          <div className="mt-2">
-                            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
-                              <span>Budget: {deliverableMandays} md total</span>
-                              <span className={afterEdit < 0 ? 'text-red-500 dark:text-red-400' : ''}>{afterEdit.toFixed(1)} md left</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden flex">
-                              <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctUsed}%` }} />
-                              <div className={`h-full transition-all ${afterEdit < 0 ? 'bg-red-400' : 'bg-blue-300'}`} style={{ width: `${pctEdit}%` }} />
-                            </div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      className={`${inputClass} w-full`}
+                      placeholder="e.g. 1.5"
+                      value={editForm.est_mandays}
+                      onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, est_mandays: e.target.value })) }}
+                    />
+                    {deliverableMandays != null && deliverableMandays > 0 && editingTask && (() => {
+                      const usedMd = tasks.reduce((s, t) => {
+                        if (t.id === editingTask.id) return s
+                        return s + (t.est_mandays != null ? Number(t.est_mandays) : 0)
+                      }, 0)
+                      const remaining = deliverableMandays - usedMd
+                      const editMd = Number(editForm.est_mandays) || 0
+                      const afterEdit = remaining - editMd
+                      const pctUsed = Math.min(100, Math.round((usedMd / deliverableMandays) * 100))
+                      const pctEdit = Math.min(100 - pctUsed, Math.round((editMd / deliverableMandays) * 100))
+                      return (
+                        <div className="mt-2">
+                          <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                            <span>Budget: {deliverableMandays} md total</span>
+                            <span className={afterEdit < 0 ? 'text-red-500 dark:text-red-400' : ''}>{afterEdit.toFixed(1)} md left</span>
                           </div>
-                        )
-                      })()}
+                          <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden flex">
+                            <div className="bg-blue-500 h-full transition-all" style={{ width: `${pctUsed}%` }} />
+                            <div className={`h-full transition-all ${afterEdit < 0 ? 'bg-red-400' : 'bg-blue-300'}`} style={{ width: `${pctEdit}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
