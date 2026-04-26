@@ -19,6 +19,7 @@ interface Task {
   time_started_at: string | null
   time_spent_seconds: number
   assignees: { user: { id: number; name: string } }[]
+  planned_start?: string | null
   due_date: string | null
   actual_start?: string | null
   actual_end?: string | null
@@ -49,7 +50,7 @@ interface Project {
   computedProgress?: number
   computedStatus?: string
 }
-interface Deliverable { id: number; title: string; planned_end: string | null; priority?: string; mandays?: number }
+interface Deliverable { id: number; title: string; planned_start: string | null; planned_end: string | null; priority?: string; mandays?: number }
 interface Member { id: number; name: string }
 
 type BoardState = Record<string, Task[]>
@@ -105,6 +106,7 @@ function AddTaskModal({
   const [newDeliverableError, setNewDeliverableError] = useState('')
   const [assigneeIds, setAssigneeIds] = useState<number[]>([])
   const [description, setDescription] = useState('')
+  const [plannedStart, setPlannedStart] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState('medium')
   const [estMandays, setEstMandays] = useState('')
@@ -138,6 +140,7 @@ function AddTaskModal({
     setDeliverableId(initialDeliverableId)
     setAssigneeIds(initialTask.assignees.map(a => a.user.id))
     setDescription(initialTask.description ?? '')
+    setPlannedStart(initialTask.planned_start ? initialTask.planned_start.slice(0, 10) : (initialTask.deliverable_planned_start?.slice(0, 10) ?? ''))
     setDueDate(initialTask.due_date ? initialTask.due_date.slice(0, 10) : '')
     setPriority(initialTask.priority ?? 'medium')
     setEstMandays(initialTask.est_mandays != null ? String(initialTask.est_mandays) : '')
@@ -162,6 +165,7 @@ function AddTaskModal({
       const mapped = data.map((d: any) => ({
         id: d.id,
         title: d.title,
+        planned_start: d.planned_start ?? null,
         planned_end: d.planned_end ?? null,
         priority: d.priority ?? 'medium',
       }))
@@ -180,8 +184,11 @@ function AddTaskModal({
     const hasDeliverable = Boolean(deliverableId)
     if (hasDeliverable) {
       const deliv = deliverables.find(d => d.id === Number(deliverableId))
-      if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
-      else setDueDate('')
+      if (!isEditMode) {
+        setPlannedStart(deliv?.planned_start ? deliv.planned_start.slice(0, 10) : '')
+        if (deliv?.planned_end) setDueDate(deliv.planned_end.slice(0, 10))
+        else setDueDate('')
+      }
       setPriority(deliv?.priority ?? 'medium')
     } else {
       setDelivBudget(null)
@@ -207,7 +214,7 @@ function AddTaskModal({
         .then(data => setDelivBudget({ total: data.mandays ?? 0, used: data.used_mandays ?? 0 }))
         .catch(() => setDelivBudget(null))
     }
-  }, [deliverableId])
+  }, [deliverableId, deliverables, isEditMode])
 
   useEffect(() => {
     if (!initialTask || presetCatalog.length === 0) return
@@ -252,12 +259,14 @@ function AddTaskModal({
       const created = {
         id: data.id,
         title: data.title,
+        planned_start: data.planned_start ?? null,
         planned_end: data.planned_end ?? null,
         priority: data.priority ?? newDeliverablePriority,
       }
       setDeliverables(prev => [...prev, created])
       setDeliverableId(String(created.id))
       setShowCreateDeliverable(false)
+      setPlannedStart(created.planned_start ? created.planned_start.slice(0, 10) : '')
       setDueDate(created.planned_end ? created.planned_end.slice(0, 10) : '')
       setPriority(created.priority ?? 'medium')
       setNewDeliverableTitle('')
@@ -281,6 +290,10 @@ function AddTaskModal({
     const devCategoryRef = selectedCategory.trim() || null
     const devScopeRef = selectedScope.trim() || null
     const devTaskRef = selectedTaskLabel.trim() || null
+    if (plannedStart && dueDate && plannedStart > dueDate) {
+      setError('Est. task start date cannot be after est. task due date.')
+      return
+    }
     if (deliverableId && (!estMandays || Number(estMandays) <= 0)) {
       setError('Est. mandays is required when linked to a deliverable.'); return
     }
@@ -298,12 +311,13 @@ function AddTaskModal({
       dev_scope: devScopeRef,
       dev_task: devTaskRef,
       assignee_ids: assigneeIds,
+      planned_start: plannedStart || null,
+      due_date: dueDate || null,
       est_mandays: estMandays ? Number(estMandays) : null,
     }
     if (deliverableId) {
       payload.deliverable_id = Number(deliverableId)
     } else {
-      payload.due_date = dueDate || null
       payload.priority = priority
     }
 
@@ -452,11 +466,7 @@ function AddTaskModal({
               )}
 
               {!projectId && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due date</label>
-                    <input type="date" className={inputClass} value={dueDate} onChange={e => setDueDate(e.target.value)} />
-                  </div>
+                <div className="grid grid-cols-1 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
                     <select className={inputClass} value={priority} onChange={e => setPriority(e.target.value)}>
@@ -471,12 +481,7 @@ function AddTaskModal({
 
               {deliverableId && (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Deliverable due date</label>
-                      <input type="date" className={`${inputClass} opacity-80`} value={dueDate} readOnly disabled />
-                      <p className="text-xs text-slate-400 mt-1">Predefined from selected deliverable</p>
-                    </div>
+                  <div className="grid grid-cols-1 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
                       <select className={`${inputClass} opacity-80`} value={priority} disabled>
@@ -525,87 +530,89 @@ function AddTaskModal({
                 )}
               </div>
 
-              {deliverableId && (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Est. Mandays <span className="text-red-500">*</span>
-                  </label>
-                  <p className="mb-1 text-xs text-slate-400 dark:text-slate-500">Guide: Estimate effort for this scope only, not the full deliverable.</p>
-
-                  {/* Budget indicator — only when deliverable has a budget */}
-                  {delivBudget && delivBudget.total > 0 && (() => {
-                    const remaining = delivBudget.total - delivBudget.used
-                    const pending = Number(estMandays) || 0
-                    const afterAdd = delivBudget.used + pending
-                    const pct = Math.min(100, Math.round((afterAdd / delivBudget.total) * 100))
-                    const over = afterAdd > delivBudget.total
-                    return (
-                      <div className="mb-2 rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 px-3 py-2 text-xs space-y-1.5">
-                        <div className="flex justify-between text-slate-500 dark:text-slate-400">
-                          <span>Deliverable budget</span>
-                          <span className={over ? 'text-red-500 font-semibold' : remaining <= 0 ? 'text-red-400' : 'text-slate-600 dark:text-slate-300'}>
-                            {afterAdd.toFixed(1)} / {delivBudget.total} md
-                          </span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-green-500'}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <p className={over ? 'text-red-500 font-medium' : 'text-slate-400 dark:text-slate-500'}>
-                          {over
-                            ? `Exceeds budget by ${(afterAdd - delivBudget.total).toFixed(1)} md`
-                            : `${remaining.toFixed(1)} md remaining after existing tasks`}
-                        </p>
-                      </div>
-                    )
-                  })()}
-
-                  {delivBudget && delivBudget.total === 0 && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">No budget defined for this deliverable — enter for tracking only.</p>
-                  )}
-
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
                   <input
-                    type="number" min="0.5" step="0.5"
-                    className={`${inputClass} ${!estMandays ? 'border-amber-400 dark:border-amber-600 focus:ring-amber-500' : ''}`}
-                    placeholder="e.g. 1.5"
-                    value={estMandays}
-                    onChange={e => setEstMandays(e.target.value)}
-                  />
-                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                    Guide: `1 md` = 1 working day effort. Use `0.5 md` (~half day), `1 md` (full day), `2 md` (about 2 working days).
-                  </p>
-                  {suggestedStartDate && (
-                    <p className="mt-1 text-xs text-blue-600 dark:text-blue-300">
-                      Suggested start date (based on due date): {new Date(suggestedStartDate).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {!projectId && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Est. Mandays
-                  </label>
-                  <input
-                    type="number" min="0.5" step="0.5"
+                    type="date"
                     className={inputClass}
-                    placeholder="e.g. 1.5"
-                    value={estMandays}
-                    onChange={e => setEstMandays(e.target.value)}
+                    value={plannedStart}
+                    onChange={e => setPlannedStart(e.target.value)}
                   />
-                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                    Guide: `1 md` = 1 working day effort. Use `0.5 md` (~half day), `1 md` (full day), `2 md` (about 2 working days).
-                  </p>
-                  {suggestedStartDate && (
-                    <p className="mt-1 text-xs text-blue-600 dark:text-blue-300">
-                      Suggested start date (based on due date): {new Date(suggestedStartDate).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </p>
-                  )}
                 </div>
-              )}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={dueDate}
+                    onChange={e => {
+                      setDueDate(e.target.value)
+                      const suggested = suggestStartDateFromDue(e.target.value, estMandays)
+                      if (!plannedStart && suggested) setPlannedStart(suggested)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Est. Mandays {deliverableId ? <span className="text-red-500">*</span> : null}
+                </label>
+                {deliverableId && (
+                  <p className="mb-1 text-xs text-slate-400 dark:text-slate-500">Guide: Estimate effort for this scope only, not the full deliverable.</p>
+                )}
+
+                {/* Budget indicator — only when deliverable has a budget */}
+                {deliverableId && delivBudget && delivBudget.total > 0 && (() => {
+                  const remaining = delivBudget.total - delivBudget.used
+                  const pending = Number(estMandays) || 0
+                  const afterAdd = delivBudget.used + pending
+                  const pct = Math.min(100, Math.round((afterAdd / delivBudget.total) * 100))
+                  const over = afterAdd > delivBudget.total
+                  return (
+                    <div className="mb-2 rounded-lg border border-slate-200 dark:border-navy-600 bg-slate-50 dark:bg-navy-900 px-3 py-2 text-xs space-y-1.5">
+                      <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                        <span>Deliverable budget</span>
+                        <span className={over ? 'text-red-500 font-semibold' : remaining <= 0 ? 'text-red-400' : 'text-slate-600 dark:text-slate-300'}>
+                          {afterAdd.toFixed(1)} / {delivBudget.total} md
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-200 dark:bg-navy-700 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-green-500'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <p className={over ? 'text-red-500 font-medium' : 'text-slate-400 dark:text-slate-500'}>
+                        {over
+                          ? `Exceeds budget by ${(afterAdd - delivBudget.total).toFixed(1)} md`
+                          : `${remaining.toFixed(1)} md remaining after existing tasks`}
+                      </p>
+                    </div>
+                  )
+                })()}
+
+                {deliverableId && delivBudget && delivBudget.total === 0 && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">No budget defined for this deliverable — enter for tracking only.</p>
+                )}
+
+                <input
+                  type="number" min="0.5" step="0.5"
+                  className={`${inputClass} ${deliverableId && !estMandays ? 'border-amber-400 dark:border-amber-600 focus:ring-amber-500' : ''}`}
+                  placeholder="e.g. 1.5"
+                  value={estMandays}
+                  onChange={e => setEstMandays(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  Guide: `1 md` = 1 working day effort. Use `0.5 md` (~half day), `1 md` (full day), `2 md` (about 2 working days).
+                </p>
+                {suggestedStartDate && (
+                  <p className="mt-1 text-xs text-blue-600 dark:text-blue-300">
+                    Suggested start date (based on due date): {new Date(suggestedStartDate).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -777,6 +784,21 @@ function startedDateDisplay(started: string | null | undefined, status: string):
   if (isNaN(d.getTime())) return null
   const dateStr = d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
   return <span className="text-[10px] text-emerald-500 dark:text-emerald-400">Task started: {dateStr}</span>
+}
+
+function estTaskWindowDisplay(plannedStart: string | null | undefined, due: string | null | undefined): React.ReactNode {
+  if (!plannedStart && !due) return null
+  const fmt = (v?: string | null) => {
+    if (!v) return '—'
+    const d = new Date(v)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short' })
+  }
+  return (
+    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+      Est: {fmt(plannedStart)} → {fmt(due)}
+    </span>
+  )
 }
 
 function reviewCardStyle(task: { status: string; review_count: number; is_blocked?: boolean }): string {
@@ -1364,6 +1386,7 @@ export default function TeamKanbanBoard() {
                                 {contextLine(task)}
                                 <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
                                 <AssigneeInitials assignees={task.assignees} />
+                                <div className="mt-1">{estTaskWindowDisplay(task.planned_start ?? null, task.due_date)}</div>
                                 {task.status === 'InProgress' && task.actual_start && (
                                   <div className="mt-1">{startedDateDisplay(task.actual_start, task.status)}</div>
                                 )}
@@ -1503,6 +1526,7 @@ export default function TeamKanbanBoard() {
                                 {contextLine(task)}
                                 <p className="text-xs text-slate-400 truncate">{task.context.project?.title ?? 'No Project Link'}</p>
                                 <AssigneeInitials assignees={task.assignees} />
+                                <div className="mt-1">{estTaskWindowDisplay(task.planned_start ?? null, task.due_date)}</div>
 
                                 {/* Dates */}
                                 {task.status === 'InProgress' && task.actual_start && (
@@ -1623,6 +1647,7 @@ export default function TeamKanbanBoard() {
             featureTitle={activeTask.context.title}
             projectTitle={activeTask.context.project?.title ?? 'No Project Link'}
             createdByName={activeTask.created_by_name ?? null}
+            taskPlannedStartDate={activeTask.planned_start ?? null}
             dueDate={activeTask.due_date}
             deliverablePlannedStart={activeTask.deliverable_planned_start ?? null}
             deliverablePlannedEnd={activeTask.deliverable_planned_end ?? null}

@@ -25,6 +25,7 @@ interface Props {
   featureTitle: string | null
   projectTitle: string | null
   createdByName?: string | null
+  taskPlannedStartDate?: string | null
   dueDate?: string | null
   deliverablePlannedStart?: string | null
   deliverablePlannedEnd?: string | null
@@ -127,6 +128,7 @@ export default function TaskUpdateModal({
   featureTitle,
   projectTitle,
   createdByName,
+  taskPlannedStartDate,
   dueDate,
   deliverablePlannedStart,
   deliverablePlannedEnd,
@@ -478,6 +480,9 @@ export default function TaskUpdateModal({
     deliverableBudgetMandays != null && deliverableUsedMandays != null
       ? deliverableBudgetMandays - deliverableUsedMandays
       : null
+  const taskPlannedStartLabel = taskPlannedStartDate
+    ? new Date(taskPlannedStartDate).toLocaleDateString('en-GB')
+    : '—'
   const dueDateLabel = dueDate
     ? new Date(dueDate).toLocaleDateString('en-GB')
     : '—'
@@ -533,6 +538,8 @@ export default function TaskUpdateModal({
             <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 break-words">{deliverableProjectLine || '—'}</p>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 break-words">
               <span className="font-medium">Deliv Planned:</span> <span className="text-slate-700 dark:text-slate-200">{plannedStartLabel} / {plannedDueLabel}</span>
+              <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
+              <span className="font-medium">Task Est:</span> <span className="text-slate-700 dark:text-slate-200">{taskPlannedStartLabel} / {dueDateLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>
               <span className="font-medium">Remaining/Budget MD:</span> <span className={`${remainingMandays != null && remainingMandays < 0 ? 'text-red-500 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{remainingLabel} / {budgetLabel}</span>
               <span className="mx-1 text-slate-300 dark:text-slate-600">&gt;</span>

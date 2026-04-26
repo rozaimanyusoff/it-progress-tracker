@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     title,
     description,
     assignee_ids,
+    planned_start,
     due_date,
     est_mandays,
     priority,
@@ -100,18 +101,21 @@ export async function POST(req: NextRequest) {
   })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
-  // Task due date is task-level for both linked and standalone tasks.
-  // For linked tasks, fall back to deliverable planned_end when due_date is not provided.
+  // Task estimated dates are task-level for both linked and standalone tasks.
+  // For linked tasks, fall back to deliverable planned_start/planned_end when values are not provided.
+  let resolvedPlannedStart: Date | null = null
   let resolvedDueDate: Date | null = null
   let resolvedPriority: string = priority || 'medium'
   if (deliverable_id) {
     const deliv = await prisma.deliverable.findUnique({
       where: { id: Number(deliverable_id) },
-      select: { planned_end: true },
+      select: { planned_start: true, planned_end: true },
     })
+    resolvedPlannedStart = planned_start ? new Date(planned_start) : (deliv?.planned_start ?? null)
     resolvedDueDate = due_date ? new Date(due_date) : (deliv?.planned_end ?? null)
-  } else if (due_date) {
-    resolvedDueDate = new Date(due_date)
+  } else {
+    if (planned_start) resolvedPlannedStart = new Date(planned_start)
+    if (due_date) resolvedDueDate = new Date(due_date)
   }
 
   const relationData: { feature_id?: number; deliverable_id?: number } = {}
@@ -129,6 +133,7 @@ export async function POST(req: NextRequest) {
       order: nextOrder,
       is_predefined: false,
       status: 'Todo',
+      planned_start: resolvedPlannedStart,
       due_date: resolvedDueDate,
       est_mandays: est_mandays != null ? est_mandays : null,
       priority: resolvedPriority as any,

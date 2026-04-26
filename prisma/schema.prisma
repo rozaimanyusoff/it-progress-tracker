@@ -342,6 +342,7 @@ model Task {
   time_spent_seconds Int           @default(0)
   review_count       Int           @default(0)
   created_at         DateTime      @default(now())
+  planned_start      DateTime?
   due_date           DateTime?
   est_mandays        Decimal?      @db.Decimal(4, 1)
   actual_mandays     Decimal?      @db.Decimal(4, 1)

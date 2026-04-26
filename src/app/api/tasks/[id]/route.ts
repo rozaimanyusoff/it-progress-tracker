@@ -163,6 +163,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.dev_scope !== undefined) updateData.dev_scope = body.dev_scope || null
   if (body.dev_task !== undefined) updateData.dev_task = body.dev_task || null
   if (body.order !== undefined) updateData.order = Number(body.order)
+  if (body.planned_start !== undefined) updateData.planned_start = body.planned_start ? new Date(body.planned_start) : null
   if (body.due_date !== undefined) updateData.due_date = body.due_date ? new Date(body.due_date) : null
   if (body.actual_start !== undefined) updateData.actual_start = body.actual_start ? new Date(body.actual_start) : null
   if (body.actual_end !== undefined && user.role === 'manager') {

@@ -23,6 +23,7 @@ interface Task {
   is_predefined: boolean
   assignees: TaskAssignee[]
   due_date: string | null
+  planned_start: string | null
   actual_start: string | null
   actual_end: string | null
   actual_mandays: number | null
@@ -308,6 +309,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     title: '',
     description: '',
     assigneeIds: [] as number[],
+    planned_start: deliverablePlannedStart ? deliverablePlannedStart.slice(0, 10) : '',
     due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
     priority: 'medium',
     est_mandays: '',
@@ -326,7 +328,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   const [selectedScope, setSelectedScope] = useState('')
   const [selectedSpecificTask, setSelectedSpecificTask] = useState('')
   const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', description: '', assigneeIds: [] as number[], est_mandays: '', due_date: '', priority: 'medium', actual_start: '', actual_end: '' })
+  const [editForm, setEditForm] = useState({ title: '', description: '', assigneeIds: [] as number[], est_mandays: '', planned_start: '', due_date: '', priority: 'medium', actual_start: '', actual_end: '' })
   const [editSelectedCategory, setEditSelectedCategory] = useState('')
   const [editSelectedScope, setEditSelectedScope] = useState('')
   const [editSelectedSpecificTask, setEditSelectedSpecificTask] = useState('')
@@ -345,9 +347,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   useEffect(() => {
     setNewTask(prev => ({
       ...prev,
+      planned_start: deliverablePlannedStart ? deliverablePlannedStart.slice(0, 10) : '',
       due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
     }))
-  }, [deliverablePlannedEnd])
+  }, [deliverablePlannedStart, deliverablePlannedEnd])
 
   useEffect(() => {
     if ((!showAddTask && !editingTask) || !deliverableId) return
@@ -441,6 +444,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       description: (task as any).description ?? '',
       assigneeIds: task.assignees.map(a => a.user.id),
       est_mandays: task.est_mandays != null ? String(task.est_mandays) : '',
+      planned_start: task.planned_start ? task.planned_start.slice(0, 10) : '',
       due_date: task.due_date ? task.due_date.slice(0, 10) : '',
       priority: task.priority ?? 'medium',
       actual_start: task.actual_start ? task.actual_start.slice(0, 10) : '',
@@ -457,6 +461,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     if (!editingTask) return
     const cleanedDetails = editForm.description.trim()
     if (!cleanedDetails) { setEditTaskError('Specific Tasks Details is required.'); return }
+    if (editForm.planned_start && editForm.due_date && editForm.planned_start > editForm.due_date) {
+      setEditTaskError('Est. task start date cannot be after est. task due date.')
+      return
+    }
     if (!editForm.est_mandays || Number(editForm.est_mandays) <= 0) {
       setEditTaskError('Est. mandays is required.')
       return
@@ -483,6 +491,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       dev_task: editSelectedTaskLabel.trim() || null,
       assignee_ids: editForm.assigneeIds,
       est_mandays: editForm.est_mandays !== '' ? Number(editForm.est_mandays) : null,
+      planned_start: editForm.planned_start || null,
       due_date: editForm.due_date || null,
       priority: editForm.priority,
     }
@@ -537,6 +546,10 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       setAddTaskError('Specific Tasks Details is required.')
       return
     }
+    if (newTask.planned_start && newTask.due_date && newTask.planned_start > newTask.due_date) {
+      setAddTaskError('Est. task start date cannot be after est. task due date.')
+      return
+    }
     const resolvedTitle = cleanedDetails.split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || 'Task'
     const devCategoryRef = selectedCategory.trim() || null
     const devScopeRef = selectedScope.trim() || null
@@ -572,6 +585,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
         dev_scope: devScopeRef,
         dev_task: devTaskRef,
         assignee_ids: resolvedIds,
+        planned_start: newTask.planned_start || null,
         due_date: newTask.due_date || null,
         priority: newTask.priority,
         est_mandays: newTask.est_mandays ? Number(newTask.est_mandays) : null,
@@ -584,6 +598,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
         title: '',
         description: '',
         assigneeIds: [],
+        planned_start: deliverablePlannedStart ? deliverablePlannedStart.slice(0, 10) : '',
         due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '',
         priority: 'medium',
         est_mandays: '',
@@ -602,10 +617,14 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
   const showMdWarning = deliverableMandays != null && deliverableMandays > 0 && totalTaskMd > deliverableMandays
 
   const delivPlannedEndDate = deliverablePlannedEnd ? new Date(deliverablePlannedEnd) : null
+  const newStartDateValue = newTask.planned_start ? new Date(newTask.planned_start) : null
   const newDueDateValue = newTask.due_date ? new Date(newTask.due_date) : null
   const newDueDateWarning = delivPlannedEndDate && newDueDateValue && newDueDateValue > delivPlannedEndDate
+  const newDateRangeWarning = newStartDateValue && newDueDateValue && newStartDateValue > newDueDateValue
+  const editStartDateValue = editForm.planned_start ? new Date(editForm.planned_start) : null
   const editDueDateValue = editForm.due_date ? new Date(editForm.due_date) : null
   const editDueDateWarning = delivPlannedEndDate && editDueDateValue && editDueDateValue > delivPlannedEndDate
+  const editDateRangeWarning = editStartDateValue && editDueDateValue && editStartDateValue > editDueDateValue
   const selectedCategoryNode = presetCatalog.find(c => c.category === selectedCategory)
   const scopeOptions = selectedCategoryNode?.scopes ?? []
   const selectedScopeNode = scopeOptions.find(s => s.scope === selectedScope)
@@ -726,7 +745,8 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
               </th>
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Assignees</th>
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Est. md</th>
-              <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Due Date</th>
+              <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Est. Start</th>
+              <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Est. Due</th>
               <th className="px-3 py-2 text-xs font-medium text-slate-500 dark:text-slate-400">Status</th>
               <th className="px-3 py-2 w-20"></th>
             </tr>
@@ -820,6 +840,15 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
 
                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400 text-xs">
                   {task.est_mandays != null ? task.est_mandays : '—'}
+                </td>
+                <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  {task.planned_start ? (
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {new Date(task.planned_start).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: '2-digit' })}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {task.due_date ? (
@@ -935,7 +964,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       setSelectedCategory('')
                       setSelectedScope('')
                       setSelectedSpecificTask('')
-                      setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
+                      setNewTask({ title: '', description: '', assigneeIds: [], planned_start: deliverablePlannedStart ? deliverablePlannedStart.slice(0, 10) : '', due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                     }}
                     className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                   >
@@ -1074,6 +1103,43 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={newTask.planned_start}
+                        onChange={e => {
+                          setAddTaskError('')
+                          const startDate = e.target.value
+                          setNewTask(p => ({ ...p, planned_start: startDate }))
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={newTask.due_date}
+                        onChange={e => {
+                          setAddTaskError('')
+                          const dueDate = e.target.value
+                          setNewTask(p => ({
+                            ...p,
+                            due_date: dueDate,
+                            est_mandays: estimateMandaysFromDueDate(dueDate, p.planned_start || deliverablePlannedStart, projectStart) || p.est_mandays,
+                          }))
+                        }}
+                      />
+                      {newDueDateWarning && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
+                      )}
+                      {newDateRangeWarning && (
+                        <p className="text-xs text-red-500 dark:text-red-400 mt-1">Start date cannot be after due date</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays *</label>
                       <input
                         type="number"
@@ -1107,27 +1173,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                           </div>
                         )
                       })()}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
-                      <input
-                        type="date"
-                        className={`${inputClass} w-full`}
-                        value={newTask.due_date}
-                        onChange={e => {
-                          setAddTaskError('')
-                          const dueDate = e.target.value
-                          setNewTask(p => ({
-                            ...p,
-                            due_date: dueDate,
-                            est_mandays: estimateMandaysFromDueDate(dueDate, deliverablePlannedStart, projectStart) || p.est_mandays,
-                          }))
-                        }}
-                      />
-                      {newDueDateWarning && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
-                      )}
-                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
@@ -1156,7 +1201,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         setSelectedCategory('')
                         setSelectedScope('')
                         setSelectedSpecificTask('')
-                        setNewTask({ title: '', description: '', assigneeIds: [], due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
+                        setNewTask({ title: '', description: '', assigneeIds: [], planned_start: deliverablePlannedStart ? deliverablePlannedStart.slice(0, 10) : '', due_date: deliverablePlannedEnd ? deliverablePlannedEnd.slice(0, 10) : '', priority: 'medium', est_mandays: '' })
                       }}
                       className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                     >
@@ -1314,6 +1359,39 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Start Date</label>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={editForm.planned_start}
+                        onChange={e => { setEditTaskError(''); setEditForm(f => ({ ...f, planned_start: e.target.value })) }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
+                      <input
+                        type="date"
+                        className={`${inputClass} w-full`}
+                        value={editForm.due_date}
+                        onChange={e => {
+                          setEditTaskError('')
+                          const dueDate = e.target.value
+                          setEditForm(f => ({
+                            ...f,
+                            due_date: dueDate,
+                            est_mandays: estimateMandaysFromDueDate(dueDate, f.planned_start || deliverablePlannedStart, projectStart) || f.est_mandays,
+                          }))
+                        }}
+                      />
+                      {editDueDateWarning && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
+                      )}
+                      {editDateRangeWarning && (
+                        <p className="text-xs text-red-500 dark:text-red-400 mt-1">Start date cannot be after due date</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Mandays</label>
                       <input
                         type="number"
@@ -1347,27 +1425,6 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                           </div>
                         )
                       })()}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Est. Task Due Date</label>
-                      <input
-                        type="date"
-                        className={`${inputClass} w-full`}
-                        value={editForm.due_date}
-                        onChange={e => {
-                          setEditTaskError('')
-                          const dueDate = e.target.value
-                          setEditForm(f => ({
-                            ...f,
-                            due_date: dueDate,
-                            est_mandays: estimateMandaysFromDueDate(dueDate, deliverablePlannedStart, projectStart) || f.est_mandays,
-                          }))
-                        }}
-                      />
-                      {editDueDateWarning && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Exceeds deliverable end date</p>
-                      )}
-                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Priority</label>
