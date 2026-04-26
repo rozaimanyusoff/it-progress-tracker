@@ -100,8 +100,8 @@ export async function POST(req: NextRequest) {
   })
   const nextOrder = (maxOrderResult._max.order ?? 0) + 1
 
-  // Linked tasks inherit due date from deliverable, but priority is task-level.
-  // Standalone tasks can define due date / priority manually.
+  // Task due date is task-level for both linked and standalone tasks.
+  // For linked tasks, fall back to deliverable planned_end when due_date is not provided.
   let resolvedDueDate: Date | null = null
   let resolvedPriority: string = priority || 'medium'
   if (deliverable_id) {
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       where: { id: Number(deliverable_id) },
       select: { planned_end: true },
     })
-    resolvedDueDate = deliv?.planned_end ?? null
+    resolvedDueDate = due_date ? new Date(due_date) : (deliv?.planned_end ?? null)
   } else if (due_date) {
     resolvedDueDate = new Date(due_date)
   }

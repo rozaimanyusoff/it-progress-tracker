@@ -289,16 +289,16 @@ function DeliverableRow({
           {/* Actual bar */}
           {actualStyle && color && (
             <div
-              className={`absolute ${color} rounded-sm flex items-center transition-all duration-100 hover:brightness-125 hover:scale-y-125 origin-center cursor-pointer`}
+              className={`absolute group/actual ${color} rounded-sm flex items-center transition-all duration-100 hover:brightness-125 hover:scale-y-125 origin-center cursor-pointer`}
               style={{ ...actualStyle, top: 22, height: 12 }}
-              title={[
-                `Actual: ${deliverable.actual_start ? new Date(deliverable.actual_start).toLocaleDateString('en-GB') : 'Not started'} → ${deliverable.actual_end ? new Date(deliverable.actual_end).toLocaleDateString('en-GB') : 'In progress'}`,
-                `Date Variance: ${dateVariance > 0 ? `+${dateVariance} day(s) late` : dateVariance < 0 ? `${dateVariance} day(s) early` : 'On schedule'}`,
-                `Actual Duration: ${mdActualDays} day(s)`,
-                `MD Variance: ${deliverable.actual_start ? (mdVariance > 0 ? `+${mdVariance}` : `${mdVariance}`) : '—'}`,
-              ].join('\n')}
             >
               <span className="text-xs px-1 truncate text-white select-none" style={{ fontSize: 9 }}>Actual</span>
+              <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-72 px-2 py-1 bg-slate-800 dark:bg-navy-900 text-white text-[11px] rounded-md invisible group-hover/actual:visible z-50 shadow-lg">
+                <p>Actual: {deliverable.actual_start ? new Date(deliverable.actual_start).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not started'} → {deliverable.actual_end ? new Date(deliverable.actual_end).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'In progress'}</p>
+                <p>Date Variance: {dateVariance > 0 ? `+${dateVariance} day(s) late` : dateVariance < 0 ? `${dateVariance} day(s) early` : 'On schedule'}</p>
+                <p>Actual Duration: {mdActualDays} day(s)</p>
+                <p>MD Variance: {deliverable.actual_start ? (mdVariance > 0 ? `+${mdVariance}` : `${mdVariance}`) : '—'}</p>
+              </div>
             </div>
           )}
           {overrunStyle && (
