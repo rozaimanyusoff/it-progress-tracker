@@ -8,11 +8,12 @@ interface Props {
   projectId: number
   projectTitle: string
   userRole: string
+  canManage?: boolean
   projectStartDate: string
   projectDeadline: string
 }
 
-export default function DeliverableSidebar({ projectId, projectTitle, userRole, projectStartDate, projectDeadline }: Props) {
+export default function DeliverableSidebar({ projectId, projectTitle, userRole, canManage = false, projectStartDate, projectDeadline }: Props) {
   const [open, setOpen] = useState(false)
 
   // Lock body scroll when open
@@ -88,6 +89,7 @@ export default function DeliverableSidebar({ projectId, projectTitle, userRole, 
               projectId={projectId}
               projectTitle={projectTitle}
               userRole={userRole}
+              canManage={canManage}
               projectStartDate={projectStartDate}
               projectDeadline={projectDeadline}
             />

@@ -26,22 +26,40 @@ export async function GET(req: NextRequest) {
   const projectIds = projects.map((p: { id: number }) => p.id)
   const orConditions: any[] = []
   if (projectIds.length > 0) {
-    const assigneeFilter = { assignees: { some: { user_id: Number(user.id) } } }
-    orConditions.push(
-      {
-        ...assigneeFilter,
-        feature: {
-          project_links: { some: { project_id: { in: projectIds } } },
-          ...(featureId ? { id: Number(featureId) } : {}),
+    if (user.role === 'manager') {
+      // Managers see ALL tasks in their projects (no assignee filter)
+      orConditions.push(
+        {
+          feature: {
+            project_links: { some: { project_id: { in: projectIds } } },
+            ...(featureId ? { id: Number(featureId) } : {}),
+          },
         },
-      },
-      {
-        ...assigneeFilter,
-        deliverable: {
-          project_id: { in: projectIds },
+        {
+          deliverable: {
+            project_id: { in: projectIds },
+          },
+        }
+      )
+    } else {
+      // Non-managers only see tasks assigned to them
+      const assigneeFilter = { assignees: { some: { user_id: Number(user.id) } } }
+      orConditions.push(
+        {
+          ...assigneeFilter,
+          feature: {
+            project_links: { some: { project_id: { in: projectIds } } },
+            ...(featureId ? { id: Number(featureId) } : {}),
+          },
         },
-      }
-    )
+        {
+          ...assigneeFilter,
+          deliverable: {
+            project_id: { in: projectIds },
+          },
+        }
+      )
+    }
   }
   if (!projectId) {
     // Include standalone tasks (no project link) assigned to current user.

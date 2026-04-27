@@ -38,6 +38,7 @@ interface Props {
   projectId: number
   projectTitle: string
   userRole: string
+  canManage?: boolean
   projectStartDate: string
   projectDeadline: string
 }
@@ -126,6 +127,7 @@ function taskProgress(tasks: Task[]) {
 function DeliverableCard({
   deliverable,
   userRole,
+  canManage = false,
   members,
   expandedId,
   setExpandedId,
@@ -140,6 +142,7 @@ function DeliverableCard({
 }: {
   deliverable: Deliverable
   userRole: string
+  canManage?: boolean
   members: Member[]
   expandedId: number | null
   setExpandedId: (id: number | null) => void
@@ -215,7 +218,7 @@ function DeliverableCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {userRole === 'manager' && (
+            {canManage && (
               <>
                 <div className="flex flex-col gap-0.5">
                   <button
@@ -260,6 +263,7 @@ function DeliverableCard({
             projectStart={projectStartDate ?? null}
             projectDeadline={projectDeadline ?? null}
             userRole={userRole}
+            canManage={canManage}
             developers={members.map(m => ({ user: m }))}
           />
         </div>
@@ -268,7 +272,7 @@ function DeliverableCard({
   )
 }
 
-export default function DeliverableSection({ projectId, projectTitle, userRole, projectStartDate, projectDeadline }: Props) {
+export default function DeliverableSection({ projectId, projectTitle, userRole, canManage = false, projectStartDate, projectDeadline }: Props) {
   const router = useRouter()
   const projMin = toInputDate(projectStartDate)
   const projMax = toInputDate(projectDeadline)
@@ -552,7 +556,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
           )}
         </div>
 
-        <button onClick={openAddDeliv} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg">
+        <button onClick={openAddDeliv} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg" style={{ display: canManage ? undefined : 'none' }}>
           + Add Deliverable
         </button>
       </div>
@@ -568,6 +572,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
               key={d.id}
               deliverable={d}
               userRole={userRole}
+              canManage={canManage}
               members={members}
               expandedId={expandedId}
               setExpandedId={setExpandedId}
@@ -699,7 +704,7 @@ export default function DeliverableSection({ projectId, projectTitle, userRole, 
                 </div>
               </div>
 
-              {editingDeliv && userRole === 'manager' && (
+              {editingDeliv && canManage && (
                 <div className="rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50/40 dark:bg-blue-900/10 p-3">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Actual Dates (PM Override)</p>

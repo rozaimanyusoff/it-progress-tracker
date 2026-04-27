@@ -48,6 +48,7 @@ interface Props {
   projectStart?: string | null
   projectDeadline?: string | null
   userRole: string
+  canManage?: boolean
   developers: Developer[]
 }
 
@@ -297,7 +298,7 @@ function AssigneeCheckList({
   )
 }
 
-export default function FeatureTaskList({ featureId, deliverableId, deliverableTitle, deliverableMandays, deliverablePlannedStart, deliverablePlannedEnd, projectStart, projectDeadline, userRole, developers }: Props) {
+export default function FeatureTaskList({ featureId, deliverableId, deliverableTitle, deliverableMandays, deliverablePlannedStart, deliverablePlannedEnd, projectStart, projectDeadline, userRole, canManage = false, developers }: Props) {
   const STANDALONE = ''
   const router = useRouter()
   const { data: session } = useSession()
@@ -818,7 +819,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
 
                 {/* Assignee cell */}
                 <td className="px-3 py-2">
-                  {userRole === 'manager' ? (
+                  {(userRole === 'manager' || canManage) ? (
                     <AssigneePicker
                       value={task.assignees.map(a => a.user)}
                       options={assigneeOptions}
@@ -869,7 +870,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  {userRole === 'manager' ? (
+                  {(userRole === 'manager' || canManage) ? (
                     <select
                       className={`${inputClass} text-xs`}
                       value={task.status}
@@ -906,7 +907,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         {task.is_blocked || task.status === 'Blocked' ? '✓' : '🚫'}
                       </button>
                     )}
-                    {userRole === 'manager' ? (
+                    {(userRole === 'manager' || canManage) ? (
                       <>
                         <button
                           onClick={() => openEditTask(task)}

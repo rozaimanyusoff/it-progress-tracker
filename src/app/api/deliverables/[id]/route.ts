@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getRolePreferences } from '@/lib/role-prefs'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -38,7 +39,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const isManager = user.role === 'manager'
+  if (!isManager) {
+    const rolePerms = await getRolePreferences()
+    const perms = rolePerms[user.role] ?? {}
+    if (!perms.update) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const body = await req.json()
   const { title, description, mandays, status, priority, planned_start, planned_end, actual_start, actual_end, is_actual_override, order } = body
@@ -110,7 +116,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const isManager = user.role === 'manager'
+  if (!isManager) {
+    const rolePerms = await getRolePreferences()
+    const perms = rolePerms[user.role] ?? {}
+    if (!perms.delete) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const deliverableId = Number(id)
 

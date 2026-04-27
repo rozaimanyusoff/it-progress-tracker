@@ -8,6 +8,7 @@ import ProjectDetailCard from '@/components/ProjectDetailCard'
 import DeveloperAnalytics from '@/components/DeveloperAnalytics'
 import DeliverableSidebar from '@/components/DeliverableSidebar'
 import ProjectNavBar from '@/components/ProjectNavBar'
+import { getRolePreferences } from '@/lib/role-prefs'
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -27,9 +28,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   // Fetch sibling projects for the nav bar (lightweight)
   const user = session.user as any
   const siblingProjects = await prisma.project.findMany({
-    where: user.role === 'manager'
-      ? {}
-      : { assignees: { some: { user_id: Number(user.id) } } },
+    where: {},
     select: {
       id: true,
       title: true,
@@ -44,7 +43,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const siblingIds = siblingProjects.map(p => p.id)
   const siblingTaskCounts = siblingIds.length > 0
     ? await prisma.$queryRaw<SiblingTaskCount[]>(
-        Prisma.sql`
+      Prisma.sql`
           SELECT d.project_id, COUNT(t.id) AS total,
                  COUNT(CASE WHEN t.status = 'Done' THEN 1 END) AS done
           FROM "Deliverable" d
@@ -52,7 +51,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           WHERE d.project_id = ANY(ARRAY[${Prisma.join(siblingIds)}]::int[])
           GROUP BY d.project_id
         `
-      )
+    )
     : []
   const siblingTaskMap = new Map(siblingTaskCounts.map(r => [Number(r.project_id), r]))
   const navProjects = siblingProjects.map(p => {
@@ -170,6 +169,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         projectId={project.id}
         projectTitle={project.title}
         userRole={(session.user as any).role}
+        canManage={await (async () => {
+          const u = session.user as any
+          if (u.role === 'manager') return true
+          const rolePerms = await getRolePreferences()
+          return Boolean(rolePerms[u.role]?.update)
+        })()}
         projectStartDate={project.start_date.toISOString()}
         projectDeadline={project.deadline.toISOString()}
       />

@@ -144,8 +144,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Members can only update tasks they are assigned to; only managers can mark Done
-  if (user.role === 'member') {
+  // Non-managers can only update tasks they are assigned to; only managers can mark Done
+  if (user.role !== 'manager') {
     const isAssigned = existing.assignees.some((a) => a.user_id === Number(user.id))
     if (!isAssigned) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

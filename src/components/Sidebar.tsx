@@ -31,17 +31,28 @@ export default function Sidebar({ open = false, onClose }: Props) {
   const [counts, setCounts] = useState<{ kanban: number; issues: number; planner: number; projects: number } | null>(null)
   const [branding, setBranding] = useState<{ brand_name: string; brand_logo_url: string } | null>(null)
   const [userProfile, setUserProfile] = useState<{ initials: string | null; avatar_url: string | null } | null>(null)
+  const [rolePrefs, setRolePrefs] = useState<Record<string, { view: boolean }>>({})
 
   useEffect(() => setMounted(true), [])
 
   useEffect(() => {
     if (!session) return
     fetch('/api/counts').then(r => r.json()).then(setCounts).catch(() => { })
-    fetch('/api/settings').then(r => r.json()).then(s => setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url })).catch(() => { })
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      setBranding({ brand_name: s.brand_name, brand_logo_url: s.brand_logo_url })
+      if (s.role_preferences && typeof s.role_preferences === 'object') {
+        setRolePrefs(s.role_preferences)
+      }
+    }).catch(() => { })
     fetch('/api/profile').then(r => r.json()).then(p => setUserProfile({ initials: p.initials ?? null, avatar_url: p.avatar_url ?? null })).catch(() => { })
   }, [session])
 
-  const filtered = navItems.filter(item => item.roles.includes(role))
+  // Custom roles (not manager/member) use role_preferences to determine nav visibility.
+  // If their role has view:true, they get the same nav items as 'member'.
+  const effectiveNavRole = (role !== 'manager' && role !== 'member' && rolePrefs[role]?.view)
+    ? 'member'
+    : role
+  const filtered = navItems.filter(item => item.roles.includes(effectiveNavRole))
 
   return (
     <aside

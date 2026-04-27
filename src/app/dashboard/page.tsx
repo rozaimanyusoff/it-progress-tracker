@@ -13,9 +13,7 @@ export default async function DashboardPage() {
   const user = session.user as any
 
   const projects = await prisma.project.findMany({
-    where: user.role === 'manager'
-      ? {}
-      : { assignees: { some: { user_id: Number(user.id) } } },
+    where: {},
     include: {
       assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
       updates: { orderBy: { created_at: 'desc' }, take: 1 },
@@ -34,7 +32,7 @@ export default async function DashboardPage() {
   const projectIds = projects.map(p => p.id)
   const taskCounts = projectIds.length > 0
     ? await prisma.$queryRaw<TaskCount[]>(
-        Prisma.sql`
+      Prisma.sql`
           SELECT d.project_id, COUNT(t.id) AS total,
                  COUNT(CASE WHEN t.status = 'Done' THEN 1 END) AS done
           FROM "Deliverable" d
@@ -42,7 +40,7 @@ export default async function DashboardPage() {
           WHERE d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
           GROUP BY d.project_id
         `
-      )
+    )
     : []
 
   const taskMap = new Map(taskCounts.map(r => [Number(r.project_id), r]))
@@ -53,8 +51,8 @@ export default async function DashboardPage() {
 
   const [monthlyAssignedRows, monthlyCompletedRows] = projectIds.length > 0
     ? await Promise.all([
-        prisma.$queryRaw<MonthlyAssigned[]>(
-          Prisma.sql`
+      prisma.$queryRaw<MonthlyAssigned[]>(
+        Prisma.sql`
             SELECT d.project_id,
                    TO_CHAR(DATE_TRUNC('month', COALESCE(t.due_date, t.created_at)), 'YYYY-MM') AS month,
                    COUNT(t.id) AS assigned
@@ -63,9 +61,9 @@ export default async function DashboardPage() {
             WHERE d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
             GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.due_date, t.created_at))
           `
-        ),
-        prisma.$queryRaw<MonthlyCompleted[]>(
-          Prisma.sql`
+      ),
+      prisma.$queryRaw<MonthlyCompleted[]>(
+        Prisma.sql`
             SELECT d.project_id,
                    TO_CHAR(DATE_TRUNC('month', COALESCE(t.completed_at, t.actual_end, t.status_updated_at)), 'YYYY-MM') AS month,
                    COUNT(t.id) AS completed
@@ -76,8 +74,8 @@ export default async function DashboardPage() {
               AND d.project_id = ANY(ARRAY[${Prisma.join(projectIds)}]::int[])
             GROUP BY d.project_id, DATE_TRUNC('month', COALESCE(t.completed_at, t.actual_end, t.status_updated_at))
           `
-        ),
-      ])
+      ),
+    ])
     : [[], []]
 
   const monthlyAssignedMap = new Map<number, Map<string, number>>()
@@ -116,18 +114,18 @@ export default async function DashboardPage() {
 
   const tasks = projectIds.length > 0
     ? await prisma.task.findMany({
-        where: {
-          deliverable: { project_id: { in: projectIds } },
-        },
-        select: {
-          created_at: true,
-          due_date: true,
-          status: true,
-          actual_end: true,
-          completed_at: true,
-          deliverable: { select: { project_id: true } },
-        },
-      })
+      where: {
+        deliverable: { project_id: { in: projectIds } },
+      },
+      select: {
+        created_at: true,
+        due_date: true,
+        status: true,
+        actual_end: true,
+        completed_at: true,
+        deliverable: { select: { project_id: true } },
+      },
+    })
     : []
 
   const tasksByProject = new Map<number, typeof tasks>()
@@ -233,22 +231,22 @@ export default async function DashboardPage() {
 
   const teamTasks = assignedProjectIds.length > 0
     ? await prisma.task.findMany({
-        where: {
-          assignees: { some: { user_id: Number(user.id) } },
-          OR: [
-            { deliverable: { project_id: { in: assignedProjectIds } } },
-            { feature: { project_links: { some: { project_id: { in: assignedProjectIds } } } } },
-          ],
-        },
-        select: {
-          status: true,
-          due_date: true,
-          actual_end: true,
-          completed_at: true,
-          est_mandays: true,
-          is_blocked: true,
-        },
-      })
+      where: {
+        assignees: { some: { user_id: Number(user.id) } },
+        OR: [
+          { deliverable: { project_id: { in: assignedProjectIds } } },
+          { feature: { project_links: { some: { project_id: { in: assignedProjectIds } } } } },
+        ],
+      },
+      select: {
+        status: true,
+        due_date: true,
+        actual_end: true,
+        completed_at: true,
+        est_mandays: true,
+        is_blocked: true,
+      },
+    })
     : []
 
   const teamDoneTasks = teamTasks.filter((t) => t.status === 'Done').length
