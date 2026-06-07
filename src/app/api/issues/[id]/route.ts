@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
   const userId = Number(user.id)
-  const isManager = user.role === 'manager'
+  const isManager = user.role === 'admin'
 
   const body = await req.json()
   const data: any = {}

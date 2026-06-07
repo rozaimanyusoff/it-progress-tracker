@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import GanttChart from './GanttChart'
 import BurndownChart from './BurndownChart'
+import SCurveChart from './SCurveChart'
 import ProjectActions from './ProjectActions'
 
 interface GanttTask {
@@ -54,6 +55,7 @@ interface ProjectDetailCardProps {
    ganttDeliverables: GanttDeliverable[]
    ganttModules: GanttModule[]
    openIssueCount?: number
+   progressUpdates?: { progress_pct: number; created_at: string }[]
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -70,7 +72,7 @@ const STATUS_COLORS: Record<string, string> = {
    Pending: 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600',
 }
 
-type ViewTab = 'gantt' | 'burndown' | 'milestone'
+type ViewTab = 'gantt' | 'burndown' | 'milestone' | 'scurve'
 
 const STATUS_BADGE: Record<string, string> = {
    Pending: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
@@ -118,6 +120,7 @@ export default function ProjectDetailCard({
    ganttDeliverables,
    ganttModules,
    openIssueCount = 0,
+   progressUpdates = [],
 }: ProjectDetailCardProps) {
    const [exporting, setExporting] = useState(false)
    const [activeTab, setActiveTab] = useState<ViewTab>('gantt')
@@ -280,7 +283,7 @@ export default function ProjectDetailCard({
 
          {/* View tabs */}
          <div className="border-t border-slate-200 dark:border-navy-700 px-6 pt-3 pb-0 flex items-center gap-1">
-            {(['gantt', 'burndown', 'milestone'] as ViewTab[]).map(tab => (
+            {(['gantt', 'burndown', 'milestone', 'scurve'] as ViewTab[]).map(tab => (
                <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -290,7 +293,7 @@ export default function ProjectDetailCard({
                         : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                >
-                  {tab === 'gantt' ? 'Gantt Chart' : tab === 'burndown' ? 'Burndown Chart' : 'Milestone'}
+                  {tab === 'gantt' ? 'Gantt Chart' : tab === 'burndown' ? 'Burndown Chart' : tab === 'milestone' ? 'Milestone' : 'S-Curve'}
                </button>
             ))}
          </div>
@@ -314,6 +317,17 @@ export default function ProjectDetailCard({
             <div className="border-t border-slate-200 dark:border-navy-700">
                <BurndownChart
                   tasks={allTasks}
+                  projectStart={project.start_date}
+                  projectDeadline={project.deadline}
+               />
+            </div>
+         )}
+
+         {activeTab === 'scurve' && (
+            <div className="border-t border-slate-200 dark:border-navy-700">
+               <SCurveChart
+                  tasks={allTasks}
+                  progressUpdates={progressUpdates}
                   projectStart={project.start_date}
                   projectDeadline={project.deadline}
                />

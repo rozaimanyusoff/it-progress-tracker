@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 // PATCH /api/org/[id]  { type, name }
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
    const session = await getServerSession(authOptions)
-   if (!session || (session.user as any).role !== 'manager') {
+   if (!session || (session.user as any).role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
    }
 
@@ -37,7 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 // DELETE /api/org/[id]?type=unit|dept|company
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
    const session = await getServerSession(authOptions)
-   if (!session || (session.user as any).role !== 'manager') {
+   if (!session || (session.user as any).role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
    }
 

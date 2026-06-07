@@ -570,7 +570,7 @@ interface AssignedIssue {
 // ── Main Board ────────────────────────────────────────────────────
 export default function KanbanBoard() {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'manager'
+  const isManager = (session?.user as any)?.role === 'admin'
   const [allTasks, setAllTasks] = useState<Task[]>([])
   const [assignedIssues, setAssignedIssues] = useState<AssignedIssue[]>([])
   const [loading, setLoading] = useState(true)

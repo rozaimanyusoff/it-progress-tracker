@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import Sidebar from './Sidebar'
+import ThemeSync from './ThemeSync'
 import { Menu } from 'lucide-react'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-slate-100 dark:bg-navy-900">
+      <ThemeSync />
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div

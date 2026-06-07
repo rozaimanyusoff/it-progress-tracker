@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     })
     if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     const isAssigned = task.assignees.some(a => a.user_id === Number(user.id))
-    if (user.role !== 'manager' && !isAssigned) {
+    if (user.role !== 'admin' && !isAssigned) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     folder = `tasks/${numericTaskId}`

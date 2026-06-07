@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hasAllProjectAccess } from '@/lib/role-prefs'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -12,7 +13,8 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get('project_id')
   const featureId = searchParams.get('feature_id')
 
-  const projectWhere = user.role === 'manager'
+  const allAccess = await hasAllProjectAccess(user)
+  const projectWhere = allAccess
     ? (projectId ? { id: Number(projectId) } : {})
     : {
       assignees: { some: { user_id: Number(user.id) } },
@@ -26,8 +28,8 @@ export async function GET(req: NextRequest) {
   const projectIds = projects.map((p: { id: number }) => p.id)
   const orConditions: any[] = []
   if (projectIds.length > 0) {
-    if (user.role === 'manager') {
-      // Managers see ALL tasks in their projects (no assignee filter)
+    if (allAccess) {
+      // Users with all_project access see ALL tasks in their projects (no assignee filter)
       orConditions.push(
         {
           feature: {

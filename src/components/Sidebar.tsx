@@ -7,14 +7,14 @@ import { useEffect, useState } from 'react'
 import { LayoutDashboard, Kanban, Users, FolderKanban, AlertCircle, Settings, BarChart3, X, Sun, Moon, LogOut, CalendarDays, LucideIcon } from 'lucide-react'
 
 const navItems: { href: string; label: string; Icon: LucideIcon; roles: string[]; activePrefixes?: string[] }[] = [
-  { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, roles: ['manager', 'member'], activePrefixes: ['/dashboard'] },
+  { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, roles: ['admin', 'member'], activePrefixes: ['/dashboard'] },
   { href: '/kanban', label: 'My Kanban', Icon: Kanban, roles: ['member'] },
-  { href: '/kanban', label: 'Team Kanban', Icon: Users, roles: ['manager'] },
-  { href: '/projects', label: 'Projects', Icon: FolderKanban, roles: ['manager', 'member'], activePrefixes: ['/projects'] },
-  { href: '/planner', label: 'Planner', Icon: CalendarDays, roles: ['manager', 'member'], activePrefixes: ['/planner'] },
-  { href: '/issues', label: 'Issues', Icon: AlertCircle, roles: ['manager', 'member'] },
-  { href: '/settings', label: 'Settings', Icon: Settings, roles: ['manager'] },
-  { href: '/export', label: 'Report', Icon: BarChart3, roles: ['manager'] },
+  { href: '/kanban', label: 'Team Kanban', Icon: Users, roles: ['admin'] },
+  { href: '/projects', label: 'Projects', Icon: FolderKanban, roles: ['admin', 'member'], activePrefixes: ['/projects'] },
+  { href: '/planner', label: 'Planner', Icon: CalendarDays, roles: ['admin', 'member'], activePrefixes: ['/planner'] },
+  { href: '/issues', label: 'Issues', Icon: AlertCircle, roles: ['admin', 'member'] },
+  { href: '/settings', label: 'Settings', Icon: Settings, roles: ['admin'] },
+  { href: '/export', label: 'Report', Icon: BarChart3, roles: ['admin'] },
 ]
 
 interface Props {
@@ -49,7 +49,7 @@ export default function Sidebar({ open = false, onClose }: Props) {
 
   // Custom roles (not manager/member) use role_preferences to determine nav visibility.
   // If their role has view:true, they get the same nav items as 'member'.
-  const effectiveNavRole = (role !== 'manager' && role !== 'member' && rolePrefs[role]?.view)
+  const effectiveNavRole = (role !== 'admin' && role !== 'member' && rolePrefs[role]?.view)
     ? 'member'
     : role
   const filtered = navItems.filter(item => item.roles.includes(effectiveNavRole))
@@ -133,7 +133,15 @@ export default function Sidebar({ open = false, onClose }: Props) {
       <div className="p-4 border-t border-slate-200 dark:border-navy-700">
         {mounted && (
           <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={() => {
+              const next = theme === 'dark' ? 'light' : 'dark'
+              setTheme(next)
+              fetch('/api/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme_preference: next }),
+              }).catch(() => {})
+            }}
             className="w-full flex items-center gap-3 px-3 py-2 mb-2 rounded-lg text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-navy-700 hover:text-slate-900 dark:hover:text-white transition-colors"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}

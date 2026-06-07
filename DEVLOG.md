@@ -4,6 +4,104 @@ Rekod semua perubahan, penambahan feature, dan pembaikan yang dilakukan pada cod
 Format: **terbaru di atas**.
 
 ---
+## 2026-06-07 — Dashboard: Summary/S-Curve card tabs + Metrics Guide popover
+
+### Diubah
+
+- **`src/app/dashboard/DashboardClient.tsx`**
+  - Tambah `CardTab = 'summary' | 'scurve'` dan state `cardTabs: Record<number, CardTab>` untuk track tab aktif per project card.
+  - Setiap project card kini ada mini tab bar **Summary | S-Curve** di bawah bahagian metrics. Summary = 4 metric boxes seperti sebelum ini; S-Curve = compact `<SCurveChart>` (height 150px).
+  - Tambah butang **? Guide** di sebelah kanan tab Project/Team — buka popover yang terangkan semua metrics dengan penerangan + example: Progress Ring, SV, Health Status, Completion, Net Flow, On-time, Scope Volatility, S-Curve.
+  - Import `SCurveChart` dan extend `Project` interface dengan `scurveTasks` dan `progressUpdates`.
+- **`src/app/dashboard/page.tsx`**
+  - Tukar fetch `updates` dari `take: 1` kepada semua rekod (ascending) dengan `created_at` diinclude.
+  - Fix `computedProgress` fallback untuk guna `updates[updates.length-1]` (bukan `[0]` kerana order kini ascending).
+  - Tambah `id: true` dalam tasks select.
+  - Tambah `scurveTasks` dan `progressUpdates` dalam `projectsWithProgress` return.
+- **`src/components/SCurveChart.tsx`** — Tambah `compact?: boolean` prop. Bila compact: height 150px, no legend, no title, no footer, minimal padding. Variance strip kecil di atas chart.
+
+---
+## 2026-06-07 — S-Curve chart untuk project details
+
+### Diubah
+
+- **`src/components/SCurveChart.tsx`** (baru) — Chart S-Curve menggunakan Recharts dengan 3 siri:
+  - **Planned** — kemajuan linear 0%→100% dari `start_date` hingga `deadline` (garis putus-putus kelabu).
+  - **Actual** — peratusan task yang siap secara kumulatif berdasarkan `actual_end` (garis biru).
+  - **Claimed** — kemajuan yang dilaporkan oleh PM melalui Project Updates (garis hijau).
+  - Today marker (garis amber putus-putus) + summary chips: Actual%, Claimed%, variance %.
+  - Help popover dengan penjelasan cara membaca carta.
+- **`src/app/projects/[id]/page.tsx`** — Tukar fetch `updates` dari `take: 1` kepada semua rekod (ascending by `created_at`) dengan tambah field `created_at`. Hantar sebagai `progressUpdates` prop ke `ProjectDetailCard`.
+- **`src/components/ProjectDetailCard.tsx`** — Tambah tab `S-Curve` (ViewTab `'scurve'`), import `SCurveChart`, tambah prop `progressUpdates`, render `<SCurveChart>` dalam tab baru.
+
+### Tingkah laku
+- PM boleh lihat perbezaan antara jadual perancangan, kemajuan task sebenar, dan kemajuan yang diklaim dalam satu carta.
+- Variance chip tunjuk sama ada project ahead (+) atau behind (−) schedule pada hari ini.
+
+---
+## 2026-06-07 — User profile: theme preference + dashboard config persistence
+
+### Diubah
+
+- **`prisma/schema.prisma`** — Tambah `theme_preference String?` dan `dashboard_config Json?` pada model `User`.
+- **Migration `20260607144935_add_user_preferences`** — applied.
+- **`src/app/api/profile/route.ts`** — GET/PATCH kini include `theme_preference` dan `dashboard_config`.
+- **`src/components/ThemeSync.tsx`** (baru) — Client component yang fetch `/api/profile` selepas login dan apply `theme_preference` ke `next-themes`. Render sekali sahaja per session.
+- **`src/components/Layout.tsx`** — Mount `<ThemeSync />` supaya sync berlaku di semua halaman.
+- **`src/components/Sidebar.tsx`** — Theme toggle kini PATCH `theme_preference` ke `/api/profile` setiap kali tukar dark/light.
+- **`src/app/dashboard/page.tsx`** — Fetch `dashboard_config` dari DB, pass sebagai `initialConfig` ke `DashboardClient`.
+- **`src/app/dashboard/DashboardClient.tsx`** — State `activeTab` dan `hiddenIds` di-init dari `initialConfig`; debounced save (600ms) ke `/api/profile` bila mana-mana state berubah.
+
+### Tingkah laku
+- Dark/light mode kini persist dalam DB — sync merentas browser/device bila login.
+- Hidden project cards dan active dashboard tab disimpan secara automatik; kekal selepas reload atau login semula.
+
+---
+## 2026-06-07 — Rename role manager→admin + Add all_project permission
+
+### Diubah
+
+- **`prisma/schema.prisma`** — Enum `Role`: `manager` → `admin`.
+- **`prisma/migrations/20260607_rename_manager_to_admin/migration.sql`** — Migration SQL: `ALTER TYPE "Role" RENAME VALUE 'manager' TO 'admin';` (sudah di-deploy).
+- **`src/types/next-auth.d.ts`** — Type `role: 'admin' | 'member'`.
+- **`src/lib/role-prefs.ts`** — Tambah `all_project: boolean` dalam `RolePerm`; DEFAULTS dikemaskini (admin: true, member: false); tambah `hasAllProjectAccess()` helper.
+- **`src/app/settings/page.tsx`** — `CrudPermission` dan `DEFAULT_ROLE_PREFERENCES` dikemaskini dengan `all_project`; kolum "All Projects" dalam jadual Roles; legend dikemaskini.
+- **Global sed** — Semua `'manager'` dalam src/ ditukar kepada `'admin'` (55+ fail).
+- **`src/components/TeamKanbanBoard.tsx`** — Label display `'Manager'` → `'Admin'`.
+- **`src/app/api/projects/route.ts`** — `where` clause kini guna `hasAllProjectAccess()`.
+- **`src/app/api/tasks/team/route.ts`** — Project filter guna `hasAllProjectAccess()`.
+- **`src/app/api/tasks/browse/route.ts`** — Task visibility guna `hasAllProjectAccess()`.
+- **`src/app/api/deliverables/[id]/route.ts`** — PUT check guna `hasAllProjectAccess()`; DELETE kekal `isAdmin` sahaja.
+- **`src/app/api/counts/route.ts`** — Count queries guna `hasAllProjectAccess()`.
+
+### Tingkah laku All Projects permission
+- `admin` sentiasa ada akses penuh (tanpa perlu semak permission).
+- Role lain dengan `all_project: true` boleh akses semua project, create/update deliverables, view all tasks.
+- Tanpa `all_project`, role hanya nampak project yang mereka di-assign sahaja.
+
+---
+## 2026-06-07 — Settings/Roles: Permission Legend + Assign Members Dropdown
+
+### Diubah
+
+- **`src/app/settings/page.tsx`**
+  - Tambah komponen `RoleMembersDropdown` — dropdown multiselect checkboxes untuk assign/remove user daripada sesebuah role. User yang sudah ada role tersebut akan ditanda "current" dan pre-checked. Unchecked user dikembalikan ke role `member`.
+  - Tambah butang `+` pada kolum Role dalam jadual Roles tab — klik untuk buka dropdown assign members.
+  - Tambah **Permission Reference** legend dalam Roles tab, menjelaskan maksud setiap permission: Create, Update, View, Delete, Receive Updates, Assignee.
+
+---
+## 2026-06-07 — Dashboard Tab Navigation (Project / Team)
+
+### Diubah
+
+- **`src/app/dashboard/DashboardClient.tsx`**
+  - Tambah tab bar dengan dua tab: **Project** dan **Team**.
+  - Tab **Project** — papar stats ringkasan (Total, In Progress, Done, Issues) dan grid kad project seperti sebelumnya.
+  - Tab **Team** — papar keseluruhan bahagian Team Dashboard (assigned projects, developer analytics, task breakdown).
+  - Tab **Team** hanya muncul jika pengguna mempunyai `localTeamProjects` (assignee view).
+  - Default tab ialah **Project**.
+
+---
 ## 2026-04-26 — Team Kanban Labels, Project Burndown Alignment, Task Completion Window, Gantt Overrun Indicators, Task Due-Date Estimation
 
 ### Diubah

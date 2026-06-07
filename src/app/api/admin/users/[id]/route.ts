@@ -19,7 +19,7 @@ async function getRoleOverrides() {
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -58,7 +58,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Resend activation email
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -99,12 +99,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.name !== undefined) data.name = body.name
   if (body.role !== undefined) {
     const requestedRole = String(body.role)
-    const systemRole = requestedRole === 'manager' || requestedRole === 'member' ? requestedRole : 'member'
+    const systemRole = requestedRole === 'admin' || requestedRole === 'member' ? requestedRole : 'member'
     data.role = systemRole
-    data.display_role = requestedRole === 'manager' || requestedRole === 'member' ? null : requestedRole
+    data.display_role = requestedRole === 'admin' || requestedRole === 'member' ? null : requestedRole
 
     const overrides = await getRoleOverrides()
-    if (requestedRole === 'manager' || requestedRole === 'member') {
+    if (requestedRole === 'admin' || requestedRole === 'member') {
       delete overrides[String(userId)]
     } else {
       overrides[String(userId)] = requestedRole
@@ -154,7 +154,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const { id } = await params

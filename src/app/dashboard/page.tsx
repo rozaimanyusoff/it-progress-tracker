@@ -12,11 +12,17 @@ export default async function DashboardPage() {
 
   const user = session.user as any
 
+  const userRow = await prisma.user.findUnique({
+    where: { id: Number(user.id) },
+    select: { dashboard_config: true },
+  })
+  const dashboardConfig = (userRow?.dashboard_config ?? null) as { hiddenIds?: number[]; activeTab?: string } | null
+
   const projects = await prisma.project.findMany({
     where: {},
     include: {
       assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
-      updates: { orderBy: { created_at: 'desc' }, take: 1 },
+      updates: { select: { progress_pct: true, created_at: true }, orderBy: { created_at: 'asc' } },
       _count: {
         select: {
           issues: { where: { resolved: false } },
@@ -118,6 +124,7 @@ export default async function DashboardPage() {
         deliverable: { project_id: { in: projectIds } },
       },
       select: {
+        id: true,
         created_at: true,
         due_date: true,
         status: true,
@@ -141,7 +148,7 @@ export default async function DashboardPage() {
     const stats = taskMap.get(p.id)
     const computedProgress = stats && Number(stats.total) > 0
       ? Math.round(Number(stats.done) / Number(stats.total) * 100)
-      : (p.updates[0]?.progress_pct ?? 0)
+      : (p.updates[p.updates.length - 1]?.progress_pct ?? 0)
     const computedStatus = (() => {
       if (p.status === 'OnHold') return 'OnHold'
       if (computedProgress >= 100) return 'Done'
@@ -205,6 +212,12 @@ export default async function DashboardPage() {
       return 'on_track'
     })()
 
+    const scurveTasks = (tasksByProject.get(p.id) ?? []).map(t => ({
+      id: t.id,
+      status: t.status,
+      actual_end: t.actual_end ? t.actual_end.toISOString() : null,
+    }))
+
     return {
       ...p,
       computedProgress,
@@ -220,6 +233,8 @@ export default async function DashboardPage() {
       onTimeCompletionRate,
       scopeVolatility,
       monthlyData,
+      scurveTasks,
+      progressUpdates: p.updates.map(u => ({ progress_pct: u.progress_pct, created_at: u.created_at.toISOString() })),
     }
   })
 
@@ -286,6 +301,7 @@ export default async function DashboardPage() {
         teamProjects={JSON.parse(JSON.stringify(assignedProjects))}
         teamSummary={JSON.parse(JSON.stringify(teamSummary))}
         session={JSON.parse(JSON.stringify(session))}
+        initialConfig={dashboardConfig}
       />
     </AppLayout>
   )

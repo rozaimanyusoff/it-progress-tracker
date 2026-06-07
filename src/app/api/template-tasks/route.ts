@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 // POST — add a task to an existing template deliverable
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

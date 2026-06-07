@@ -3,13 +3,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
+import { hasAllProjectAccess } from '@/lib/role-prefs'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const user = session.user as any
-  const where = user.role === 'manager'
+  const allAccess = await hasAllProjectAccess(user)
+  const where = allAccess
     ? {}
     : { assignees: { some: { user_id: Number(user.id) } } }
 

@@ -20,7 +20,7 @@ async function getRoleOverrides() {
 
 export async function GET() {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -56,7 +56,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -74,8 +74,8 @@ export async function POST(req: NextRequest) {
   const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
   const requestedRole = typeof role === 'string' ? role : 'member'
-  const systemRole = requestedRole === 'manager' || requestedRole === 'member' ? requestedRole : 'member'
-  const displayRole = requestedRole === 'manager' || requestedRole === 'member' ? null : requestedRole
+  const systemRole = requestedRole === 'admin' || requestedRole === 'member' ? requestedRole : 'member'
+  const displayRole = requestedRole === 'admin' || requestedRole === 'member' ? null : requestedRole
 
   const user = await prisma.user.create({
     data: {
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  if (requestedRole !== 'manager' && requestedRole !== 'member') {
+  if (requestedRole !== 'admin' && requestedRole !== 'member') {
     const overrides = await getRoleOverrides()
     overrides[String(user.id)] = requestedRole
     await prisma.appSetting.upsert({

@@ -20,6 +20,8 @@ model User {
   activation_token         String?         @unique
   activation_token_expiry  DateTime?
   created_at               DateTime        @default(now())
+  theme_preference         String?         @default("dark") @db.VarChar(10)
+  dashboard_config         Json?
   unit_id                  Int?
   dept_id                  Int?
   company_id               Int?
@@ -219,7 +221,7 @@ model AuditLog {
 }
 
 enum Role {
-  manager
+  admin
   member
 }
 

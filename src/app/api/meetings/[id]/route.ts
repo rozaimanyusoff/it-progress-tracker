@@ -57,7 +57,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const { id } = await params

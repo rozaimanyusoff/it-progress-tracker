@@ -27,7 +27,7 @@ export default function UserManagementPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session || (session.user as any).role !== 'manager') {
+    if (!session || (session.user as any).role !== 'admin') {
       router.replace('/dashboard')
     }
   }, [session, status, router])
@@ -180,7 +180,7 @@ export default function UserManagementPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      user.role === 'manager'
+                      user.role === 'admin'
                         ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
                         : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}>

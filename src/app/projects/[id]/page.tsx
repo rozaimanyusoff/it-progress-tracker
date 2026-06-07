@@ -19,7 +19,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     where: { id: Number(id) },
     include: {
       assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
-      updates: { select: { progress_pct: true }, orderBy: { created_at: 'desc' }, take: 1 },
+      updates: { select: { progress_pct: true, created_at: true }, orderBy: { created_at: 'asc' } },
     },
   })
 
@@ -125,7 +125,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const allTasks = deliverables.flatMap(d => d.tasks)
   const computedProgress = allTasks.length > 0
     ? Math.round(allTasks.filter(t => t.status === 'Done').length / allTasks.length * 100)
-    : (project.updates[0]?.progress_pct ?? 0)
+    : (project.updates[project.updates.length - 1]?.progress_pct ?? 0)
 
   const latestProgress = computedProgress
 
@@ -156,12 +156,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           company_id: project.company_id,
           assignees: project.assignees,
         }}
-        isManager={(session.user as any).role === 'manager'}
+        isManager={(session.user as any).role === 'admin'}
         latestProgress={latestProgress}
         computedStatus={computedStatus}
         ganttDeliverables={ganttDeliverables}
         ganttModules={ganttModules}
         openIssueCount={openIssueCount}
+        progressUpdates={project.updates.map(u => ({ progress_pct: u.progress_pct, created_at: u.created_at.toISOString() }))}
       />
 
       {/* Modules & Deliverables — right slide-in sidebar */}
@@ -171,7 +172,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         userRole={(session.user as any).role}
         canManage={await (async () => {
           const u = session.user as any
-          if (u.role === 'manager') return true
+          if (u.role === 'admin') return true
           const rolePerms = await getRolePreferences()
           return Boolean(rolePerms[u.role]?.update)
         })()}

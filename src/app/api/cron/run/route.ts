@@ -54,7 +54,7 @@ async function isAuthorized(req: NextRequest): Promise<boolean> {
 
   const session = await getServerSession(authOptions)
   if (!session) return false
-  return (session.user as any).role === 'manager'
+  return (session.user as any).role === 'admin'
 }
 
 async function getSettingBool(key: string): Promise<boolean> {
@@ -118,7 +118,7 @@ async function runBackupJob(force = false) {
   const filename = `backup-cron-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`
   await writeFile(path.join(BACKUP_DIR, filename), JSON.stringify(backup, null, 2))
 
-  const actor = await prisma.user.findFirst({ where: { role: 'manager' }, select: { id: true } })
+  const actor = await prisma.user.findFirst({ where: { role: 'admin' }, select: { id: true } })
   if (actor) {
     await prisma.auditLog.create({
       data: {
@@ -309,7 +309,7 @@ async function runWeeklyProgressJob(force = false) {
 
   if (!force) await setSetting('cron_pending_last_run_slot', slotKey)
 
-  const actor = await prisma.user.findFirst({ where: { role: 'manager' }, select: { id: true } })
+  const actor = await prisma.user.findFirst({ where: { role: 'admin' }, select: { id: true } })
   if (actor) {
     await prisma.auditLog.create({
       data: {

@@ -256,7 +256,7 @@ export default function DeveloperAnalytics({ initialData, projectId }: Props) {
   useEffect(() => {
     // Check if current user is manager
     fetch('/api/auth/session').then(r => r.json()).then(s => {
-      if ((s?.user as any)?.role === 'manager') setIsManager(true)
+      if ((s?.user as any)?.role === 'admin') setIsManager(true)
     }).catch(() => {})
   }, [])
 

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const searchParams = req.nextUrl.searchParams
   const includeManagers = searchParams.get('include_managers') === 'true'
-  const roles: Role[] = includeManagers ? [Role.member, Role.manager] : [Role.member]
+  const roles: Role[] = includeManagers ? [Role.member, Role.admin] : [Role.member]
 
   const users = await prisma.user.findMany({
     where: { role: { in: roles }, is_active: true },

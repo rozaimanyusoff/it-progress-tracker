@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Verify developer is assigned to at least one project this feature belongs to
-  if (user.role !== 'manager') {
+  if (user.role !== 'admin') {
     const isAssigned = task.feature?.project_links.some(l =>
       l.project.assignees.some(a => a.user_id === Number(user.id))
     ) ?? false

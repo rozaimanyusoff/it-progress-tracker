@@ -10,7 +10,7 @@ export default async function KanbanPage() {
   if (!session) redirect('/login')
 
   const user = session.user as any
-  const isManager = user.role === 'manager'
+  const isManager = user.role === 'admin'
 
   return (
     <AppLayout>

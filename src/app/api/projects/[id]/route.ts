@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   const assigneeIds: number[] = (body.assignee_ids ?? []).map(Number)
@@ -71,7 +71,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  if (user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const projectId = Number(id)
 
@@ -128,7 +128,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   // Notify other active managers about the project deletion
   const otherManagers = await prisma.user.findMany({
-    where: { role: 'manager', is_active: true, NOT: { id: Number(user.id) } },
+    where: { role: 'admin', is_active: true, NOT: { id: Number(user.id) } },
     select: { email: true, role: true, display_role: true },
   })
   const notifiable = await filterUsersCanReceiveNotifications(otherManagers)

@@ -7,11 +7,12 @@ export type RolePerm = {
    delete: boolean
    receive_notifications: boolean
    assignable: boolean
+   all_project: boolean
 }
 
 const DEFAULTS: Record<string, RolePerm> = {
-   manager: { create: true, update: true, view: true, delete: true, receive_notifications: true, assignable: true },
-   member: { create: true, update: true, view: true, delete: false, receive_notifications: true, assignable: true },
+   admin: { create: true, update: true, view: true, delete: true, receive_notifications: true, assignable: true, all_project: true },
+   member: { create: true, update: true, view: true, delete: false, receive_notifications: true, assignable: true, all_project: false },
 }
 
 export async function getRolePreferences(): Promise<Record<string, RolePerm>> {
@@ -33,6 +34,9 @@ export async function getRolePreferences(): Promise<Record<string, RolePerm>> {
             assignable: perms?.assignable !== undefined
                ? Boolean(perms.assignable)
                : (DEFAULTS[roleName]?.assignable ?? true),
+            all_project: perms?.all_project !== undefined
+               ? Boolean(perms.all_project)
+               : (DEFAULTS[roleName]?.all_project ?? false),
          }
       }
       return result
@@ -63,4 +67,14 @@ export async function filterUsersCanReceiveNotifications<
       const rolePerm = prefs[effectiveRole] ?? prefs[u.role]
       return rolePerm ? rolePerm.receive_notifications : true
    })
+}
+
+export async function hasAllProjectAccess(
+   user: { role: string; display_role?: string | null }
+): Promise<boolean> {
+   if (user.role === 'admin') return true
+   const prefs = await getRolePreferences()
+   const effectiveRole = (user as any).display_role || user.role
+   const rolePerm = prefs[effectiveRole] ?? prefs[user.role]
+   return rolePerm?.all_project === true
 }

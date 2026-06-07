@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Managers can assign to anyone; members auto-assign to themselves + any additional partners
-  let resolvedIds: number[] = user.role === 'manager'
+  let resolvedIds: number[] = user.role === 'admin'
     ? (assignee_ids ?? []).map(Number)
     : [Number(user.id), ...((assignee_ids ?? []).map(Number).filter((id: number) => id !== Number(user.id)))]
   if (!feature_id && !deliverable_id && resolvedIds.length === 0) {

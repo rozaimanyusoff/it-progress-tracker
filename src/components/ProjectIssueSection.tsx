@@ -74,7 +74,7 @@ function isOverdue(due: string | null, status: string) {
 
 export default function ProjectIssueSection({ projectId, refreshKey }: { projectId: number; refreshKey?: number }) {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'manager'
+  const isManager = (session?.user as any)?.role === 'admin'
   const currentUserId = Number((session?.user as any)?.id)
 
   const [issues, setIssues] = useState<Issue[]>([])

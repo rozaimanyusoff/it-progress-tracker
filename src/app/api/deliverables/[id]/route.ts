@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getRolePreferences } from '@/lib/role-prefs'
+import { getRolePreferences, hasAllProjectAccess } from '@/lib/role-prefs'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -39,8 +39,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  const isManager = user.role === 'manager'
-  if (!isManager) {
+  const isAdmin = user.role === 'admin'
+  const hasAllAccess = isAdmin || await hasAllProjectAccess(user)
+  if (!hasAllAccess) {
     const rolePerms = await getRolePreferences()
     const perms = rolePerms[user.role] ?? {}
     if (!perms.update) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -116,8 +117,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
-  const isManager = user.role === 'manager'
-  if (!isManager) {
+  const isAdmin = user.role === 'admin'
+  if (!isAdmin) {
     const rolePerms = await getRolePreferences()
     const perms = rolePerms[user.role] ?? {}
     if (!perms.delete) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

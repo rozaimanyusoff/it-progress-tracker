@@ -145,7 +145,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Non-managers can only update tasks they are assigned to; only managers can mark Done
-  if (user.role !== 'manager') {
+  if (user.role !== 'admin') {
     const isAssigned = existing.assignees.some((a) => a.user_id === Number(user.id))
     if (!isAssigned) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -166,7 +166,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.planned_start !== undefined) updateData.planned_start = body.planned_start ? new Date(body.planned_start) : null
   if (body.due_date !== undefined) updateData.due_date = body.due_date ? new Date(body.due_date) : null
   if (body.actual_start !== undefined) updateData.actual_start = body.actual_start ? new Date(body.actual_start) : null
-  if (body.actual_end !== undefined && user.role === 'manager') {
+  if (body.actual_end !== undefined && user.role === 'admin') {
     updateData.actual_end = body.actual_end ? new Date(body.actual_end) : null
     // If overriding actual_end for a Done task, also update completed_at
     if (body.actual_end && existing.status === 'Done') {
@@ -247,7 +247,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   // Managers can update assignees — replace the list
-  if ('assignee_ids' in body && user.role === 'manager') {
+  if ('assignee_ids' in body && user.role === 'admin') {
     const newIds: number[] = (body.assignee_ids as any[]).map(Number)
     const oldIds = existing.assignees.map((a) => a.user_id)
     await prisma.taskAssignee.deleteMany({ where: { task_id: taskId } })
@@ -305,7 +305,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (user.role === 'member' && prevStatus === 'InProgress' && newStatus === 'InReview') {
       const managers = await prisma.user.findMany({
-        where: { role: 'manager', is_active: true },
+        where: { role: 'admin', is_active: true },
         select: { email: true, role: true, display_role: true },
       })
       const notifiable = await filterUsersCanReceiveNotifications(managers)
@@ -315,14 +315,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'InProgress') {
+    if (user.role === 'admin' && prevStatus === 'InReview' && newStatus === 'InProgress') {
       for (const a of task.assignees) {
         if (await canReceiveNotifications(a.user))
           sendTaskRejected(a.user.email, a.user.name, task.title).catch(() => { })
       }
     }
 
-    if (user.role === 'manager' && prevStatus === 'InReview' && newStatus === 'Done') {
+    if (user.role === 'admin' && prevStatus === 'InReview' && newStatus === 'Done') {
       for (const a of task.assignees) {
         if (await canReceiveNotifications(a.user))
           sendTaskApproved(a.user.email, a.user.name, task.title).catch(() => { })
@@ -351,7 +351,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Only Todo tasks can be deleted' }, { status: 403 })
   }
 
-  if (user.role !== 'manager') {
+  if (user.role !== 'admin') {
     return NextResponse.json({ error: 'Only managers can delete tasks' }, { status: 403 })
   }
 

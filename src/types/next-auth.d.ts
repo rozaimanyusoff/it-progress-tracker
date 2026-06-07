@@ -7,13 +7,13 @@ declare module 'next-auth' {
       id: string
       name?: string | null
       email?: string | null
-      role: 'manager' | 'member'
+      role: 'admin' | 'member'
     }
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
-    role: 'manager' | 'member'
+    role: 'admin' | 'member'
   }
 }

@@ -84,7 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // ── Manager review action ─────────────────────────────────────────
   if (review_action) {
-    if (userRole !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (userRole !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (task.status !== 'InReview') return NextResponse.json({ error: 'Task is not in review' }, { status: 400 })
     if (review_action !== 'approve' && review_action !== 'reject') {
       return NextResponse.json({ error: 'Invalid review action' }, { status: 400 })
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // ── Manager comment on Todo / InProgress tasks ───────────────────
-  if (userRole === 'manager' && !review_action && (task.status === 'Todo' || task.status === 'InProgress')) {
+  if (userRole === 'admin' && !review_action && (task.status === 'Todo' || task.status === 'InProgress')) {
     const update = await prisma.taskUpdate.create({
       data: { task_id: taskId, user_id: userId, notes, media_urls },
       include: { user: { select: { id: true, name: true, role: true } } },

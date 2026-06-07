@@ -172,7 +172,7 @@ export default function ProfilePage() {
                <div className="text-center">
                   <p className="font-semibold text-slate-900 dark:text-white">{profile.name}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">{profile.email}</p>
-                  <span className={`mt-1.5 inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${profile.role === 'manager' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  <span className={`mt-1.5 inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${profile.role === 'admin' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
                      {profile.role}
                   </span>
                </div>

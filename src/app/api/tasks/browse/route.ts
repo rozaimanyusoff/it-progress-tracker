@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hasAllProjectAccess } from '@/lib/role-prefs'
 
 // Returns all tasks for a project grouped by module > feature
 // Used by developer Kanban to browse and self-assign
@@ -14,8 +15,9 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get('project_id')
   if (!projectId) return NextResponse.json({ error: 'project_id required' }, { status: 400 })
 
-  // Verify user is assigned to this project (or is manager)
-  if (user.role !== 'manager') {
+  // Verify user is assigned to this project (or has all_project access)
+  const allAccess = await hasAllProjectAccess(user)
+  if (!allAccess) {
     const assignment = await prisma.projectAssignee.findUnique({
       where: { project_id_user_id: { project_id: Number(projectId), user_id: Number(user.id) } },
     })

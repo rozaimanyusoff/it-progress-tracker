@@ -90,7 +90,7 @@ function AddTaskModal({
   const { data: session } = useSession()
   const isEditMode = Boolean(initialTask)
   const creatorName = (session?.user as any)?.name ?? 'Current User'
-  const creatorRole = (session?.user as any)?.role === 'manager' ? 'Manager' : 'Team Member'
+  const creatorRole = (session?.user as any)?.role === 'admin' ? 'Admin' : 'Team Member'
   const CREATE_NEW_DELIVERABLE = '__create_new__'
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -916,7 +916,7 @@ function AssigneeInitials({ assignees }: { assignees: Task['assignees'] }) {
 
 export default function TeamKanbanBoard() {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'manager'
+  const isManager = (session?.user as any)?.role === 'admin'
   const currentUserId = Number((session?.user as any)?.id)
   const [board, setBoard] = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)

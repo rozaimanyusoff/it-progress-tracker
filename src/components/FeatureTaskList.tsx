@@ -391,7 +391,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     }
 
     if (POPUP_STATUSES.has(newStatus)) {
-      if (newStatus === 'Done' && userRole !== 'manager') return
+      if (newStatus === 'Done' && userRole !== 'admin') return
       setPendingStatus({ taskId, target: newStatus as StatusTarget })
       return
     }
@@ -496,7 +496,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
       due_date: editForm.due_date || null,
       priority: editForm.priority,
     }
-    if (userRole === 'manager') {
+    if (userRole === 'admin') {
       payload.actual_start = editForm.actual_start || null
       payload.actual_end = editForm.actual_end || null
     }
@@ -571,7 +571,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
     setAddingTask(true)
 
     // For members: always include themselves + any partners
-    const resolvedIds = userRole === 'manager'
+    const resolvedIds = userRole === 'admin'
       ? newTask.assigneeIds
       : [currentUserId, ...newTask.assigneeIds.filter(id => id !== currentUserId)]
 
@@ -726,7 +726,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
           actualStartDate={pendingTask.actual_start}
           taskPlannedStart={pendingTask.planned_start ?? null}
           dueDate={pendingTask.due_date}
-          isManager={userRole === 'manager'}
+          isManager={userRole === 'admin'}
           onConfirm={handleStatusConfirm}
           onCancel={() => setPendingStatus(null)}
         />
@@ -819,7 +819,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
 
                 {/* Assignee cell */}
                 <td className="px-3 py-2">
-                  {(userRole === 'manager' || canManage) ? (
+                  {(userRole === 'admin' || canManage) ? (
                     <AssigneePicker
                       value={task.assignees.map(a => a.user)}
                       options={assigneeOptions}
@@ -870,7 +870,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  {(userRole === 'manager' || canManage) ? (
+                  {(userRole === 'admin' || canManage) ? (
                     <select
                       className={`${inputClass} text-xs`}
                       value={task.status}
@@ -898,7 +898,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1">
-                    {(userRole === 'manager' || isTaskAssignee(task)) && (
+                    {(userRole === 'admin' || isTaskAssignee(task)) && (
                       <button
                         onClick={() => toggleBlock(task)}
                         className={`p-1 rounded text-xs ${task.is_blocked || task.status === 'Blocked' ? 'text-green-500 hover:text-green-700' : 'text-red-400 hover:text-red-600'}`}
@@ -907,7 +907,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                         {task.is_blocked || task.status === 'Blocked' ? '✓' : '🚫'}
                       </button>
                     )}
-                    {(userRole === 'manager' || canManage) ? (
+                    {(userRole === 'admin' || canManage) ? (
                       <>
                         <button
                           onClick={() => openEditTask(task)}
@@ -1091,12 +1091,12 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
+                      {userRole === 'admin' ? 'Assignees' : 'Partners (you are auto-assigned)'}
                     </label>
                     {assigneeOptions.length > 0 ? (
                       <AssigneeCheckList
                         value={newTask.assigneeIds}
-                        options={userRole === 'manager' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
+                        options={userRole === 'admin' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
                         onChange={(ids) => setNewTask(p => ({ ...p, assigneeIds: ids }))}
                       />
                     ) : (
@@ -1347,12 +1347,12 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      {userRole === 'manager' ? 'Assignees' : 'Partners (you are auto-assigned)'}
+                      {userRole === 'admin' ? 'Assignees' : 'Partners (you are auto-assigned)'}
                     </label>
                     {assigneeOptions.length > 0 ? (
                       <AssigneeCheckList
                         value={editForm.assigneeIds}
-                        options={userRole === 'manager' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
+                        options={userRole === 'admin' ? assigneeOptions : assigneeOptions.filter(u => u.id !== currentUserId)}
                         onChange={(ids) => setEditForm(f => ({ ...f, assigneeIds: ids }))}
                       />
                     ) : (
@@ -1441,7 +1441,7 @@ export default function FeatureTaskList({ featureId, deliverableId, deliverableT
                       <option value="critical">Critical</option>
                     </select>
                   </div>
-                  {userRole === 'manager' && (
+                  {userRole === 'admin' && (
                     <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-3">
                       <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">PM Override — Actual Dates</p>
                       <div className="grid grid-cols-2 gap-4">

@@ -25,12 +25,12 @@ type Settings = {
   smtp_host: string; smtp_port: string; smtp_user: string; smtp_from: string
 }
 
-type CrudPermission = { create: boolean; update: boolean; view: boolean; delete: boolean; receive_notifications: boolean; assignable: boolean }
+type CrudPermission = { create: boolean; update: boolean; view: boolean; delete: boolean; receive_notifications: boolean; assignable: boolean; all_project: boolean }
 type RolePreferences = Record<string, CrudPermission>
 
 const DEFAULT_ROLE_PREFERENCES: RolePreferences = {
-  manager: { create: true, update: true, view: true, delete: true, receive_notifications: true, assignable: true },
-  member: { create: true, update: true, view: true, delete: false, receive_notifications: true, assignable: true },
+  admin: { create: true, update: true, view: true, delete: true, receive_notifications: true, assignable: true, all_project: true },
+  member: { create: true, update: true, view: true, delete: false, receive_notifications: true, assignable: true, all_project: false },
 }
 
 const TABS = ['Team Members', 'Roles', 'Organisation', 'Branding', 'Email', 'Database', 'Backup & Restore', 'Audit Logs'] as const
@@ -142,14 +142,14 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', role: 'member' })
   const [editUser, setEditUser] = useState<User | null>(null)
-  const [roleOptions, setRoleOptions] = useState<string[]>(['manager', 'member'])
+  const [roleOptions, setRoleOptions] = useState<string[]>(['admin', 'member'])
 
   useEffect(() => {
     fetch('/api/admin/users').then(r => r.json()).then(u => { setUsers(Array.isArray(u) ? u : []); setLoading(false) })
     fetch('/api/settings').then(r => r.json()).then(s => {
       const prefs = s?.role_preferences && typeof s.role_preferences === 'object' ? s.role_preferences : {}
       const keys = Object.keys(prefs)
-      const all = Array.from(new Set(['manager', 'member', ...keys]))
+      const all = Array.from(new Set(['admin', 'member', ...keys]))
       setRoleOptions(all)
     }).catch(() => { })
   }, [])
@@ -267,7 +267,7 @@ function TeamTab({ showToast }: { showToast: (t: 'success' | 'error', m: string)
                   </div>
                 </td>
                 <td className="px-5 py-3">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'manager' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>{user.role}</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'admin' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>{user.role}</span>
                 </td>
                 <td className="px-5 py-3">
                   {user.is_active
@@ -387,12 +387,111 @@ function OrgTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) 
   )
 }
 
+// ── Role Members Dropdown ─────────────────────────────────────────
+function RoleMembersDropdown({ role, anchor, onClose }: { role: string; anchor: DOMRect; onClose: () => void }) {
+  const [users, setUsers] = useState<User[]>([])
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [original, setOriginal] = useState<Set<number>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/users').then(r => r.json()).then((data: User[]) => {
+      const arr = Array.isArray(data) ? data : []
+      setUsers(arr)
+      const inRole = new Set(arr.filter(u => u.role === role).map(u => u.id))
+      setSelected(new Set(inRole))
+      setOriginal(new Set(inRole))
+      setLoading(false)
+    })
+  }, [role])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [onClose])
+
+  async function handleSave() {
+    setSaving(true)
+    const toAdd = [...selected].filter(id => !original.has(id))
+    const toRemove = [...original].filter(id => !selected.has(id))
+    await Promise.all([
+      ...toAdd.map(id => fetch(`/api/admin/users/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      })),
+      ...toRemove.map(id => fetch(`/api/admin/users/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'member' }),
+      })),
+    ])
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="fixed z-50 w-64 bg-white dark:bg-navy-800 rounded-xl border border-slate-200 dark:border-navy-700 shadow-xl"
+      style={{ top: anchor.bottom + 4, left: anchor.left }}
+    >
+      <div className="px-3 py-2.5 border-b border-slate-100 dark:border-navy-700">
+        <p className="text-xs font-semibold text-slate-700 dark:text-white">
+          Assign members — <span className="text-blue-600 dark:text-blue-400">{role}</span>
+        </p>
+      </div>
+      <div className="max-h-52 overflow-y-auto py-1">
+        {loading && <p className="px-4 py-3 text-xs text-slate-400">Loading...</p>}
+        {!loading && users.length === 0 && <p className="px-4 py-3 text-xs text-slate-400">No members found.</p>}
+        {!loading && users.map(user => (
+          <label key={user.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selected.has(user.id)}
+              onChange={() => setSelected(prev => {
+                const next = new Set(prev)
+                next.has(user.id) ? next.delete(user.id) : next.add(user.id)
+                return next
+              })}
+              className="w-4 h-4 rounded border-slate-300 dark:border-navy-600 text-blue-600 focus:ring-blue-500"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-slate-800 dark:text-white truncate">{user.name}</p>
+              <p className="text-[10px] text-slate-400 truncate">{user.email}</p>
+            </div>
+            {user.role === role && (
+              <span className="text-[10px] text-blue-500 dark:text-blue-400 shrink-0">current</span>
+            )}
+          </label>
+        ))}
+      </div>
+      <div className="px-3 py-2.5 border-t border-slate-100 dark:border-navy-700 flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button onClick={onClose} className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-navy-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-navy-600">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Roles Tab ────────────────────────────────────────────────────
 function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string) => void }) {
   const [prefs, setPrefs] = useState<RolePreferences>(DEFAULT_ROLE_PREFERENCES)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [newRoleName, setNewRoleName] = useState('')
+  const [openDropdown, setOpenDropdown] = useState<{ role: string; anchor: DOMRect } | null>(null)
   const initializedRef = useRef(false)
 
   useEffect(() => {
@@ -414,11 +513,14 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
               assignable: rolePerms?.assignable !== undefined
                 ? Boolean(rolePerms.assignable)
                 : (DEFAULT_ROLE_PREFERENCES[roleName]?.assignable ?? true),
+              all_project: rolePerms?.all_project !== undefined
+                ? Boolean(rolePerms.all_project)
+                : (DEFAULT_ROLE_PREFERENCES[roleName]?.all_project ?? false),
             }
           }
           setPrefs({
             ...loaded,
-            manager: { ...DEFAULT_ROLE_PREFERENCES.manager, ...(loaded.manager ?? {}) },
+            admin: { ...DEFAULT_ROLE_PREFERENCES.admin, ...(loaded.admin ?? {}) },
             member: { ...DEFAULT_ROLE_PREFERENCES.member, ...(loaded.member ?? {}) },
           })
         } else {
@@ -466,14 +568,14 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
     }
     setPrefs(prev => ({
       ...prev,
-      [normalized]: { create: false, update: false, view: true, delete: false, receive_notifications: false, assignable: false },
+      [normalized]: { create: false, update: false, view: true, delete: false, receive_notifications: false, assignable: false, all_project: false },
     }))
     setNewRoleName('')
     showToast('success', `Role "${normalized}" added`)
   }
 
   function removeRole(role: string) {
-    if (role === 'manager' || role === 'member') return
+    if (role === 'admin' || role === 'member') return
     if (!confirm(`Delete role "${role}"?`)) return
     setPrefs(prev => {
       const next = { ...prev }
@@ -485,10 +587,10 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
 
   if (loading) return <p className="text-slate-400 py-8 text-center">Loading...</p>
 
-  const permissionKeys: Array<keyof CrudPermission> = ['create', 'update', 'view', 'delete', 'receive_notifications', 'assignable']
+  const permissionKeys: Array<keyof CrudPermission> = ['create', 'update', 'view', 'delete', 'receive_notifications', 'assignable', 'all_project']
   const roleNames = Object.keys(prefs).sort((a, b) => {
-    if (a === 'manager') return -1
-    if (b === 'manager') return 1
+    if (a === 'admin') return -1
+    if (b === 'admin') return 1
     if (a === 'member') return -1
     if (b === 'member') return 1
     return a.localeCompare(b)
@@ -496,12 +598,35 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
 
   return (
     <div className="space-y-5 max-w-4xl">
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        Configure CRUD permissions by role. Current system roles are <span className="font-medium">manager</span> and <span className="font-medium">member</span>.
-      </p>
-      <p className="text-xs text-slate-400 dark:text-slate-500">
-        {saving ? 'Saving changes...' : 'Changes are saved automatically.'}
-      </p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Configure CRUD permissions by role. Current system roles are <span className="font-medium">admin</span> and <span className="font-medium">member</span>. The &quot;All Projects&quot; permission controls project scope access.
+        </p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          {saving ? 'Saving changes...' : 'Changes are saved automatically.'}
+        </p>
+      </div>
+
+      {/* Permission legend */}
+      <div className="rounded-xl border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 px-4 py-3">
+        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Permission Reference</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1.5">
+          {[
+            { key: 'Create', desc: 'Can create projects, modules, features, deliverables, and tasks' },
+            { key: 'Update', desc: 'Can edit records, change status, and update progress' },
+            { key: 'View', desc: 'Can access project details, dashboards, and reports' },
+            { key: 'Delete', desc: 'Can permanently delete projects, tasks, and other records' },
+            { key: 'Receive Updates', desc: 'Receives email notifications for task assignments and weekly progress reports' },
+            { key: 'Assignee', desc: 'Can be assigned as a project member or task assignee' },
+            { key: 'All Projects', desc: 'Can access and view all projects, create/update deliverables, and view all tasks — not limited to assigned projects only' },
+          ].map(p => (
+            <div key={p.key} className="flex gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 shrink-0">{p.key}:</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">{p.desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="rounded-xl border border-slate-200 dark:border-navy-700 overflow-hidden bg-white dark:bg-navy-800">
         <table className="w-full text-sm">
@@ -509,7 +634,7 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
             <tr className="border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wide">
               <th className="text-left px-5 py-3 font-medium">Role</th>
               {permissionKeys.map(k => (
-                <th key={k} className="text-center px-4 py-3 font-medium">{k === 'receive_notifications' ? 'Receive Updates' : k === 'assignable' ? 'Assignee' : k}</th>
+                <th key={k} className="text-center px-4 py-3 font-medium">{k === 'receive_notifications' ? 'Receive Updates' : k === 'assignable' ? 'Assignee' : k === 'all_project' ? 'All Projects' : k}</th>
               ))}
               <th className="px-4 py-3"></th>
             </tr>
@@ -518,9 +643,24 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
             {roleNames.map(role => (
               <tr key={role} className="border-b border-slate-100 dark:border-navy-700 last:border-0 hover:bg-slate-50 dark:hover:bg-navy-700 transition-colors">
                 <td className="px-5 py-3">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${role === 'manager' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                    {role}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${role === 'admin' ? 'bg-purple-50 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                      {role}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setOpenDropdown(openDropdown?.role === role ? null : { role, anchor: rect })
+                      }}
+                      title="Assign members"
+                      className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 dark:bg-navy-700 text-slate-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-xs font-bold leading-none"
+                    >
+                      +
+                    </button>
+                    {openDropdown?.role === role && (
+                      <RoleMembersDropdown role={role} anchor={openDropdown.anchor} onClose={() => setOpenDropdown(null)} />
+                    )}
+                  </div>
                 </td>
                 {permissionKeys.map(k => (
                   <td key={`${role}-${k}`} className="px-4 py-3 text-center">
@@ -535,7 +675,7 @@ function RolesTab({ showToast }: { showToast: (t: 'success' | 'error', m: string
                   </td>
                 ))}
                 <td className="px-4 py-3 text-right">
-                  {role !== 'manager' && role !== 'member' && (
+                  {role !== 'admin' && role !== 'member' && (
                     <button
                       onClick={() => removeRole(role)}
                       className="p-1.5 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -1467,7 +1607,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session || (session.user as any).role !== 'manager') router.replace('/dashboard')
+    if (!session || (session.user as any).role !== 'admin') router.replace('/dashboard')
   }, [session, status, router])
 
   function showToast(type: 'success' | 'error', msg: string) {

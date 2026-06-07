@@ -33,11 +33,11 @@ export async function GET(req: NextRequest) {
   // Managers: include all active assignees in the scoped project (including managers).
   // Non-managers: only see their own analytics.
   const userWhere =
-    user.role === 'manager'
+    user.role === 'admin'
       ? (projectId
           ? {
               is_active: true,
-              role: { in: [Role.member, Role.manager] },
+              role: { in: [Role.member, Role.admin] },
               OR: [
                 // Users explicitly assigned at project level
                 { project_assignments: { some: { project_id: Number(projectId) } } },
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
                 { task_assignees: { some: { task: taskWhere } } },
               ],
             }
-          : { is_active: true, role: { in: [Role.member, Role.manager] } })
+          : { is_active: true, role: { in: [Role.member, Role.admin] } })
       : { id: Number(user.id), is_active: true }
 
   const now = new Date()

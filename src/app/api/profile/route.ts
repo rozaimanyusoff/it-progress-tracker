@@ -14,6 +14,7 @@ export async function GET() {
          id: true, name: true, email: true, role: true,
          initials: true, contact_number: true, avatar_url: true,
          unit_id: true, dept_id: true, company_id: true,
+         theme_preference: true, dashboard_config: true,
          unit: { select: { id: true, name: true } },
          department: { select: { id: true, name: true } },
          company: { select: { id: true, name: true } },
@@ -28,7 +29,7 @@ export async function PATCH(req: NextRequest) {
    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
    const body = await req.json()
-   const { name, initials, contact_number, unit_id, dept_id, company_id, current_password, new_password } = body
+   const { name, initials, contact_number, unit_id, dept_id, company_id, current_password, new_password, theme_preference, dashboard_config } = body
 
    const userId = Number((session.user as any).id)
    const user = await prisma.user.findUnique({ where: { id: userId } })
@@ -49,6 +50,8 @@ export async function PATCH(req: NextRequest) {
    if ('unit_id' in body) data.unit_id = unit_id ?? null
    if ('dept_id' in body) data.dept_id = dept_id ?? null
    if ('company_id' in body) data.company_id = company_id ?? null
+   if (theme_preference !== undefined) data.theme_preference = theme_preference
+   if (dashboard_config !== undefined) data.dashboard_config = dashboard_config
 
    if (new_password) {
       if (!current_password) return NextResponse.json({ error: 'Current password is required' }, { status: 400 })
@@ -66,6 +69,7 @@ export async function PATCH(req: NextRequest) {
          id: true, name: true, email: true, role: true,
          initials: true, contact_number: true, avatar_url: true,
          unit_id: true, dept_id: true, company_id: true,
+         theme_preference: true, dashboard_config: true,
          unit: { select: { id: true, name: true } },
          department: { select: { id: true, name: true } },
          company: { select: { id: true, name: true } },

@@ -6,7 +6,7 @@ import { authOptions } from '@/lib/auth'
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const { title, description } = await req.json()
@@ -25,7 +25,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'manager') {
+  if (!session || (session.user as any).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   await prisma.deliverableRecord.delete({ where: { id: Number(id) } })

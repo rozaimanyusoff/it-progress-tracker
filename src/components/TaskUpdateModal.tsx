@@ -144,7 +144,7 @@ export default function TaskUpdateModal({
   onStatusChange,
 }: Props) {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'manager'
+  const isManager = (session?.user as any)?.role === 'admin'
 
   const [updates, setUpdates] = useState<TaskUpdateEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
@@ -908,7 +908,7 @@ export default function TaskUpdateModal({
               <div className="space-y-4">
                 {updates.map((u) => {
                   const isStatusEntry = u.entry_type === 'status'
-                  const isMgrEntry = u.user.role === 'manager'
+                  const isMgrEntry = u.user.role === 'admin'
                   const movedToReviewDate = u.actual_date ? new Date(u.actual_date).toLocaleDateString('en-GB') : null
                   return (
                     <div key={String(u.id)} className={`flex gap-3 rounded-lg p-2 -mx-2 ${isStatusEntry ? 'bg-violet-50 dark:bg-violet-950/20' : isMgrEntry ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}>

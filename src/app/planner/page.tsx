@@ -714,7 +714,7 @@ function DayModal({
 // ── Main Planner Page ─────────────────────────────────────────────
 export default function PlannerPage() {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'manager'
+  const isManager = (session?.user as any)?.role === 'admin'
   const currentUserId = Number((session?.user as any)?.id)
 
   const today = new Date()

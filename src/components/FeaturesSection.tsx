@@ -113,7 +113,7 @@ function FeatureCard({
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {userRole === 'manager' && (
+            {userRole === 'admin' && (
               <>
                 <button onClick={() => onEdit(feature)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit feature">
                   <Pencil className="w-3.5 h-3.5" />
@@ -303,7 +303,7 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
     <div className="bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-semibold text-slate-900 dark:text-white">Modules & Features</h2>
-        {userRole === 'manager' && (
+        {userRole === 'admin' && (
           <div className="flex items-center gap-2">
             <button onClick={openAddModule} className="px-3 py-1.5 bg-slate-100 dark:bg-navy-700 hover:bg-slate-200 dark:hover:bg-navy-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg border border-slate-200 dark:border-navy-600">
               + Module
@@ -334,7 +334,7 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
                     {mod.description && <span className="text-xs text-blue-500 dark:text-blue-400 truncate">{mod.description}</span>}
                     <span className="text-xs text-blue-400 ml-auto mr-2">{modFeatures.length} feature(s) · {doneTasks}/{totalTasks} tasks</span>
                   </button>
-                  {userRole === 'manager' && (
+                  {userRole === 'admin' && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => openEditModule(mod)} className="p-1 border border-yellow-200 dark:border-yellow-700 rounded hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-500 dark:text-yellow-400" title="Edit module">
                         <Pencil className="w-3.5 h-3.5" />
@@ -394,7 +394,7 @@ export default function FeaturesSection({ projectId, userRole }: Props) {
 
           {modules.length === 0 && ungroupedFeatures.length === 0 && (
             <p className="text-sm text-slate-400 py-4 text-center">
-              No features linked yet.{userRole === 'manager' ? ' Use "+ Link Feature" to attach features from the catalog.' : ''}
+              No features linked yet.{userRole === 'admin' ? ' Use "+ Link Feature" to attach features from the catalog.' : ''}
             </p>
           )}
         </div>

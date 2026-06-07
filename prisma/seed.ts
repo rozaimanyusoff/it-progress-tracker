@@ -18,7 +18,7 @@ async function main() {
       name: 'Admin Manager',
       email: 'admin@it.local',
       password_hash: managerHash,
-      role: Role.manager,
+      role: Role.admin,
       is_active: true,
     },
   })

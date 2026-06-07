@@ -14,7 +14,7 @@ type EditForm = {
 
 export default function IssuesPage() {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'manager'
+  const isManager = (session?.user as any)?.role === 'admin'
 
   const [issues, setIssues] = useState<any[]>([])
   const [members, setMembers] = useState<{ id: number; name: string }[]>([])
