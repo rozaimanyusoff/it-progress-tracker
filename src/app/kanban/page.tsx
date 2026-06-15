@@ -25,7 +25,7 @@ export default async function KanbanPage() {
             : `Tasks assigned to ${user.name} · Drag cards or use arrows to update status`}
         </p>
       </div>
-      {isManager ? <TeamKanbanBoard /> : <KanbanBoard />}
+      {isManager ? <TeamKanbanBoard isAllProject={true} /> : <KanbanBoard />}
     </AppLayout>
   )
 }

@@ -38,6 +38,7 @@ interface Props {
   deliverableUsedMandays?: number | null
   initialActualMandays?: number | null
   onClose: () => void
+  onSaved?: () => void
   onStatusChange: (taskId: number, newStatus: string) => void
 }
 
@@ -141,6 +142,7 @@ export default function TaskUpdateModal({
   deliverableUsedMandays,
   initialActualMandays,
   onClose,
+  onSaved,
   onStatusChange,
 }: Props) {
   const { data: session } = useSession()
@@ -393,6 +395,7 @@ export default function TaskUpdateModal({
       onStatusChange(taskId, finalStatus)
       setBlockedReason('')
       await loadHistory()
+      onSaved?.()
     } finally {
       setSubmitting(false)
     }
@@ -468,6 +471,7 @@ export default function TaskUpdateModal({
       setStatus(newStatus)
       onStatusChange(taskId, newStatus)
       await loadHistory()
+      onSaved?.()
     } finally {
       setReviewing(false)
     }

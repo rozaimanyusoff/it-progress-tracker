@@ -914,9 +914,9 @@ function AssigneeInitials({ assignees }: { assignees: Task['assignees'] }) {
   )
 }
 
-export default function TeamKanbanBoard() {
+export default function TeamKanbanBoard({ isAllProject }: { isAllProject?: boolean }) {
   const { data: session } = useSession()
-  const isManager = (session?.user as any)?.role === 'admin'
+  const isManager = isAllProject ?? (session?.user as any)?.role === 'admin'
   const currentUserId = Number((session?.user as any)?.id)
   const [board, setBoard] = useState<BoardState>({ Todo: [], InProgress: [], InReview: [], Done: [] })
   const [loading, setLoading] = useState(true)
@@ -1364,7 +1364,7 @@ export default function TeamKanbanBoard() {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : 'hover:shadow-md'}`}
+                                className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : activeTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
                               >
                                 <div className="flex items-start justify-between gap-1 mb-0.5">
                                   <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{cardHeaderScope(task)}</p>
@@ -1495,7 +1495,7 @@ export default function TeamKanbanBoard() {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : 'hover:shadow-md'}`}
+                                className={`rounded-lg p-3 shadow-sm transition-all select-none ${reviewCardStyle(task)} ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400 rotate-1' : activeTaskId === task.id ? 'ring-2 ring-blue-500 ring-offset-1 shadow-md' : 'hover:shadow-md'}`}
                               >
                                 <div className="flex items-start justify-between gap-1 mb-0.5">
                                   <p className="font-medium text-sm text-slate-800 dark:text-white leading-snug">{cardHeaderScope(task)}</p>
@@ -1660,7 +1660,8 @@ export default function TeamKanbanBoard() {
             deliverableBudgetMandays={activeTask.deliverable_budget_mandays ?? null}
             deliverableUsedMandays={activeTask.deliverable_used_mandays ?? null}
             initialActualMandays={activeTask.actual_mandays}
-            onClose={() => { setActiveTaskId(null); loadTasks() }}
+            onClose={() => setActiveTaskId(null)}
+            onSaved={() => { loadTasks() }}
             onStatusChange={handleStatusChange}
           />
         )}
