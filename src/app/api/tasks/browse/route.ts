@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
   if (!projectId) return NextResponse.json({ error: 'project_id required' }, { status: 400 })
 
   // Verify user is assigned to this project (or has all_project access)
-  const allAccess = await hasAllProjectAccess(user)
+  const dbUser = await prisma.user.findUnique({ where: { id: Number(user.id) }, select: { display_role: true } })
+  const allAccess = await hasAllProjectAccess({ ...user, display_role: dbUser?.display_role ?? null })
   if (!allAccess) {
     const assignment = await prisma.projectAssignee.findUnique({
       where: { project_id_user_id: { project_id: Number(projectId), user_id: Number(user.id) } },

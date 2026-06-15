@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get('project_id')
   const featureId = searchParams.get('feature_id')
 
-  const allAccess = await hasAllProjectAccess(user)
+  const dbUser = await prisma.user.findUnique({ where: { id: Number(user.id) }, select: { display_role: true } })
+  const allAccess = await hasAllProjectAccess({ ...user, display_role: dbUser?.display_role ?? null })
   const projectWhere = allAccess
     ? (projectId ? { id: Number(projectId) } : {})
     : {

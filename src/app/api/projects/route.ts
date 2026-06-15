@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const user = session.user as any
-  const allAccess = await hasAllProjectAccess(user)
+  const dbUser = await prisma.user.findUnique({ where: { id: Number(user.id) }, select: { display_role: true } })
+  const allAccess = await hasAllProjectAccess({ ...user, display_role: dbUser?.display_role ?? null })
   const where = allAccess
     ? {}
     : { assignees: { some: { user_id: Number(user.id) } } }

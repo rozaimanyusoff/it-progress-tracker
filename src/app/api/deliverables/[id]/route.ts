@@ -40,7 +40,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
   const isAdmin = user.role === 'admin'
-  const hasAllAccess = isAdmin || await hasAllProjectAccess(user)
+  const dbUser = await prisma.user.findUnique({ where: { id: Number(user.id) }, select: { display_role: true } })
+  const hasAllAccess = isAdmin || await hasAllProjectAccess({ ...user, display_role: dbUser?.display_role ?? null })
   if (!hasAllAccess) {
     const rolePerms = await getRolePreferences()
     const perms = rolePerms[user.role] ?? {}

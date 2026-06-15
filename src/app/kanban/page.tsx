@@ -5,13 +5,15 @@ import AppLayout from '@/components/Layout'
 import KanbanBoard from '@/components/KanbanBoard'
 import TeamKanbanBoard from '@/components/TeamKanbanBoard'
 import { hasAllProjectAccess } from '@/lib/role-prefs'
+import { prisma } from '@/lib/prisma'
 
 export default async function KanbanPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
   const user = session.user as any
-  const isManager = await hasAllProjectAccess(user)
+  const dbUser = await prisma.user.findUnique({ where: { id: Number(user.id) }, select: { display_role: true } })
+  const isManager = await hasAllProjectAccess({ ...user, display_role: dbUser?.display_role ?? null })
 
   return (
     <AppLayout>

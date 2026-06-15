@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as any
   const userId = Number(user.id)
-  const allAccess = await hasAllProjectAccess(user)
+  const dbUser = await prisma.user.findUnique({ where: { id: Number(user.id) }, select: { display_role: true } })
+  const allAccess = await hasAllProjectAccess({ ...user, display_role: dbUser?.display_role ?? null })
 
   const [kanbanTasks, kanbanIssues, openIssues, plannerPending, projectCount] = await Promise.all([
     // All-project access: team Todo tasks (non-predefined) · Others: own Todo tasks
